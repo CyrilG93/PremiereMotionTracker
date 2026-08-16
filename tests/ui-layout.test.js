@@ -63,7 +63,7 @@ test("manifest v6 loads the platform Hybrid addon and exposes its startup diagno
   assert.equal(manifest.manifestVersion, 6);
   assert.equal(manifest.requiredPermissions.enableAddon, true);
   assert.equal(manifest.addon.name, "premiere-motion-tracker-" + manifest.version + ".uxpaddon");
-  assert.match(nativeSource, /await require\("premiere-motion-tracker-0\.1\.11\.uxpaddon"\)/);
+  assert.match(nativeSource, /await require\("premiere-motion-tracker-0\.1\.12\.uxpaddon"\)/);
   assert.match(nativeSource, /loadedAddon\.runSelfTest\(\)/);
   assert.match(nativeSource, /addon\.inspectMedia/);
   assert.match(nativeSource, /addon\.trackMedia/);

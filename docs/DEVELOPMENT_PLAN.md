@@ -68,4 +68,4 @@ Critère de validation : deux positions détectées dans le média déplacent r�
 - Modèle de session et calcul des offsets couverts par des tests automatisés.
 - SDK Adobe UXP Hybrid disponible localement ; manifeste v6 et bootstrap C++ relié au panneau avec un autotest natif.
 - Visual Studio Build Tools 2019 et son CMake intégré permettent le build Windows x64. Les binaires macOS resteront construits sur macOS pour Intel et Apple Silicon.
-- OpenCV est relié au module Hybrid Windows pour inspecter un média via Media Foundation et calculer un suivi Lucas-Kanade avec contrôle aller-retour sur une plage bornée ; la correction visuelle et l’écriture de cette trajectoire dans Premiere restent à intégrer.
+- OpenCV est relié statiquement au module Hybrid Windows pour inspecter un média via Media Foundation et calculer un suivi Lucas-Kanade avec contrôle aller-retour sur une plage bornée ; la correction visuelle et l’écriture de cette trajectoire dans Premiere restent à intégrer.

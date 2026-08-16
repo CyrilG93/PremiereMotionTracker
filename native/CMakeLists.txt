@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(PremiereMotionTrackerAddon VERSION 0.1.11 LANGUAGES CXX)
+project(PremiereMotionTrackerAddon VERSION 0.1.12 LANGUAGES CXX)
 
 # Enable the OpenCV media decoder only in builds configured with vcpkg.
 option(PMT_ENABLE_OPENCV "Build OpenCV media inspection support" OFF)
@@ -20,6 +20,8 @@ endif()
 if(PMT_ENABLE_OPENCV)
   # OpenCV videoio uses Microsoft Media Foundation on the current Windows build.
   find_package(OpenCV CONFIG REQUIRED COMPONENTS core imgproc video videoio)
+  # Detect static OpenCV so the Hybrid addon does not expect sidecar DLLs at runtime.
+  get_target_property(PMT_OPENCV_CORE_TYPE opencv_core TYPE)
   # Derive the triplet bin directory from vcpkg's OpenCV package config location.
   get_filename_component(PMT_OPENCV_BIN_DIR "${OpenCV_DIR}/../../bin" ABSOLUTE)
 
@@ -61,7 +63,7 @@ if(DEFINED UXP_HYBRID_SDK_DIR)
     # Link decoding support only when the vcpkg toolchain supplied OpenCV.
     target_compile_definitions(PremiereMotionTrackerAddon PRIVATE PMT_WITH_OPENCV=1)
     target_link_libraries(PremiereMotionTrackerAddon PRIVATE PremiereMotionTrackerMedia)
-    if(WIN32)
+    if(WIN32 AND NOT PMT_OPENCV_CORE_TYPE STREQUAL "STATIC_LIBRARY")
       # Place the required OpenCV runtime DLLs beside the addon for Premiere's native loader.
       add_custom_command(TARGET PremiereMotionTrackerAddon POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different

@@ -19,13 +19,14 @@ cmake --build native/build --config Release
 ctest --test-dir native/build -C Release --output-on-failure
 ```
 
-Avec le SDK téléchargé dans `docs/uxp-hybrid-plugin-sdk-main`, la commande Windows est :
+Avec le SDK téléchargé dans `docs/uxp-hybrid-plugin-sdk-main`, vcpkg et OpenCV statique, la commande Windows est :
 
 ```powershell
 $pmtSdkPath = (Resolve-Path "docs/uxp-hybrid-plugin-sdk-main").Path.Replace("\", "/")
-cmake -S native -B native/build-hybrid "-DUXP_HYBRID_SDK_DIR=$pmtSdkPath" -DBUILD_TESTING=ON
+$pmtVcpkgToolchain = "C:/vcpkg/scripts/buildsystems/vcpkg.cmake"
+cmake -S native -B native/build-hybrid "-DUXP_HYBRID_SDK_DIR=$pmtSdkPath" "-DCMAKE_TOOLCHAIN_FILE=$pmtVcpkgToolchain" -DVCPKG_TARGET_TRIPLET=x64-windows-static-md -DPMT_ENABLE_OPENCV=ON -DBUILD_TESTING=ON
 cmake --build native/build-hybrid --config Release
 ctest --test-dir native/build-hybrid -C Release --output-on-failure
 ```
 
-Le binaire est généré dans `win/x64/premiere-motion-tracker-<version>.uxpaddon`, là où UXP le recherche. Son nom versionné évite qu’un addon encore verrouillé par Premiere bloque la compilation de la version suivante. Les builds macOS utiliseront respectivement `mac/x64` et `mac/arm64` ; ils devront être produits et validés sur macOS avant la distribution.
+Le binaire est généré dans `win/x64/premiere-motion-tracker-<version>.uxpaddon`, là où UXP le recherche. Le triplet statique évite d’imposer des DLL OpenCV voisines au chargeur Hybrid de Premiere. Son nom versionné évite qu’un addon encore verrouillé par Premiere bloque la compilation de la version suivante. Les builds macOS utiliseront respectivement `mac/x64` et `mac/arm64` ; ils devront être produits et validés sur macOS avant la distribution.

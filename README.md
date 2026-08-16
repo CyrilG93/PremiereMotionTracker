@@ -6,7 +6,9 @@ La première version visera un flux simple : sélectionner le clip à analyser, 
 
 ## État du projet
 
-Le projet est actuellement un prototype technique. Le panneau sait déjà capturer le clip source depuis la timeline, lire la plage In/Out, afficher l’image de séquence au point In et placer un point de tracking. Le module Hybrid Windows charge le cœur C++, exécute un autotest, lit les métadonnées vidéo avec OpenCV et Media Foundation, puis suit le point image par image avec Lucas-Kanade et un contrôle aller-retour. Après analyse, des images de séquence temporaires sont mises en cache avec le point superposé afin de vérifier la trajectoire et de naviguer image par image avant application. La trajectoire validée peut ensuite être appliquée à un ou plusieurs clips de destination : le plugin ajoute un effet Transform et crée une clé Position par image valide. La correction visuelle des dérives reste un prochain jalon ; les binaires Windows et macOS seront inclus dans le produit final.
+Le projet est actuellement au jalon 0.3.0. Le panneau sait capturer le clip source depuis la timeline, lire la plage In/Out, afficher l’image de séquence au point In et placer un point de tracking. Le module Hybrid Windows charge le cœur C++, exécute un autotest, lit les métadonnées vidéo avec OpenCV et Media Foundation, puis suit le point image par image avec Lucas-Kanade et un contrôle aller-retour. La trajectoire validée peut être appliquée à un ou plusieurs clips de destination : le plugin ajoute un effet Transform et crée une clé Position par image valide, avec compensation des dimensions, de l’échelle Motion et des Graphics Layers.
+
+Le rendu d’un aperçu animé dans le panneau UXP n’est pas encore fiable : les essais par vidéo, canvas, double tampon et changement rapide d’image produisent des images noires ou du clignotement selon Premiere. Le bouton `Skip preview` permet donc de conserver l’image In et d’appliquer directement la trajectoire. La correction visuelle des dérives et une prévisualisation fiable restent les prochains jalons ; les binaires Windows et macOS seront inclus dans le produit final.
 
 ## Tester le prototype
 
@@ -23,8 +25,8 @@ L’aperçu est généré dans l’espace temporaire privé du plugin : aucune a
 Pour tester la capture :
 
 1. Placez les In/Out de la séquence, sélectionnez le clip vidéo dans la timeline puis cliquez sur `Capturer et préparer`.
-2. Cliquez dans l’image pour placer le point de tracking, puis sur `Analyze` pour calculer la trajectoire sur la plage visible du clip. Les images de la séquence sont ensuite préparées automatiquement ; cliquez sur `Skip preview` pendant cette étape si vous voulez conserver uniquement l’image In et appliquer directement la trajectoire.
-3. Une fois l’aperçu préparé, utilisez `Start`, `− frame` et `+ frame` pour vérifier le point superposé image par image avant de modifier le projet.
+2. Cliquez dans l’image pour placer le point de tracking, puis sur `Analyze` pour calculer la trajectoire sur la plage visible du clip. Cliquez sur `Skip preview` pendant la préparation si vous voulez conserver uniquement l’image In et appliquer directement la trajectoire.
+3. L’aperçu détaillé est encore expérimental dans Premiere UXP ; utilisez `Skip preview` si l’affichage clignote ou devient noir.
 4. Consultez le nombre d’images incertaines signalé dans le diagnostic.
 5. Sélectionnez ensuite un ou plusieurs clips de destination dans la timeline.
 6. Cliquez sur `Appliquer la trajectoire` pour ajouter un effet Transform et une clé Position par image valide à chaque clip sélectionné.
@@ -34,6 +36,14 @@ Le choix des destinations se fait volontairement après l’analyse : une même 
 Le diagnostic peut être copié avec le bouton `Copy` (ou `Copier` en français). Il reste sélectionnable avec `Ctrl+C` et isolé de l’aperçu pendant la lecture. Si Premiere refuse temporairement l’accès au presse-papiers après une mise à jour du plugin, retirez puis ajoutez à nouveau le plugin dans UXP Developer Tool afin de recharger les permissions du manifest.
 
 L’interface est en anglais par défaut. Utilisez le bouton `FR` dans l’en-tête pour basculer les contrôles en français.
+
+## Prochaines étapes
+
+- Stabiliser une prévisualisation de trajectoire réellement fiable dans Premiere UXP, sans animation d’images fragile dans le panneau.
+- Ajouter la correction manuelle des images incertaines et la reprise du tracking après correction.
+- Ajouter une zone de recherche, un score de confiance exploitable et des options de lissage.
+- Tester les durées longues, 4K, différentes cadences et les remappages temporels refusés.
+- Construire et valider les addons macOS Apple Silicon et Intel.
 
 ## Développement
 

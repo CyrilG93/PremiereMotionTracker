@@ -19,7 +19,7 @@ Critère de validation : la trajectoire détectée dans le média déplace réel
 ## Phase 2 — Sessions et prévisualisation
 
 - Stocker une session sérialisable sans conserver les proxies UXP fragiles.
-- Mettre en cache les images de la plage trackée avec le point superposé, lecture/pause et navigation image par image avant l’application.
+- Mettre en cache les images de la plage trackée avec le point superposé et proposer une vérification fiable avant l’application. La lecture/pause et le changement rapide d’image restent bloqués par le rendu UXP actuel (images noires ou clignotement) ; le mode `Skip preview` est le contournement temporaire.
 - Permettre de poser le point de référence et choisir la zone de recherche.
 - Conserver les résultats, réglages et corrections manuelles.
 
@@ -58,7 +58,7 @@ Critère de validation : la trajectoire détectée dans le média déplace réel
 - Autoriser la correction indépendante de chaque coin.
 - Appliquer le résultat à Corner Pin ou à un effet natif dédié, car Transform ne représente pas une perspective complète.
 
-## État au 16 août 2026
+## État au 16 août 2026 — jalon 0.3.0
 
 - Dépôt initialisé.
 - Panneau UXP, capture de la source et lecture In/Out validés dans Premiere.
@@ -68,4 +68,7 @@ Critère de validation : la trajectoire détectée dans le média déplace réel
 - Modèle de session et calcul des offsets couverts par des tests automatisés.
 - SDK Adobe UXP Hybrid disponible localement ; manifeste v6 et bootstrap C++ relié au panneau avec un autotest natif.
 - Visual Studio Build Tools 2019 et son CMake intégré permettent le build Windows x64. Les binaires macOS resteront construits sur macOS pour Intel et Apple Silicon.
-- OpenCV est relié statiquement au module Hybrid Windows pour inspecter un média via Media Foundation et calculer un suivi Lucas-Kanade avec contrôle aller-retour sur une plage bornée ; l’application crée maintenant une clé Position par image valide sur chaque clip de destination. La correction visuelle reste à intégrer.
+- OpenCV est relié statiquement au module Hybrid Windows pour inspecter un média via Media Foundation et calculer un suivi Lucas-Kanade avec contrôle aller-retour sur une plage bornée ; l’application crée maintenant une clé Position par image valide sur chaque clip de destination, y compris les médias redimensionnés et les Graphics Layers.
+- Validé dans Premiere : la trajectoire suit correctement le point et son application fonctionne sur un ou plusieurs clips sélectionnés.
+- En attente : l’aperçu animé de la trajectoire dans UXP. Les essais par vidéo, canvas, double tampon et changement rapide d’image affichent du noir ou clignotent ; conserver `Skip preview` comme chemin stable jusqu’à une stratégie de rendu UXP validée.
+- Étapes suivantes : stabiliser cette vérification visuelle, puis ajouter correction manuelle, zone de recherche, lissage et campagnes de tests 4K/cadences/durées longues avant le port macOS.

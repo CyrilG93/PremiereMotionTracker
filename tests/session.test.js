@@ -1,0 +1,59 @@
+"use strict";
+
+// Validate the pure tracking model without requiring Premiere Pro.
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const sessionApi = require("../src/core/session.js");
+const trajectoryApi = require("../src/core/trajectory.js");
+
+test("normalizePoint clamps coordinates into the preview", () => {
+  assert.deepEqual(sessionApi.normalizePoint({ x: -0.2, y: 1.3 }), { x: 0, y: 1 });
+});
+
+test("createSession retains durable clip metadata", () => {
+  const session = sessionApi.createSession({
+    id: "test-session",
+    createdAt: "2026-08-16T00:00:00.000Z",
+    sequenceId: "sequence-1",
+    source: { id: "source-1", name: "Source" },
+    target: { id: "target-1", name: "Target" },
+    referencePoint: { x: 0.25, y: 0.75 }
+  });
+  assert.equal(session.schemaVersion, 1);
+  assert.equal(session.source.name, "Source");
+  assert.deepEqual(session.referencePoint, { x: 0.25, y: 0.75 });
+});
+
+test("appendSample rejects an impossible confidence score", () => {
+  const session = sessionApi.createSession({
+    source: { id: "source-1" },
+    target: { id: "target-1" }
+  });
+  assert.throws(() => sessionApi.appendSample(session, {
+    ticks: "1",
+    point: { x: 0.5, y: 0.5 },
+    confidence: 1.2
+  }), /confiance/);
+});
+
+test("computeRelativeOffsets anchors motion to the reference frame", () => {
+  const offsets = trajectoryApi.computeRelativeOffsets([
+    { ticks: "0", point: { x: 0.4, y: 0.5 }, confidence: 1 },
+    { ticks: "1", point: { x: 0.45, y: 0.42 }, confidence: 0.9 }
+  ], 0);
+  assert.deepEqual(offsets, [
+    { ticks: "0", dx: 0, dy: 0, confidence: 1 },
+    { ticks: "1", dx: 0.04999999999999999, dy: -0.08000000000000002, confidence: 0.9 }
+  ]);
+});
+
+test("findUncertainSamples returns only samples below the threshold", () => {
+  const uncertain = trajectoryApi.findUncertainSamples([
+    { confidence: 0.9 },
+    { confidence: 0.4 },
+    { confidence: 0.65 }
+  ], 0.65);
+  assert.equal(uncertain.length, 1);
+  assert.equal(uncertain[0].confidence, 0.4);
+});
+

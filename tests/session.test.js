@@ -16,18 +16,17 @@ test("createSession retains durable clip metadata", () => {
     createdAt: "2026-08-16T00:00:00.000Z",
     sequenceId: "sequence-1",
     source: { id: "source-1", name: "Source" },
-    target: { id: "target-1", name: "Target" },
     referencePoint: { x: 0.25, y: 0.75 }
   });
-  assert.equal(session.schemaVersion, 1);
+  assert.equal(session.schemaVersion, 2);
   assert.equal(session.source.name, "Source");
+  assert.equal(Object.prototype.hasOwnProperty.call(session, "target"), false);
   assert.deepEqual(session.referencePoint, { x: 0.25, y: 0.75 });
 });
 
 test("appendSample rejects an impossible confidence score", () => {
   const session = sessionApi.createSession({
-    source: { id: "source-1" },
-    target: { id: "target-1" }
+    source: { id: "source-1" }
   });
   assert.throws(() => sessionApi.appendSample(session, {
     ticks: "1",
@@ -56,4 +55,3 @@ test("findUncertainSamples returns only samples below the threshold", () => {
   assert.equal(uncertain.length, 1);
   assert.equal(uncertain[0].confidence, 0.4);
 });
-

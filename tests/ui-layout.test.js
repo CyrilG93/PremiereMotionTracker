@@ -9,6 +9,7 @@ const path = require("node:path");
 const projectRoot = path.resolve(__dirname, "..");
 const styles = fs.readFileSync(path.join(projectRoot, "styles.css"), "utf8");
 const uiSource = fs.readFileSync(path.join(projectRoot, "src", "ui.js"), "utf8");
+const manifest = JSON.parse(fs.readFileSync(path.join(projectRoot, "manifest.json"), "utf8"));
 
 test("interactive rows use flex instead of hidden UXP grid layouts", () => {
   assert.match(styles, /\.pmt-slot\s*\{[^}]*display:\s*flex;/s);
@@ -21,3 +22,13 @@ test("panel cards use simple div containers in Premiere UXP", () => {
   assert.match(uiSource, /<div class="pmt-card">/);
 });
 
+test("diagnostics are selectable and can be copied through the declared clipboard permission", () => {
+  assert.match(uiSource, /<textarea class="pmt-log"/);
+  assert.match(uiSource, /id="pmt-copy-log"/);
+  assert.equal(manifest.requiredPermissions.clipboard, "readAndWrite");
+});
+
+test("destination clips are selected only when applying the finished tracking", () => {
+  assert.doesNotMatch(uiSource, /pmt-capture-target/);
+  assert.match(uiSource, /Tester Transform sur la sélection/);
+});

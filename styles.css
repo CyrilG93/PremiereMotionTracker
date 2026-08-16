@@ -96,6 +96,14 @@ input {
   font-weight: 600;
 }
 
+.pmt-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+}
+
 .pmt-slot {
   display: flex;
   flex-direction: row;
@@ -195,15 +203,26 @@ input {
   width: 100%;
 }
 
+.pmt-button-compact {
+  min-height: 25px;
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
 .pmt-log {
-  min-height: 62px;
+  width: 100%;
+  height: 190px;
+  min-height: 140px;
   margin: 0;
   padding: 8px;
   overflow: auto;
+  resize: vertical;
+  border: 1px solid #222222;
   border-radius: 4px;
   background: #171717;
   color: var(--pmt-muted);
   font-family: Consolas, Monaco, monospace;
   font-size: 11px;
   white-space: pre-wrap;
+  user-select: text;
 }

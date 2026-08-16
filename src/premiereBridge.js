@@ -2,8 +2,7 @@
   "use strict";
 
   const handles = {
-    source: null,
-    target: null
+    source: null
   };
 
   // Load Premiere's UXP module only inside the host application.
@@ -162,14 +161,11 @@
     if (!videoItems.length) {
       throw new Error("Sélectionnez un clip vidéo dans la timeline.");
     }
-    return { app, project, sequence, item: videoItems[0], selectedCount: videoItems.length };
+    return { app, project, sequence, item: videoItems[0], videoItems, selectedCount: videoItems.length };
   }
 
-  // Convert a selected track item into durable metadata and retain its live proxy for this panel session.
-  async function captureSelectedClip(role) {
-    if (role !== "source" && role !== "target") {
-      throw new Error("Le rôle du clip doit être source ou cible.");
-    }
+  // Convert the selected source item into durable metadata and retain its live proxy for this panel session.
+  async function captureSelectedClip() {
     const context = await getSelectionContext();
     const item = context.item;
     const projectItem = await item.getProjectItem();
@@ -177,7 +173,7 @@
       ? context.app.ClipProjectItem.cast(projectItem)
       : projectItem;
     const name = await readMethod(item, "getName", projectItem && projectItem.name ? projectItem.name : "Clip vidéo");
-    const mediaPath = role === "source" ? await readMethod(clipProjectItem, "getMediaFilePath", "") : "";
+    const mediaPath = await readMethod(clipProjectItem, "getMediaFilePath", "");
     const start = describeTime(await readMethod(item, "getStartTime", null));
     const end = describeTime(await readMethod(item, "getEndTime", null));
     const inPoint = describeTime(await readMethod(item, "getInPoint", null));
@@ -202,7 +198,7 @@
       reversed,
       selectedCount: context.selectedCount
     };
-    handles[role] = { app: context.app, project: context.project, sequence: context.sequence, item, descriptor };
+    handles.source = { app: context.app, project: context.project, sequence: context.sequence, item, descriptor };
     return descriptor;
   }
 
@@ -226,32 +222,68 @@
     };
   }
 
-  // Expose whether both fragile Premiere proxies are still available for the current panel session.
+  // Expose whether the fragile source proxy is still available for the current panel session.
   function getHandleStatus() {
     return {
-      source: Boolean(handles.source && handles.source.item),
-      target: Boolean(handles.target && handles.target.item),
-      sameSequence: Boolean(handles.source && handles.target && handles.source.descriptor.sequenceId === handles.target.descriptor.sequenceId),
-      sameItem: Boolean(handles.source && handles.target && handles.source.descriptor.id === handles.target.descriptor.id)
+      source: Boolean(handles.source && handles.source.item)
     };
   }
 
-  // Add a separate Transform effect and two visible Position keys to validate the Premiere write path.
-  async function applyTransformTest() {
-    const status = getHandleStatus();
-    if (!status.source || !status.target || !status.sameSequence) {
-      throw new Error("Capturez deux clips vidéo de la même séquence.");
+  // Build the same stable timeline identity used by the captured source descriptor.
+  async function getItemIdentity(sequence, item) {
+    const projectItem = await item.getProjectItem();
+    const trackIndex = Number(await readMethod(item, "getTrackIndex", -1));
+    const start = describeTime(await readMethod(item, "getStartTime", null));
+    const projectItemId = projectItem && typeof projectItem.getId === "function" ? String(projectItem.getId()) : "";
+    const sequenceId = String(sequence.guid || sequence.name || "");
+    return [sequenceId, trackIndex, start.ticks, projectItemId].join(":");
+  }
+
+  // Resolve the effect after insertion because factory components expose no parameters before attachment.
+  async function resolveInsertedTransform(chain, preferredIndex, matchName) {
+    const count = chain && typeof chain.getComponentCount === "function" ? chain.getComponentCount() : 0;
+    const indexes = [];
+    if (preferredIndex >= 0 && preferredIndex < count) {
+      indexes.push(preferredIndex);
     }
-    if (status.sameItem) {
-      throw new Error("Le clip source et le clip cible doivent être différents.");
+    for (let index = 0; index < count; index += 1) {
+      if (!indexes.includes(index)) {
+        indexes.push(index);
+      }
     }
-    const target = handles.target;
-    const item = target.item;
+    for (const index of indexes) {
+      const component = chain.getComponentAtIndex(index);
+      const componentMatchName = component && typeof component.getMatchName === "function" ? await component.getMatchName() : "";
+      const displayName = component && typeof component.getDisplayName === "function" ? await component.getDisplayName() : "";
+      const isPreferred = index === preferredIndex;
+      const isTransform = componentMatchName === matchName || normalizeLabel(displayName) === "transform";
+      if ((isPreferred || isTransform) && component && typeof component.getParamCount === "function" && component.getParamCount() > 0) {
+        return component;
+      }
+    }
+    return null;
+  }
+
+  // Add one Transform test to one destination clip and return a compact result for diagnostics.
+  async function applyTransformTestToItem(context, item) {
     const chain = await item.getComponentChain();
-    const transform = await createTransformComponent(target.app);
-    const positionResult = findPositionParam(transform.component);
+    const previousCount = chain && typeof chain.getComponentCount === "function" ? chain.getComponentCount() : 0;
+    const transform = await createTransformComponent(context.app);
+    const canInsert = chain && typeof chain.createInsertComponentAction === "function";
+    const preferredIndex = canInsert ? 0 : previousCount;
+    executeActions(context.project, [() => canInsert
+      ? chain.createInsertComponentAction(transform.component, preferredIndex)
+      : chain.createAppendComponentAction(transform.component)], "Motion Tracker : ajouter Transform test");
+    await waitForHostPaint();
+
+    const updatedChain = await item.getComponentChain();
+    const insertedComponent = await resolveInsertedTransform(updatedChain, preferredIndex, transform.matchName);
+    if (!insertedComponent) {
+      throw new Error("L’effet Transform a été ajouté mais son composant attaché reste introuvable.");
+    }
+    const positionResult = findPositionParam(insertedComponent);
     if (!positionResult.param) {
-      throw new Error("Le paramètre Position de Transform est introuvable. Paramètres exposés : " + positionResult.names.join(", "));
+      throw new Error("Le paramètre Position est introuvable. Paramètres exposés : " + (positionResult.names.join(", ") || "aucun"));
     }
     const positionParam = positionResult.param;
     const startValue = await positionParam.getStartValue();
@@ -263,34 +295,51 @@
     const deltaX = looksNormalized ? 0.05 : 100;
     const inPoint = await item.getInPoint();
     const outPoint = await item.getOutPoint();
-
-    executeActions(target.project, [() => {
-      if (typeof chain.createInsertComponentAction === "function") {
-        return chain.createInsertComponentAction(transform.component, 0);
-      }
-      return chain.createAppendComponentAction(transform.component);
-    }], "Motion Tracker : ajouter Transform test");
+    executeActions(context.project, [() => positionParam.createSetTimeVaryingAction(true)], "Motion Tracker : activer Position");
     await waitForHostPaint();
 
-    executeActions(target.project, [() => positionParam.createSetTimeVaryingAction(true)], "Motion Tracker : activer Position");
-    await waitForHostPaint();
-
-    const firstKey = positionParam.createKeyframe(createPoint(target.app, initialPoint.x, initialPoint.y));
+    const firstKey = positionParam.createKeyframe(createPoint(context.app, initialPoint.x, initialPoint.y));
     firstKey.position = inPoint;
-    const lastPoint = createPoint(target.app, initialPoint.x + deltaX, initialPoint.y);
-    const lastKey = positionParam.createKeyframe(lastPoint);
+    const lastKey = positionParam.createKeyframe(createPoint(context.app, initialPoint.x + deltaX, initialPoint.y));
     lastKey.position = outPoint;
-    executeActions(target.project, [
+    executeActions(context.project, [
       () => positionParam.createAddKeyframeAction(firstKey),
       () => positionParam.createAddKeyframeAction(lastKey)
     ], "Motion Tracker : keyframes Transform test");
-
+    const clipName = await readMethod(item, "getName", "Clip cible");
     return {
+      clipName: String(clipName),
       matchName: transform.matchName,
       initialPoint,
       finalPoint: { x: initialPoint.x + deltaX, y: initialPoint.y },
       normalized: looksNormalized
     };
+  }
+
+  // Apply the same test motion to every selected destination after the source session is prepared.
+  async function applyTransformTest() {
+    if (!getHandleStatus().source) {
+      throw new Error("Capturez d’abord le clip source.");
+    }
+    const context = await getSelectionContext();
+    if (String(context.sequence.guid || context.sequence.name || "") !== handles.source.descriptor.sequenceId) {
+      throw new Error("Les clips de destination doivent appartenir à la séquence du tracking.");
+    }
+    const targets = [];
+    for (const item of context.videoItems) {
+      const identity = await getItemIdentity(context.sequence, item);
+      if (identity !== handles.source.descriptor.id) {
+        targets.push(item);
+      }
+    }
+    if (!targets.length) {
+      throw new Error("Sélectionnez au moins un clip de destination différent du clip source.");
+    }
+    const results = [];
+    for (const item of targets) {
+      results.push(await applyTransformTestToItem(context, item));
+    }
+    return results;
   }
 
   root.PMT_PREMIERE = {

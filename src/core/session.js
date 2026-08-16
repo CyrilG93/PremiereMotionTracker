@@ -12,7 +12,7 @@
 }(typeof window !== "undefined" ? window : globalThis, function () {
   "use strict";
 
-  const SESSION_SCHEMA_VERSION = 1;
+  const SESSION_SCHEMA_VERSION = 2;
 
   // Normalize a user-selected point to sequence-relative coordinates between zero and one.
   function normalizePoint(point) {
@@ -30,12 +30,8 @@
   // Create a serializable session without retaining fragile Premiere proxy objects.
   function createSession(input) {
     const source = input && input.source;
-    const target = input && input.target;
     if (!source || !source.id) {
       throw new Error("Un clip source est nécessaire.");
-    }
-    if (!target || !target.id) {
-      throw new Error("Un clip cible est nécessaire.");
     }
     return {
       schemaVersion: SESSION_SCHEMA_VERSION,
@@ -43,7 +39,6 @@
       createdAt: String(input.createdAt || new Date().toISOString()),
       sequenceId: String(input.sequenceId || ""),
       source: Object.assign({}, source),
-      target: Object.assign({}, target),
       range: Object.assign({ inTicks: "0", outTicks: "0" }, input.range || {}),
       referencePoint: normalizePoint(input.referencePoint || { x: 0.5, y: 0.5 }),
       profile: String(input.profile || "balanced"),
@@ -78,4 +73,3 @@
     appendSample
   };
 }));
-

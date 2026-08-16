@@ -2,19 +2,19 @@
 
 ## Direction technique
 
-Le projet utilise un panneau UXP pour l’interface et l’intégration Premiere, complété par un module UXP Hybrid C++ pour le décodage vidéo et OpenCV. La V1 suit un point dans le média du clip source sélectionné, puis applique le déplacement sous forme de keyframes Position sur un effet Transform du clip cible.
+Le projet utilise un panneau UXP pour l’interface et l’intégration Premiere, complété par un module UXP Hybrid C++ pour le décodage vidéo et OpenCV. La V1 suit un point dans le média du clip source sélectionné. Une fois le tracking validé, l’utilisateur sélectionne un ou plusieurs clips de destination et leur applique le déplacement sous forme de keyframes Position sur un effet Transform.
 
 Premiere Pro 26.2 ou plus récent est la cible minimale. Windows x64 est validé en premier, puis macOS ARM64 et Intel.
 
 ## Phase 1 — Prototype de faisabilité
 
-- Créer le panneau UXP et diagnostiquer les clips sélectionnés.
+- Créer le panneau UXP et diagnostiquer le clip source sélectionné.
 - Lire le média source, les temps du clip et la plage In/Out de la séquence.
 - Charger un module C++ minimal construit avec le SDK UXP Hybrid Adobe.
 - Décoder des images du média avec OpenCV.
-- Ajouter Transform au clip cible et écrire deux keyframes Position dans une transaction annulable.
+- Ajouter Transform aux clips sélectionnés après le tracking et écrire deux keyframes Position.
 
-Critère de validation : deux positions détectées dans le média déplacent réellement un clip cible dans Premiere.
+Critère de validation : deux positions détectées dans le média déplacent réellement les clips sélectionnés dans Premiere.
 
 ## Phase 2 — Sessions et prévisualisation
 
@@ -35,7 +35,7 @@ Critère de validation : deux positions détectées dans le média déplacent r�
 
 - Créer ou réutiliser l’effet Transform par son match name.
 - Convertir les positions normalisées en coordonnées de séquence.
-- Conserver l’offset initial du clip cible.
+- Conserver l’offset initial de chaque clip cible sélectionné au moment de l’application.
 - Écrire ou remplacer uniquement les keyframes appartenant à la session.
 - Regrouper l’opération dans une action Annuler unique.
 
@@ -61,8 +61,8 @@ Critère de validation : deux positions détectées dans le média déplacent r�
 ## État au 16 août 2026
 
 - Dépôt initialisé.
-- Panneau UXP, capture source/cible et lecture In/Out validés dans Premiere.
-- Test d’ajout de Transform et de deux keyframes Position prêt à être validé dans Premiere.
+- Panneau UXP, capture de la source et lecture In/Out validés dans Premiere.
+- Test d’ajout de Transform et de deux keyframes Position sur la sélection courante prêt à être validé dans Premiere.
 - Modèle de session et calcul des offsets couverts par des tests automatisés.
 - Bootstrap C++ préparé.
 - Blocage externe actuel : le SDK Adobe UXP Hybrid, CMake et les outils C++ Visual Studio ne sont pas présents sur la machine Windows de développement.

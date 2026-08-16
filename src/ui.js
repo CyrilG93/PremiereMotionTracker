@@ -9,6 +9,7 @@
     referencePoint: null,
     tracking: null,
     busy: false,
+    operation: "",
     log: ["Prototype prêt. Capturez d’abord le clip source."]
   };
 
@@ -82,6 +83,9 @@
   // Compute the main readiness message from Premiere and native addon state.
   function getBanner() {
     const nativeStatus = root.PMT_NATIVE.probe();
+    if (state.operation === "analysis") {
+      return { tone: "warning", text: "Analyse OpenCV en cours… le panneau reste actif dès que la trajectoire est prête." };
+    }
     if (!state.source) {
       return { tone: "warning", text: "Sélectionnez puis capturez le clip à analyser." };
     }
@@ -107,6 +111,10 @@
     const canPrepare = Boolean(state.source && !state.busy);
     const canAnalyze = Boolean(canPrepare && state.media && state.range && state.preview && state.referencePoint);
     const canTestTransform = Boolean(canPrepare && state.range && state.range.sequenceId === state.source.sequenceId);
+    const analyzeLabel = state.operation === "analysis" ? "Analyse en cours…" : "Analyser";
+    const analysisProgress = state.operation === "analysis"
+      ? '<div class="pmt-analysis-progress" role="status" aria-live="polite"><div class="pmt-analysis-progress-track"><div class="pmt-analysis-progress-indicator"></div></div><div>Analyse de la vidéo en cours. Ne fermez pas le panneau.</div></div>'
+      : "";
     const previewContent = state.preview
       ? '<img class="pmt-preview-image" src="' + escapeHtml(state.preview.url) + '" alt="Image de la séquence au point In">' + (state.referencePoint
         ? '<div class="pmt-tracking-point" style="left:' + (state.referencePoint.x * 100).toFixed(3) + '%;top:' + (state.referencePoint.y * 100).toFixed(3) + '%"></div>'
@@ -119,6 +127,7 @@
       '    <span class="pmt-version">v' + escapeHtml(root.PMT_VERSION) + '</span>',
       '  </div>',
       '  <div class="pmt-banner" data-tone="' + banner.tone + '">' + escapeHtml(banner.text) + '</div>',
+      analysisProgress,
       '  <div class="pmt-card">',
       '    <h2 class="pmt-card-title">1. Source du tracking</h2>',
       '    <div class="pmt-slot">',
@@ -132,7 +141,7 @@
       '    <div class="pmt-preview" id="pmt-preview" data-ready="' + String(Boolean(state.preview)) + '">' + previewContent + '</div>',
       '    <div class="pmt-actions">',
       '      ' + buttonMarkup("pmt-read-range", "Lire les In/Out", [], !canPrepare),
-      '      ' + buttonMarkup("pmt-analyze", "Analyser", ["pmt-button-primary"], !canAnalyze),
+      '      ' + buttonMarkup("pmt-analyze", analyzeLabel, ["pmt-button-primary"], !canAnalyze),
       '    </div>',
       '  </div>',
       '  <div class="pmt-card">',
@@ -153,6 +162,11 @@
       // Keep the latest diagnostic visible while preserving manual text selection.
       logArea.scrollTop = logArea.scrollHeight;
     }
+  }
+
+  // Yield once after rendering so Premiere can visibly paint the analysis state before native work begins.
+  function waitForPanelPaint() {
+    return new Promise((resolve) => setTimeout(resolve, 30));
   }
 
   // Capture the source from the current timeline selection and refresh the panel.
@@ -246,8 +260,11 @@
   // Run the native Lucas-Kanade tracker for the source-media interval visible in the active sequence range.
   async function analyzeTracking(rootNode) {
     state.busy = true;
+    state.operation = "analysis";
+    addLog("Analyse OpenCV en cours…");
     render(rootNode);
     try {
+      await waitForPanelPaint();
       const mediaRange = getTrackingMediaRange();
       const samples = await root.PMT_NATIVE.trackMedia(state.source.mediaPath, state.referencePoint, mediaRange.startSeconds, mediaRange.endSeconds);
       state.tracking = Array.prototype.slice.call(samples || []);
@@ -259,6 +276,7 @@
       addLog("Erreur tracking : " + (error && error.message ? error.message : String(error)));
     } finally {
       state.busy = false;
+      state.operation = "";
       render(rootNode);
     }
   }

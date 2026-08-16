@@ -11,6 +11,8 @@
     tracking: null,
     trackingPreview: null,
     previewFrameIndex: 0,
+    previewActiveBuffer: "a",
+    previewPaintRequest: 0,
     previewSeconds: 0,
     previewPlaying: false,
     previewImageCache: [],
@@ -135,6 +137,8 @@
     }
     state.trackingPreview = null;
     state.previewFrameIndex = 0;
+    state.previewActiveBuffer = "a";
+    state.previewPaintRequest = 0;
     state.previewSeconds = 0;
     state.previewPlaying = false;
     state.previewImageCache = [];
@@ -238,8 +242,12 @@
     const playbackLabel = state.previewPlaying ? t("pause") : t("play");
     const imagePreview = state.trackingPreview;
     const playbackFrame = imagePreview && imagePreview.frames[state.previewFrameIndex];
+    if (playbackFrame) {
+      // A full panel render always starts from buffer A, which already contains the current frame URL.
+      state.previewActiveBuffer = "a";
+    }
     const previewContent = playbackFrame
-      ? '<canvas class="pmt-preview-canvas" id="pmt-tracking-canvas" width="' + Math.max(1, Number(playbackFrame.width) || 640) + '" height="' + Math.max(1, Number(playbackFrame.height) || 360) + '" role="img" aria-label="' + escapeHtml(t("trackingPreviewAlt")) + '"></canvas><div class="pmt-tracking-point" id="pmt-preview-point" style="left:' + (Number(playbackFrame.x) * 100).toFixed(3) + '%;top:' + (Number(playbackFrame.y) * 100).toFixed(3) + '%"></div><div class="pmt-preview-status" id="pmt-preview-status">' + escapeHtml(t("trackingPreview", { current: state.previewFrameIndex + 1, total: imagePreview.frames.length })) + '</div>'
+      ? '<div class="pmt-preview-stage" style="padding-top:' + ((Math.max(1, Number(playbackFrame.height) || 360) / Math.max(1, Number(playbackFrame.width) || 640)) * 100).toFixed(3) + '%"><img class="pmt-preview-buffer pmt-preview-buffer-active" id="pmt-tracking-image-a" src="' + escapeHtml(playbackFrame.url) + '" alt="' + escapeHtml(t("trackingPreviewAlt")) + '"><img class="pmt-preview-buffer" id="pmt-tracking-image-b" alt=""></div><div class="pmt-tracking-point" id="pmt-preview-point" style="left:' + (Number(playbackFrame.x) * 100).toFixed(3) + '%;top:' + (Number(playbackFrame.y) * 100).toFixed(3) + '%"></div><div class="pmt-preview-status" id="pmt-preview-status">' + escapeHtml(t("trackingPreview", { current: state.previewFrameIndex + 1, total: imagePreview.frames.length })) + '</div>'
       : state.preview
       ? '<img class="pmt-preview-image" src="' + escapeHtml(state.preview.url) + '" alt="' + escapeHtml(t("inImageAlt")) + '">' + (state.referencePoint
         ? '<div class="pmt-tracking-point" style="left:' + (state.referencePoint.x * 100).toFixed(3) + '%;top:' + (state.referencePoint.y * 100).toFixed(3) + '%"></div>'
@@ -285,10 +293,6 @@
       '</div>'
     ].join("");
     bindEvents(rootNode);
-    if (playbackFrame) {
-      // Paint the initial cached frame into the stable canvas after its DOM node exists.
-      drawTrackingPreviewFrame(rootNode, state.previewFrameIndex);
-    }
     const logArea = rootNode.querySelector("#pmt-log");
     if (logArea) {
       // Keep the latest diagnostic visible while preserving manual text selection.
@@ -322,42 +326,51 @@
     }
   }
 
-  // Paint a cached image into one persistent canvas so Premiere never clears the preview between frame URLs.
-  function drawTrackingPreviewFrame(rootNode, frameIndex) {
-    const frames = state.trackingPreview && state.trackingPreview.frames;
-    const canvas = rootNode.querySelector("#pmt-tracking-canvas");
-    const cachedImage = state.previewImageCache[frameIndex];
-    const sourceWidth = cachedImage && Number(cachedImage.naturalWidth || cachedImage.width || 0);
-    if (!frames || !frames.length || !canvas || !cachedImage || !cachedImage.complete || !sourceWidth) {
-      return false;
-    }
-    const context = canvas.getContext && canvas.getContext("2d");
-    if (!context) {
-      return false;
-    }
-    context.clearRect(0, 0, canvas.width, canvas.height);
-    context.drawImage(cachedImage, 0, 0, canvas.width, canvas.height);
-    return true;
-  }
-
-  // Switch only the canvas pixels and overlay so the UI does not rebuild its complete DOM on every frame.
+  // Show a ready buffer only after its image loads, so Premiere retains the previous frame instead of flashing black.
   function showTrackingPreviewFrame(rootNode, frameIndex) {
     const frames = state.trackingPreview && state.trackingPreview.frames;
     if (!frames || !frames.length) {
-      return;
+      return Promise.resolve(false);
     }
-    state.previewFrameIndex = Math.min(frames.length - 1, Math.max(0, Math.round(Number(frameIndex) || 0)));
-    const frame = frames[state.previewFrameIndex];
-    drawTrackingPreviewFrame(rootNode, state.previewFrameIndex);
-    const point = rootNode.querySelector("#pmt-preview-point");
-    if (point) {
-      point.style.left = (Number(frame.x) * 100).toFixed(3) + "%";
-      point.style.top = (Number(frame.y) * 100).toFixed(3) + "%";
+    const requestedIndex = Math.min(frames.length - 1, Math.max(0, Math.round(Number(frameIndex) || 0)));
+    const frame = frames[requestedIndex];
+    const activeId = "pmt-tracking-image-" + state.previewActiveBuffer;
+    const nextBuffer = state.previewActiveBuffer === "a" ? "b" : "a";
+    const activeImage = rootNode.querySelector("#" + activeId);
+    const nextImage = rootNode.querySelector("#pmt-tracking-image-" + nextBuffer);
+    if (!activeImage || !nextImage) {
+      return Promise.resolve(false);
     }
-    const status = rootNode.querySelector("#pmt-preview-status");
-    if (status) {
-      status.textContent = t("trackingPreview", { current: state.previewFrameIndex + 1, total: frames.length });
-    }
+    const request = state.previewPaintRequest + 1;
+    state.previewPaintRequest = request;
+    return new Promise((resolve) => {
+      const swapWhenReady = () => {
+        if (request !== state.previewPaintRequest) {
+          resolve(false);
+          return;
+        }
+        nextImage.classList.add("pmt-preview-buffer-active");
+        activeImage.classList.remove("pmt-preview-buffer-active");
+        state.previewActiveBuffer = nextBuffer;
+        state.previewFrameIndex = requestedIndex;
+        const point = rootNode.querySelector("#pmt-preview-point");
+        if (point) {
+          point.style.left = (Number(frame.x) * 100).toFixed(3) + "%";
+          point.style.top = (Number(frame.y) * 100).toFixed(3) + "%";
+        }
+        const status = rootNode.querySelector("#pmt-preview-status");
+        if (status) {
+          status.textContent = t("trackingPreview", { current: state.previewFrameIndex + 1, total: frames.length });
+        }
+        resolve(true);
+      };
+      nextImage.onload = swapWhenReady;
+      nextImage.onerror = () => resolve(false);
+      nextImage.src = frame.url;
+      if (nextImage.complete) {
+        setTimeout(swapWhenReady, 0);
+      }
+    });
   }
 
   // Update the existing UXP banner instead of replacing the whole panel during long image exports.
@@ -370,34 +383,16 @@
     }
   }
 
-  // Wait until every exported image is decoded before enabling canvas playback, preventing intermittent black frames.
-  async function warmTrackingPreviewFrames(frames) {
+  // Ask UXP to cache the review images in advance while double-buffered elements remain the actual renderer.
+  function warmTrackingPreviewFrames(frames) {
     if (typeof Image !== "function") {
-      return [];
+      return;
     }
-    const cache = (frames || []).map((frame) => {
+    state.previewImageCache = (frames || []).map((frame) => {
       const image = new Image();
+      image.src = frame.url;
       return image;
     });
-    await Promise.all(cache.map((image, index) => new Promise((resolve) => {
-      let settled = false;
-      const finish = () => {
-        if (!settled) {
-          settled = true;
-          resolve();
-        }
-      };
-      image.onload = finish;
-      image.onerror = finish;
-      image.src = frames[index].url;
-      if (image.complete) {
-        finish();
-      }
-      // Keep a malformed temporary URL from blocking the whole tracking result indefinitely.
-      setTimeout(finish, 2500);
-    })));
-    state.previewImageCache = cache;
-    return cache;
   }
 
   // Schedule direct image updates at the clip cadence; pause clears this exact timer before another frame is queued.
@@ -408,8 +403,11 @@
         previewPlaybackTimer = null;
         return;
       }
-      showTrackingPreviewFrame(rootNode, (state.previewFrameIndex + 1) % state.trackingPreview.frames.length);
-      scheduleTrackingPreviewFrame(rootNode);
+      showTrackingPreviewFrame(rootNode, (state.previewFrameIndex + 1) % state.trackingPreview.frames.length).then(() => {
+        if (state.previewPlaying) {
+          scheduleTrackingPreviewFrame(rootNode);
+        }
+      });
     }, Math.round(1000 / frameRate));
   }
 
@@ -529,12 +527,7 @@
       // Refresh only the banner so repeated UXP DOM replacement cannot duplicate the diagnostics card.
       updatePreviewBuildStatus(rootNode);
     }
-    await warmTrackingPreviewFrames(frames);
-    if (state.previewSkipRequested) {
-      state.previewImageCache = [];
-      addLog("Tracking preview skipped. The base In frame remains available.");
-      return false;
-    }
+    warmTrackingPreviewFrames(frames);
     state.trackingPreview = { frames, sourceFrameCount: state.tracking.length };
     state.previewFrameIndex = 0;
     state.previewSeconds = 0;
@@ -567,6 +560,10 @@
     if (!state.previewPlaying && previewPlaybackTimer) {
       clearTimeout(previewPlaybackTimer);
       previewPlaybackTimer = null;
+    }
+    if (!state.previewPlaying) {
+      // Invalidate a load callback that may still be waiting for the hidden image buffer.
+      state.previewPaintRequest += 1;
     }
     updatePlaybackButton(rootNode, state.previewPlaying);
     if (state.previewPlaying) {
@@ -714,6 +711,7 @@
     bindButton(rootNode, "pmt-skip-preview", () => skipTrackingPreview(rootNode));
     bindButton(rootNode, "pmt-preview-reset", () => {
       state.previewPlaying = false;
+      state.previewPaintRequest += 1;
       if (previewPlaybackTimer) {
         clearTimeout(previewPlaybackTimer);
         previewPlaybackTimer = null;
@@ -723,6 +721,7 @@
     });
     bindButton(rootNode, "pmt-preview-previous", () => {
       state.previewPlaying = false;
+      state.previewPaintRequest += 1;
       if (previewPlaybackTimer) {
         clearTimeout(previewPlaybackTimer);
         previewPlaybackTimer = null;
@@ -732,6 +731,7 @@
     });
     bindButton(rootNode, "pmt-preview-next", () => {
       state.previewPlaying = false;
+      state.previewPaintRequest += 1;
       if (previewPlaybackTimer) {
         clearTimeout(previewPlaybackTimer);
         previewPlaybackTimer = null;

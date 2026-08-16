@@ -5,7 +5,7 @@ Ce dossier contient le futur module C++ chargé par le plugin UXP Hybrid. Le cœ
 ## Dépendances de développement
 
 - SDK Adobe UXP Hybrid Plugin ;
-- Visual Studio 2022 avec les outils C++ sous Windows ;
+- Visual Studio 2019 ou plus récent avec les outils C++ sous Windows ;
 - CMake 3.20 ou plus récent ;
 - OpenCV et un backend FFmpeg compatible avec la distribution du produit, au jalon suivant.
 
@@ -18,3 +18,14 @@ cmake -S native -B native/build -DBUILD_TESTING=ON
 cmake --build native/build --config Release
 ctest --test-dir native/build -C Release --output-on-failure
 ```
+
+Avec le SDK téléchargé dans `docs/uxp-hybrid-plugin-sdk-main`, la commande Windows est :
+
+```powershell
+$pmtSdkPath = (Resolve-Path "docs/uxp-hybrid-plugin-sdk-main").Path.Replace("\", "/")
+cmake -S native -B native/build-hybrid "-DUXP_HYBRID_SDK_DIR=$pmtSdkPath" -DBUILD_TESTING=ON
+cmake --build native/build-hybrid --config Release
+ctest --test-dir native/build-hybrid -C Release --output-on-failure
+```
+
+Le binaire est généré dans `win/x64/premiere-motion-tracker.uxpaddon`, là où UXP le recherche. Les builds macOS utiliseront respectivement `mac/x64` et `mac/arm64` ; ils devront être produits et validés sur macOS avant la distribution.

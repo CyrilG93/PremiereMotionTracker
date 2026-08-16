@@ -8,7 +8,8 @@ async function collectJavaScriptFiles(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
   const files = [];
   for (const entry of entries) {
-    if ([".git", "node_modules", "dist", "build"].includes(entry.name)) {
+    // Ignore downloaded vendor SDK sources in addition to generated project folders.
+    if ([".git", "node_modules", "dist", "build", "uxp-hybrid-plugin-sdk-main"].includes(entry.name)) {
       continue;
     }
     const fullPath = path.join(directory, entry.name);
@@ -44,4 +45,3 @@ for (const filePath of javascriptFiles) {
 
 // Report a compact success line for local and CI runs.
 console.log(`Lint passed for ${javascriptFiles.length} JavaScript files.`);
-

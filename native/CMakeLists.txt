@@ -5,6 +5,7 @@ project(PremiereMotionTrackerAddon LANGUAGES CXX)
 add_library(PremiereMotionTrackerCore STATIC src/tracker_core.cpp)
 target_compile_features(PremiereMotionTrackerCore PUBLIC cxx_std_17)
 target_include_directories(PremiereMotionTrackerCore PUBLIC include)
+set_target_properties(PremiereMotionTrackerCore PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 include(CTest)
 if(BUILD_TESTING)
@@ -15,13 +16,37 @@ endif()
 
 # Build the UXP addon only after the manually downloaded Adobe SDK is available.
 if(DEFINED UXP_HYBRID_SDK_DIR)
-  add_library(PremiereMotionTrackerAddon SHARED src/addon.cpp)
+  add_library(PremiereMotionTrackerAddon SHARED
+    src/addon.cpp
+    "${UXP_HYBRID_SDK_DIR}/src/utilities/UxpAddon.cpp"
+  )
   target_compile_features(PremiereMotionTrackerAddon PRIVATE cxx_std_17)
   target_include_directories(PremiereMotionTrackerAddon PRIVATE "${UXP_HYBRID_SDK_DIR}/src/api" "${UXP_HYBRID_SDK_DIR}/src/utilities")
   target_link_libraries(PremiereMotionTrackerAddon PRIVATE PremiereMotionTrackerCore)
 
   # UXP addons are platform libraries distributed with Adobe's .uxpaddon extension.
-  set_target_properties(PremiereMotionTrackerAddon PROPERTIES PREFIX "" SUFFIX ".uxpaddon")
+  set_target_properties(PremiereMotionTrackerAddon PROPERTIES
+    OUTPUT_NAME "premiere-motion-tracker"
+    PREFIX ""
+    SUFFIX ".uxpaddon"
+  )
+
+  # Put each native binary where UXP resolves it for the current platform.
+  if(WIN32)
+    set(PMT_ADDON_OUTPUT_DIR "${CMAKE_SOURCE_DIR}/../win/x64")
+    set_target_properties(PremiereMotionTrackerAddon PROPERTIES
+      RUNTIME_OUTPUT_DIRECTORY "${PMT_ADDON_OUTPUT_DIR}"
+      RUNTIME_OUTPUT_DIRECTORY_DEBUG "${PMT_ADDON_OUTPUT_DIR}"
+      RUNTIME_OUTPUT_DIRECTORY_RELEASE "${PMT_ADDON_OUTPUT_DIR}"
+      RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO "${PMT_ADDON_OUTPUT_DIR}"
+    )
+  elseif(APPLE AND CMAKE_OSX_ARCHITECTURES STREQUAL "arm64")
+    set(PMT_ADDON_OUTPUT_DIR "${CMAKE_SOURCE_DIR}/../mac/arm64")
+    set_target_properties(PremiereMotionTrackerAddon PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${PMT_ADDON_OUTPUT_DIR}")
+  elseif(APPLE)
+    set(PMT_ADDON_OUTPUT_DIR "${CMAKE_SOURCE_DIR}/../mac/x64")
+    set_target_properties(PremiereMotionTrackerAddon PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${PMT_ADDON_OUTPUT_DIR}")
+  endif()
 else()
   message(STATUS "UXP_HYBRID_SDK_DIR is not set: building the portable tracking core only.")
 endif()

@@ -10,7 +10,7 @@ Premiere Pro 26.2 ou plus récent est la cible minimale. Windows x64 est validé
 
 - Créer le panneau UXP et diagnostiquer le clip source sélectionné.
 - Lire le média source, les temps du clip et la plage In/Out de la séquence.
-- Charger un module C++ minimal construit avec le SDK UXP Hybrid Adobe.
+- Charger un module C++ minimal construit avec le SDK UXP Hybrid Adobe. (Windows prêt à valider dans Premiere)
 - Décoder des images du média avec OpenCV.
 - Ajouter Transform aux clips sélectionnés après le tracking et écrire deux keyframes Position.
 
@@ -62,9 +62,10 @@ Critère de validation : deux positions détectées dans le média déplacent r�
 
 - Dépôt initialisé.
 - Panneau UXP, capture de la source et lecture In/Out validés dans Premiere.
-- Export de l’image de séquence au point In et placement interactif du point de tracking prêts à être validés dans Premiere.
+- Export de l’image de séquence au point In et placement interactif du point de tracking validés dans Premiere.
 - Cœur C++ de corrélation entre deux images couvert par des tests natifs Windows et macOS, en attente de connexion au décodage.
 - Ajout de Transform et de deux keyframes Position validé dans Premiere sur un clip de destination sélectionné après la préparation du tracking.
 - Modèle de session et calcul des offsets couverts par des tests automatisés.
-- Bootstrap C++ préparé.
-- Blocage externe actuel : le SDK Adobe UXP Hybrid et OpenCV ne sont pas présents sur la machine Windows de développement. Visual Studio Build Tools 2019 permet néanmoins de tester localement le cœur C++ portable.
+- SDK Adobe UXP Hybrid disponible localement ; manifeste v6 et bootstrap C++ relié au panneau avec un autotest natif.
+- Visual Studio Build Tools 2019 et son CMake intégré permettent le build Windows x64. Les binaires macOS resteront construits sur macOS pour Intel et Apple Silicon.
+- Blocage externe restant : OpenCV et le backend de décodage vidéo ne sont pas encore intégrés.

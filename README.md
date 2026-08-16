@@ -6,7 +6,7 @@ La première version visera un flux simple : sélectionner le clip à analyser, 
 
 ## État du projet
 
-Le projet est actuellement un prototype technique. Le panneau sait déjà capturer le clip source depuis la timeline, lire la plage In/Out, afficher l’image de séquence au point In, placer un point de tracking et lancer un test d’écriture de keyframes Transform sur les clips sélectionnés au moment de l’application. Le cœur C++ du suivi entre deux images est préparé et testé sous Windows et macOS ; sa connexion au décodage vidéo et au panneau constitue le prochain jalon.
+Le projet est actuellement un prototype technique. Le panneau sait déjà capturer le clip source depuis la timeline, lire la plage In/Out, afficher l’image de séquence au point In, placer un point de tracking et lancer un test d’écriture de keyframes Transform sur les clips sélectionnés au moment de l’application. Le module Hybrid Windows charge désormais le cœur C++ et exécute un autotest au démarrage. La connexion au décodage vidéo et à OpenCV constitue le prochain jalon ; les binaires Windows et macOS seront inclus dans le produit final.
 
 ## Tester le prototype
 
@@ -16,7 +16,7 @@ Prérequis :
 - UXP Developer Tool 2.2 ou plus récent ;
 - mode développeur activé dans les préférences Plugins de Premiere.
 
-Dans UXP Developer Tool, ajoutez le dossier du projet, chargez le plugin, puis ouvrez `Fenêtre > UXP Plugins > Motion Tracker` dans Premiere.
+Dans UXP Developer Tool, ajoutez le dossier du projet, chargez le plugin, puis ouvrez `Fenêtre > UXP Plugins > Motion Tracker` dans Premiere. Après une modification du manifeste ou de l’addon natif, utilisez `Unload`, puis `Load` : `Reload` ne recharge pas ces éléments.
 
 Pour tester la capture :
 
@@ -38,7 +38,7 @@ Les vérifications locales ne nécessitent aucune dépendance npm :
 npm run verify
 ```
 
-La construction du futur moteur natif demandera le SDK Adobe UXP Hybrid, Visual Studio avec les outils C++, CMake, OpenCV et un backend de décodage vidéo. Ces dépendances seront intégrées au produit final : l’utilisateur n’aura pas à installer Python ou OpenCV séparément.
+La construction du moteur natif demande le SDK Adobe UXP Hybrid, Visual Studio avec les outils C++, CMake et, au prochain jalon, OpenCV avec un backend de décodage vidéo. Ces dépendances seront intégrées au produit final : l’utilisateur n’aura pas à installer Python ou OpenCV séparément.
 
 Le plan complet est disponible dans [docs/DEVELOPMENT_PLAN.md](docs/DEVELOPMENT_PLAN.md).
 

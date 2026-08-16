@@ -2,6 +2,7 @@ node_modules/
 dist/
 build/
 native/build*/
+docs/uxp-hybrid-plugin-sdk-main/
 *.ccx
 *.uxpaddon
 *.dll

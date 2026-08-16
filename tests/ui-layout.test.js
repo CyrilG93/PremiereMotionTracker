@@ -10,6 +10,7 @@ const projectRoot = path.resolve(__dirname, "..");
 const styles = fs.readFileSync(path.join(projectRoot, "styles.css"), "utf8");
 const uiSource = fs.readFileSync(path.join(projectRoot, "src", "ui.js"), "utf8");
 const premiereSource = fs.readFileSync(path.join(projectRoot, "src", "premiereBridge.js"), "utf8");
+const nativeSource = fs.readFileSync(path.join(projectRoot, "src", "nativeBridge.js"), "utf8");
 const manifest = JSON.parse(fs.readFileSync(path.join(projectRoot, "manifest.json"), "utf8"));
 
 test("interactive rows use flex instead of hidden UXP grid layouts", () => {
@@ -55,4 +56,13 @@ test("Transform Position falls back to a direct value read for proxy variants", 
 test("destination clips are selected only when applying the finished tracking", () => {
   assert.doesNotMatch(uiSource, /pmt-capture-target/);
   assert.match(uiSource, /Tester Transform sur la sélection/);
+});
+
+test("manifest v6 loads the platform Hybrid addon and exposes its startup diagnostic", () => {
+  assert.equal(manifest.manifestVersion, 6);
+  assert.equal(manifest.requiredPermissions.enableAddon, true);
+  assert.equal(manifest.addon.name, "premiere-motion-tracker.uxpaddon");
+  assert.match(nativeSource, /require\("premiere-motion-tracker\.uxpaddon"\)/);
+  assert.match(nativeSource, /addon\.runSelfTest\(\)/);
+  assert.match(uiSource, /Moteur natif chargé/);
 });

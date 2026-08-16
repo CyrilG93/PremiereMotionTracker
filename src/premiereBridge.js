@@ -113,6 +113,40 @@
     };
   }
 
+  // Extract a filename from either a native Windows path or a UXP directory entry name.
+  function getPathName(value) {
+    const parts = String(value || "").split(/[\\/]/);
+    return parts[parts.length - 1];
+  }
+
+  // Wait for Premiere's asynchronous disk flush and tolerate its duplicated PNG extension.
+  async function resolveExportedPreview(temporaryFolder, fileStem) {
+    const nativeFileSystem = require("fs");
+    let detectedNames = [];
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const entries = await temporaryFolder.getEntries();
+      const entryMatch = entries.find((entry) => entry.isFile && entry.name.toLowerCase().startsWith(fileStem.toLowerCase()) && entry.name.toLowerCase().endsWith(".png"));
+      if (entryMatch) {
+        return { url: entryMatch.url, name: entryMatch.name };
+      }
+      try {
+        // The path-based API sees newly flushed files earlier than Folder.getEntries on some hosts.
+        const nativeNames = await nativeFileSystem.readdir(temporaryFolder.nativePath);
+        detectedNames = nativeNames.map(getPathName);
+        const nativeMatch = detectedNames.find((name) => name.toLowerCase().startsWith(fileStem.toLowerCase()) && name.toLowerCase().endsWith(".png"));
+        if (nativeMatch) {
+          const folderUrl = String(temporaryFolder.url || "plugin-temp:/").replace(/\/?$/, "/");
+          return { url: folderUrl + nativeMatch, name: nativeMatch };
+        }
+      } catch (error) {
+        // Folder.getEntries remains the fallback when path-based sandbox access is unavailable.
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    const detail = detectedNames.length ? " Fichiers détectés : " + detectedNames.slice(-8).join(", ") + "." : " Aucun fichier détecté.";
+    throw new Error("L’image a été exportée mais reste introuvable après attente." + detail);
+  }
+
   // Build an explicit PointF because UXP constructors can ignore positional arguments.
   function createPoint(app, x, y) {
     try {
@@ -258,7 +292,8 @@
     const frameTime = await handles.source.sequence.getInPoint();
     const frameSize = await handles.source.sequence.getFrameSize();
     const dimensions = getPreviewDimensions(frameSize);
-    const fileName = "pmt-preview-" + Date.now() + ".png";
+    const fileStem = "pmt-preview-" + Date.now();
+    const fileName = fileStem + ".png";
     const exported = await app.Exporter.exportSequenceFrame(
       handles.source.sequence,
       frameTime,
@@ -270,14 +305,10 @@
     if (!exported) {
       throw new Error("Premiere a refusé l’export de l’image au point In.");
     }
-    const entries = await temporaryFolder.getEntries();
-    // Some Premiere builds append the requested format a second time.
-    const imageEntry = entries.find((entry) => entry.isFile && (entry.name === fileName || entry.name === fileName + ".png"));
-    if (!imageEntry) {
-      throw new Error("L’image a été exportée mais reste introuvable dans le dossier temporaire UXP.");
-    }
+    const imageEntry = await resolveExportedPreview(temporaryFolder, fileStem);
     return {
       url: imageEntry.url,
+      fileName: imageEntry.name,
       width: dimensions.width,
       height: dimensions.height,
       time: describeTime(frameTime)

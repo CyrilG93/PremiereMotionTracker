@@ -44,6 +44,8 @@ test("the In point frame is exported and accepts a normalized tracking point", (
   assert.match(uiSource, /pmt-preview-image/);
   assert.match(uiSource, /PMT_SESSION\.normalizePoint/);
   assert.match(premiereSource, /Exporter\.exportSequenceFrame\(/);
+  assert.match(premiereSource, /nativeFileSystem\.readdir\(temporaryFolder\.nativePath\)/);
+  assert.match(premiereSource, /setTimeout\(resolve, 100\)/);
 });
 
 test("Transform Position falls back to a direct value read for proxy variants", () => {

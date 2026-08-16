@@ -145,7 +145,7 @@
       try {
         state.preview = await root.PMT_PREMIERE.exportPreviewFrame();
         state.referencePoint = { x: 0.5, y: 0.5 };
-        addLog("Image du point In chargée : " + state.preview.width + " × " + state.preview.height + ".");
+        addLog("Image du point In chargée : " + state.preview.fileName + " · " + state.preview.width + " × " + state.preview.height + ".");
       } catch (previewError) {
         state.preview = null;
         state.referencePoint = null;

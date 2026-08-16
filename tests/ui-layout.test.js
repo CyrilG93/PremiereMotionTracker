@@ -56,14 +56,11 @@ test("the In point frame is exported and accepts a normalized tracking point", (
 test("analysed tracking caches sequence images with stable playback controls before application", () => {
   assert.match(uiSource, /buildTrackingPreview/);
   assert.match(uiSource, /selectPreviewSamples\(state\.tracking, 180\)/);
-  assert.match(uiSource, /pmt-tracking-image-a/);
-  assert.match(uiSource, /pmt-tracking-image-b/);
+  assert.match(uiSource, /pmt-tracking-image/);
   assert.match(uiSource, /showTrackingPreviewFrame/);
-  assert.match(uiSource, /pmt-preview-buffer-active/);
-  assert.match(uiSource, /nextImage\.onload = swapWhenReady/);
-  assert.match(uiSource, /warmTrackingPreviewFrames/);
-  assert.match(uiSource, /showTrackingPreviewFrame\([^\n]+\)\.then/);
-  assert.match(uiSource, /clearTimeout\(previewPlaybackTimer\)/);
+  assert.match(uiSource, /image\.src = frame\.url/);
+  assert.doesNotMatch(uiSource, /pmt-play-preview/);
+  assert.doesNotMatch(uiSource, /previewPlaybackTimer/);
   assert.match(uiSource, /pmt-skip-preview/);
   assert.match(uiSource, /skipTrackingPreview/);
   assert.match(uiSource, /updatePreviewBuildStatus/);
@@ -95,7 +92,7 @@ test("manifest v6 loads the platform Hybrid addon and exposes its startup diagno
   assert.equal(manifest.requiredPermissions.enableAddon, true);
   assert.equal(manifest.requiredPermissions.localFileSystem, "plugin");
   assert.equal(manifest.addon.name, "premiere-motion-tracker-" + manifest.version + ".uxpaddon");
-  assert.match(nativeSource, /await require\("premiere-motion-tracker-0\.2\.10\.uxpaddon"\)/);
+  assert.match(nativeSource, /await require\("premiere-motion-tracker-0\.2\.11\.uxpaddon"\)/);
   assert.match(nativeSource, /loadedAddon\.runSelfTest\(\)/);
   assert.match(nativeSource, /addon\.inspectMedia/);
   assert.match(nativeSource, /addon\.trackMedia/);

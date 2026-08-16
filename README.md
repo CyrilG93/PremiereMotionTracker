@@ -24,7 +24,7 @@ Pour tester la capture :
 
 1. Placez les In/Out de la séquence, sélectionnez le clip vidéo dans la timeline puis cliquez sur `Capturer et préparer`.
 2. Cliquez dans l’image pour placer le point de tracking, puis sur `Analyze` pour calculer la trajectoire sur la plage visible du clip. Les images de la séquence sont ensuite préparées automatiquement ; cliquez sur `Skip preview` pendant cette étape si vous voulez conserver uniquement l’image In et appliquer directement la trajectoire.
-3. Une fois l’aperçu préparé, la lecture conserve toujours l’image précédente jusqu’à ce que la suivante soit prête. Cliquez sur `Play` / `Pause`, utilisez `Start`, `− frame` et `+ frame` pour vérifier le point superposé avant de modifier le projet.
+3. Une fois l’aperçu préparé, utilisez `Start`, `− frame` et `+ frame` pour vérifier le point superposé image par image avant de modifier le projet.
 4. Consultez le nombre d’images incertaines signalé dans le diagnostic.
 5. Sélectionnez ensuite un ou plusieurs clips de destination dans la timeline.
 6. Cliquez sur `Appliquer la trajectoire` pour ajouter un effet Transform et une clé Position par image valide à chaque clip sélectionné.

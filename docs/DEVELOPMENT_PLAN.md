@@ -34,7 +34,7 @@ Critère de validation : la trajectoire détectée dans le média déplace réel
 ## Phase 4 — Application dans Premiere
 
 - Créer ou réutiliser l’effet Transform par son match name.
-- Convertir les positions normalisées en coordonnées de séquence.
+- Convertir les positions normalisées en coordonnées de séquence et compenser les dimensions et l’échelle Motion de chaque cible.
 - Conserver l’offset initial de chaque clip cible sélectionné au moment de l’application.
 - Écrire ou remplacer uniquement les keyframes appartenant à la session.
 - Regrouper l’opération dans une action Annuler unique.

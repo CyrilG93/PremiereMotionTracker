@@ -1,6 +1,7 @@
 #include "media_inspector.h"
 
 #include <opencv2/videoio.hpp>
+#include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/video/tracking.hpp>
 
@@ -37,17 +38,27 @@ MediaInspection inspectMedia(const std::string& mediaPath) {
 
     // Let OpenCV choose the platform decoder; Windows resolves to Media Foundation in this build.
     cv::VideoCapture capture(mediaPath, cv::CAP_ANY);
-    if (!capture.isOpened()) {
-        throw std::runtime_error("Impossible d’ouvrir le média avec OpenCV : " + mediaPath);
-    }
-
     MediaInspection result;
     result.path = mediaPath;
-    result.backend = capture.getBackendName();
-    result.width = static_cast<int>(std::lround(capture.get(cv::CAP_PROP_FRAME_WIDTH)));
-    result.height = static_cast<int>(std::lround(capture.get(cv::CAP_PROP_FRAME_HEIGHT)));
-    result.frameCount = static_cast<std::int64_t>(std::llround(capture.get(cv::CAP_PROP_FRAME_COUNT)));
-    result.framesPerSecond = capture.get(cv::CAP_PROP_FPS);
+    if (capture.isOpened()) {
+        result.backend = capture.getBackendName();
+        result.width = static_cast<int>(std::lround(capture.get(cv::CAP_PROP_FRAME_WIDTH)));
+        result.height = static_cast<int>(std::lround(capture.get(cv::CAP_PROP_FRAME_HEIGHT)));
+        result.frameCount = static_cast<std::int64_t>(std::llround(capture.get(cv::CAP_PROP_FRAME_COUNT)));
+        result.framesPerSecond = capture.get(cv::CAP_PROP_FPS);
+    }
+    if (result.width < 1 || result.height < 1) {
+        // Still-image targets have no reliable video stream, so inspect their native pixel dimensions directly.
+        const cv::Mat image = cv::imread(mediaPath, cv::IMREAD_UNCHANGED);
+        if (image.empty()) {
+            throw std::runtime_error("Impossible d’ouvrir le média avec OpenCV : " + mediaPath);
+        }
+        result.backend = "OpenCV image";
+        result.width = image.cols;
+        result.height = image.rows;
+        result.frameCount = 1;
+        result.framesPerSecond = 0.0;
+    }
 
     if (result.width < 1 || result.height < 1) {
         throw std::runtime_error("Le média ne fournit pas de dimensions vidéo valides.");

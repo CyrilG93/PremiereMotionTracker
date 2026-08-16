@@ -61,13 +61,16 @@ test("destination clips are selected only when applying the finished tracking", 
   assert.match(premiereSource, /applyTracking\(keyframes\)/);
   assert.match(premiereSource, /TickTime\.createWithSeconds/);
   assert.match(premiereSource, /keyframes\.map\(\(sample\)/);
+  assert.match(premiereSource, /getTargetMediaFrame/);
+  assert.match(premiereSource, /getTargetMotionScale/);
+  assert.match(premiereSource, /computeTargetPositionScale/);
 });
 
 test("manifest v6 loads the platform Hybrid addon and exposes its startup diagnostic", () => {
   assert.equal(manifest.manifestVersion, 6);
   assert.equal(manifest.requiredPermissions.enableAddon, true);
   assert.equal(manifest.addon.name, "premiere-motion-tracker-" + manifest.version + ".uxpaddon");
-  assert.match(nativeSource, /await require\("premiere-motion-tracker-0\.2\.0\.uxpaddon"\)/);
+  assert.match(nativeSource, /await require\("premiere-motion-tracker-0\.2\.1\.uxpaddon"\)/);
   assert.match(nativeSource, /loadedAddon\.runSelfTest\(\)/);
   assert.match(nativeSource, /addon\.inspectMedia/);
   assert.match(nativeSource, /addon\.trackMedia/);

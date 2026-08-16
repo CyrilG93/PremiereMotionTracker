@@ -1,6 +1,7 @@
 #include "media_inspector.h"
 
 #include <opencv2/core.hpp>
+#include <opencv2/imgcodecs.hpp>
 #include <opencv2/videoio.hpp>
 
 #include <cmath>
@@ -43,6 +44,7 @@ int main() {
 
     // Create a small deterministic clip so the decoder is tested without depending on user media.
     const std::filesystem::path samplePath = std::filesystem::temp_directory_path() / "pmt-media-inspector-sample.avi";
+    const std::filesystem::path imagePath = std::filesystem::temp_directory_path() / "pmt-media-inspector-target.png";
     cv::VideoWriter writer(samplePath.string(), cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), 12.0, cv::Size(96, 64));
     passed &= expect(writer.isOpened(), "OpenCV should create the temporary motion-tracking sample");
     if (writer.isOpened()) {
@@ -78,10 +80,21 @@ int main() {
             passed &= expect(false, std::string("decoder should open the generated sample: ") + error.what());
         }
     }
+    // Create a small image target to validate the dimension path used for graphics and logos.
+    cv::Mat targetImage(192, 192, CV_8UC4, cv::Scalar(20, 180, 80, 255));
+    passed &= expect(cv::imwrite(imagePath.string(), targetImage), "OpenCV should create the temporary target image");
+    try {
+        const pmt::MediaInspection targetInspection = pmt::inspectMedia(imagePath.string());
+        passed &= expect(targetInspection.width == 192 && targetInspection.height == 192, "inspector should recover still-image target dimensions");
+    } catch (const std::exception& error) {
+        passed &= expect(false, std::string("inspector should open the generated target image: ") + error.what());
+    }
     // Remove the temporary media even when a preceding assertion failed.
     std::error_code removeError;
     std::filesystem::remove(samplePath, removeError);
     passed &= expect(!removeError, "temporary sample media should be removable");
+    std::filesystem::remove(imagePath, removeError);
+    passed &= expect(!removeError, "temporary target image should be removable");
 
     if (!passed) {
         return 1;

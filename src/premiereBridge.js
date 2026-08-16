@@ -102,6 +102,33 @@
     return null;
   }
 
+  // Read a scalar or two-axis percentage returned by Premiere's Motion Scale parameter.
+  function readScaleValue(value) {
+    let current = value;
+    let depth = 0;
+    while (current && typeof current === "object" && depth < 4) {
+      let nestedValue;
+      try {
+        nestedValue = current.value;
+      } catch (error) {
+        break;
+      }
+      if (nestedValue === undefined || nestedValue === current) {
+        break;
+      }
+      current = nestedValue;
+      depth += 1;
+    }
+    if (Array.isArray(current) && current.length >= 2) {
+      return { x: Number(current[0]), y: Number(current[1]) };
+    }
+    if (current && Number.isFinite(Number(current.x)) && Number.isFinite(Number(current.y))) {
+      return { x: Number(current.x), y: Number(current.y) };
+    }
+    const scalar = Number(current);
+    return Number.isFinite(scalar) ? { x: scalar, y: scalar } : null;
+  }
+
   // Create a clip-relative TickTime for every native frame instead of retaining only both endpoints.
   function createTimeAtProgress(app, inPoint, outPoint, progress) {
     const safeProgress = Math.min(1, Math.max(0, Number(progress) || 0));
@@ -120,9 +147,12 @@
   }
 
   // Convert normalized tracker motion into the Position unit used by the inserted Transform effect.
-  function getPositionScale(context, normalized) {
+  function getPositionScale(context, normalized, targetFrame, motionScale) {
     if (normalized) {
-      return { x: 1, y: 1 };
+      if (!root.PMT_TRAJECTORY || typeof root.PMT_TRAJECTORY.computeTargetPositionScale !== "function") {
+        throw new Error("Le convertisseur de coordonnées de trajectoire est indisponible.");
+      }
+      return root.PMT_TRAJECTORY.computeTargetPositionScale(context.frameSize, targetFrame, motionScale);
     }
     const width = Number(context.frameSize && context.frameSize.width);
     const height = Number(context.frameSize && context.frameSize.height);
@@ -130,6 +160,65 @@
       throw new Error("Premiere n’a pas renvoyé la taille de séquence nécessaire aux clés Position.");
     }
     return { x: width, y: height };
+  }
+
+  // Read the source dimensions of one selected destination through the native OpenCV inspector.
+  async function getTargetMediaFrame(item) {
+    const projectItem = await item.getProjectItem();
+    const app = getPremiere();
+    const clipProjectItem = app && app.ClipProjectItem && typeof app.ClipProjectItem.cast === "function"
+      ? app.ClipProjectItem.cast(projectItem)
+      : projectItem;
+    const mediaPath = await readMethod(clipProjectItem, "getMediaFilePath", "");
+    if (!mediaPath) {
+      throw new Error("Le média cible ne fournit pas de chemin : ses dimensions ne peuvent pas être compensées.");
+    }
+    if (!root.PMT_NATIVE || typeof root.PMT_NATIVE.inspectMedia !== "function") {
+      throw new Error("Le moteur OpenCV est requis pour mesurer le média cible.");
+    }
+    const inspection = await root.PMT_NATIVE.inspectMedia(mediaPath);
+    const width = Number(inspection && inspection.width);
+    const height = Number(inspection && inspection.height);
+    if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) {
+      throw new Error("Le média cible ne fournit pas de dimensions exploitables.");
+    }
+    return { width, height };
+  }
+
+  // Read the intrinsic Motion Scale so a manually resized target keeps the correct sequence amplitude.
+  async function getTargetMotionScale(item, time) {
+    const chain = await item.getComponentChain();
+    const componentCount = chain && typeof chain.getComponentCount === "function" ? chain.getComponentCount() : 0;
+    for (let componentIndex = 0; componentIndex < componentCount; componentIndex += 1) {
+      const component = chain.getComponentAtIndex(componentIndex);
+      const matchName = component && typeof component.getMatchName === "function" ? await component.getMatchName() : "";
+      const displayName = component && typeof component.getDisplayName === "function" ? await component.getDisplayName() : "";
+      const componentLabel = normalizeLabel(matchName) + " " + normalizeLabel(displayName);
+      if (!componentLabel.includes("motion") && !componentLabel.includes("mouvement")) {
+        continue;
+      }
+      const paramCount = component && typeof component.getParamCount === "function" ? component.getParamCount() : 0;
+      for (let paramIndex = 0; paramIndex < paramCount; paramIndex += 1) {
+        const param = component.getParam(paramIndex);
+        const paramName = normalizeLabel(param && param.displayName);
+        if (!paramName.includes("scale") && !paramName.includes("chelle")) {
+          continue;
+        }
+        let value = null;
+        if (param && typeof param.getValueAtTime === "function") {
+          value = await param.getValueAtTime(time);
+        }
+        if (value === null && param && typeof param.getStartValue === "function") {
+          value = await param.getStartValue();
+        }
+        const scale = readScaleValue(value);
+        if (scale && scale.x > 0 && scale.y > 0) {
+          return scale;
+        }
+      }
+    }
+    // Premiere's intrinsic Motion defaults to 100 percent when no readable Scale parameter is exposed.
+    return { x: 100, y: 100 };
   }
 
   // Convert Premiere's RectF frame size into safe export dimensions.
@@ -423,7 +512,9 @@
       throw new Error("Premiere n’a pas renvoyé une valeur Position compatible.");
     }
     const looksNormalized = Math.abs(initialPoint.x) <= 1.5 && Math.abs(initialPoint.y) <= 1.5;
-    const positionScale = getPositionScale(context, looksNormalized);
+    const targetFrame = looksNormalized ? await getTargetMediaFrame(item) : null;
+    const motionScale = looksNormalized ? await getTargetMotionScale(item, inPoint) : null;
+    const positionScale = getPositionScale(context, looksNormalized, targetFrame, motionScale);
     executeActions(context.project, [() => positionParam.createSetTimeVaryingAction(true)], "Motion Tracker : activer Position");
     await waitForHostPaint();
     // Create the keyframe and its action inside Premiere's locked transaction to avoid stale proxies.
@@ -448,6 +539,7 @@
         y: initialPoint.y + Number(finalSample.dy) * positionScale.y
       },
       normalized: looksNormalized,
+      positionScale,
       keyframeCount: keyframes.length
     };
   }

@@ -71,3 +71,12 @@ test("buildPositionKeyframes retains one Position keyframe for every valid frame
   assert.ok(Math.abs(keyframes[1].dx - 0.05) < 0.000001);
   assert.ok(Math.abs(keyframes[1].dy + 0.05) < 0.000001);
 });
+
+test("computeTargetPositionScale compensates a smaller target media and its Motion scale", () => {
+  const scale = trajectoryApi.computeTargetPositionScale(
+    { width: 1920, height: 1080 },
+    { width: 192, height: 192 },
+    { x: 100, y: 50 }
+  );
+  assert.deepEqual(scale, { x: 10, y: 11.25 });
+});

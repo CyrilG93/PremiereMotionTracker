@@ -70,9 +70,34 @@
     });
   }
 
+  // Convert sequence-normalized motion into a target clip's normalized Transform coordinate space.
+  function computeTargetPositionScale(sequenceFrame, targetFrame, motionScale) {
+    const sequenceWidth = Number(sequenceFrame && sequenceFrame.width);
+    const sequenceHeight = Number(sequenceFrame && sequenceFrame.height);
+    const targetWidth = Number(targetFrame && targetFrame.width);
+    const targetHeight = Number(targetFrame && targetFrame.height);
+    const scaleX = Number(motionScale && motionScale.x);
+    const scaleY = Number(motionScale && motionScale.y);
+    if (!Number.isFinite(sequenceWidth) || sequenceWidth <= 0 || !Number.isFinite(sequenceHeight) || sequenceHeight <= 0) {
+      throw new Error("La taille de la séquence est invalide.");
+    }
+    if (!Number.isFinite(targetWidth) || targetWidth <= 0 || !Number.isFinite(targetHeight) || targetHeight <= 0) {
+      throw new Error("La taille du média cible est invalide.");
+    }
+    if (!Number.isFinite(scaleX) || scaleX <= 0 || !Number.isFinite(scaleY) || scaleY <= 0) {
+      throw new Error("L’échelle Motion du clip cible est invalide.");
+    }
+    // Divide by the rendered target size so a 192 px image covers the same sequence distance as a full frame.
+    return {
+      x: sequenceWidth / (targetWidth * scaleX / 100),
+      y: sequenceHeight / (targetHeight * scaleY / 100)
+    };
+  }
+
   return {
     computeRelativeOffsets,
     findUncertainSamples,
-    buildPositionKeyframes
+    buildPositionKeyframes,
+    computeTargetPositionScale
   };
 }));

@@ -6,7 +6,7 @@ La première version visera un flux simple : sélectionner le clip à analyser, 
 
 ## État du projet
 
-Le projet est actuellement un prototype technique. Le panneau sait déjà capturer le clip source depuis la timeline, lire la plage In/Out, afficher l’image de séquence au point In, placer un point de tracking et lancer un test d’écriture de keyframes Transform sur les clips sélectionnés au moment de l’application. Le moteur OpenCV sera ajouté dans les prochains jalons.
+Le projet est actuellement un prototype technique. Le panneau sait déjà capturer le clip source depuis la timeline, lire la plage In/Out, afficher l’image de séquence au point In, placer un point de tracking et lancer un test d’écriture de keyframes Transform sur les clips sélectionnés au moment de l’application. Le cœur C++ du suivi entre deux images est préparé et testé sous Windows et macOS ; sa connexion au décodage vidéo et au panneau constitue le prochain jalon.
 
 ## Tester le prototype
 

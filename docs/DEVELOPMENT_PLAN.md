@@ -63,7 +63,8 @@ Critère de validation : deux positions détectées dans le média déplacent r�
 - Dépôt initialisé.
 - Panneau UXP, capture de la source et lecture In/Out validés dans Premiere.
 - Export de l’image de séquence au point In et placement interactif du point de tracking prêts à être validés dans Premiere.
+- Cœur C++ de corrélation entre deux images couvert par des tests natifs Windows et macOS, en attente de connexion au décodage.
 - Ajout de Transform et de deux keyframes Position validé dans Premiere sur un clip de destination sélectionné après la préparation du tracking.
 - Modèle de session et calcul des offsets couverts par des tests automatisés.
 - Bootstrap C++ préparé.
-- Blocage externe actuel : le SDK Adobe UXP Hybrid, CMake et les outils C++ Visual Studio ne sont pas présents sur la machine Windows de développement.
+- Blocage externe actuel : le SDK Adobe UXP Hybrid et OpenCV ne sont pas présents sur la machine Windows de développement. Visual Studio Build Tools 2019 permet néanmoins de tester localement le cœur C++ portable.

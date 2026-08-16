@@ -157,22 +157,58 @@
     }
   }
 
-  // Copy the complete diagnostic through UXP's clipboard API with a compatibility fallback.
+  // Try both Premiere UXP clipboard generations because their availability varies by host runtime.
+  async function writeClipboardText(text) {
+    const clipboard = navigator.clipboard;
+    const errors = [];
+    if (!clipboard) {
+      throw new Error("API presse-papiers indisponible");
+    }
+    if (typeof clipboard.setContent === "function") {
+      try {
+        // Premiere's current UXP recipe documents setContent for manifest v5 plugins.
+        await clipboard.setContent({ "text/plain": text });
+        return;
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+    if (typeof clipboard.writeText === "function") {
+      try {
+        // Newer UXP runtimes expose the standards-compatible writeText method.
+        await clipboard.writeText(text);
+        return;
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+    const lastError = errors[errors.length - 1];
+    throw lastError || new Error("Aucune méthode de copie compatible");
+  }
+
+  // Select the diagnostic so Ctrl+C remains available when UXP has not reloaded manifest permissions.
+  function selectDiagnostics(rootNode) {
+    const logArea = rootNode.querySelector("#pmt-log");
+    if (logArea) {
+      logArea.focus();
+      logArea.select();
+    }
+  }
+
+  // Copy the complete diagnostic and leave a usable manual fallback on clipboard permission errors.
   async function copyDiagnostics(rootNode) {
     const text = state.log.join("\n");
     try {
-      if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
-        await navigator.clipboard.writeText(text);
-      } else if (navigator.clipboard && typeof navigator.clipboard.setContent === "function") {
-        await navigator.clipboard.setContent({ "text/plain": text });
-      } else {
-        throw new Error("API presse-papiers indisponible");
-      }
+      await writeClipboardText(text);
       addLog("Diagnostic copié dans le presse-papiers.");
     } catch (error) {
       addLog("Copie impossible : " + (error && error.message ? error.message : String(error)));
+      addLog("Diagnostic sélectionné : appuyez sur Ctrl+C. Si nécessaire, retirez puis ajoutez à nouveau le plugin dans UXP Developer Tool.");
     }
     render(rootNode);
+    if (state.log[state.log.length - 1].indexOf("Diagnostic sélectionné") === 0) {
+      selectDiagnostics(rootNode);
+    }
   }
 
   // Connect the freshly rendered buttons to their Premiere diagnostics.

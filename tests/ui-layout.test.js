@@ -25,7 +25,14 @@ test("panel cards use simple div containers in Premiere UXP", () => {
 test("diagnostics are selectable and can be copied through the declared clipboard permission", () => {
   assert.match(uiSource, /<textarea class="pmt-log"/);
   assert.match(uiSource, /id="pmt-copy-log"/);
+  assert.match(uiSource, /clipboard\.setContent\(\{ "text\/plain": text \}\)/);
+  assert.match(uiSource, /logArea\.select\(\)/);
   assert.equal(manifest.requiredPermissions.clipboard, "readAndWrite");
+});
+
+test("buttons disable the native UXP skin so their border uses one consistent radius", () => {
+  assert.match(styles, /button\s*\{[^}]*appearance:\s*none;/s);
+  assert.match(styles, /\.pmt-button\s*\{[^}]*border-radius:\s*7px;/s);
 });
 
 test("destination clips are selected only when applying the finished tracking", () => {

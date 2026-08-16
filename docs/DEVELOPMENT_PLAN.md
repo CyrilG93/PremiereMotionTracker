@@ -62,7 +62,7 @@ Critère de validation : deux positions détectées dans le média déplacent r�
 
 - Dépôt initialisé.
 - Panneau UXP, capture de la source et lecture In/Out validés dans Premiere.
-- Test d’ajout de Transform et de deux keyframes Position sur la sélection courante prêt à être validé dans Premiere.
+- Ajout de Transform et de deux keyframes Position validé dans Premiere sur un clip de destination sélectionné après la préparation du tracking.
 - Modèle de session et calcul des offsets couverts par des tests automatisés.
 - Bootstrap C++ préparé.
 - Blocage externe actuel : le SDK Adobe UXP Hybrid, CMake et les outils C++ Visual Studio ne sont pas présents sur la machine Windows de développement.

@@ -30,6 +30,10 @@ input {
   font: inherit;
 }
 
+button {
+  appearance: none;
+}
+
 .pmt-shell {
   display: flex;
   flex-direction: column;
@@ -138,7 +142,7 @@ input {
   min-height: 30px;
   padding: 6px 10px;
   border: 1px solid var(--pmt-border);
-  border-radius: 4px;
+  border-radius: 7px;
   color: var(--pmt-text);
   background: var(--pmt-panel-strong);
   cursor: pointer;

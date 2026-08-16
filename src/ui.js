@@ -239,7 +239,7 @@
     const imagePreview = state.trackingPreview;
     const playbackFrame = imagePreview && imagePreview.frames[state.previewFrameIndex];
     const previewContent = playbackFrame
-      ? '<img class="pmt-preview-image" id="pmt-tracking-image" src="' + escapeHtml(playbackFrame.url) + '" alt="' + escapeHtml(t("trackingPreviewAlt")) + '"><div class="pmt-tracking-point" id="pmt-preview-point" style="left:' + (Number(playbackFrame.x) * 100).toFixed(3) + '%;top:' + (Number(playbackFrame.y) * 100).toFixed(3) + '%"></div><div class="pmt-preview-status" id="pmt-preview-status">' + escapeHtml(t("trackingPreview", { current: state.previewFrameIndex + 1, total: imagePreview.frames.length })) + '</div>'
+      ? '<canvas class="pmt-preview-canvas" id="pmt-tracking-canvas" width="' + Math.max(1, Number(playbackFrame.width) || 640) + '" height="' + Math.max(1, Number(playbackFrame.height) || 360) + '" role="img" aria-label="' + escapeHtml(t("trackingPreviewAlt")) + '"></canvas><div class="pmt-tracking-point" id="pmt-preview-point" style="left:' + (Number(playbackFrame.x) * 100).toFixed(3) + '%;top:' + (Number(playbackFrame.y) * 100).toFixed(3) + '%"></div><div class="pmt-preview-status" id="pmt-preview-status">' + escapeHtml(t("trackingPreview", { current: state.previewFrameIndex + 1, total: imagePreview.frames.length })) + '</div>'
       : state.preview
       ? '<img class="pmt-preview-image" src="' + escapeHtml(state.preview.url) + '" alt="' + escapeHtml(t("inImageAlt")) + '">' + (state.referencePoint
         ? '<div class="pmt-tracking-point" style="left:' + (state.referencePoint.x * 100).toFixed(3) + '%;top:' + (state.referencePoint.y * 100).toFixed(3) + '%"></div>'
@@ -285,6 +285,10 @@
       '</div>'
     ].join("");
     bindEvents(rootNode);
+    if (playbackFrame) {
+      // Paint the initial cached frame into the stable canvas after its DOM node exists.
+      drawTrackingPreviewFrame(rootNode, state.previewFrameIndex);
+    }
     const logArea = rootNode.querySelector("#pmt-log");
     if (logArea) {
       // Keep the latest diagnostic visible while preserving manual text selection.
@@ -318,7 +322,25 @@
     }
   }
 
-  // Switch only the cached image and overlay so the UI does not rebuild its complete DOM on every frame.
+  // Paint a cached image into one persistent canvas so Premiere never clears the preview between frame URLs.
+  function drawTrackingPreviewFrame(rootNode, frameIndex) {
+    const frames = state.trackingPreview && state.trackingPreview.frames;
+    const canvas = rootNode.querySelector("#pmt-tracking-canvas");
+    const cachedImage = state.previewImageCache[frameIndex];
+    const sourceWidth = cachedImage && Number(cachedImage.naturalWidth || cachedImage.width || 0);
+    if (!frames || !frames.length || !canvas || !cachedImage || !cachedImage.complete || !sourceWidth) {
+      return false;
+    }
+    const context = canvas.getContext && canvas.getContext("2d");
+    if (!context) {
+      return false;
+    }
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(cachedImage, 0, 0, canvas.width, canvas.height);
+    return true;
+  }
+
+  // Switch only the canvas pixels and overlay so the UI does not rebuild its complete DOM on every frame.
   function showTrackingPreviewFrame(rootNode, frameIndex) {
     const frames = state.trackingPreview && state.trackingPreview.frames;
     if (!frames || !frames.length) {
@@ -326,10 +348,7 @@
     }
     state.previewFrameIndex = Math.min(frames.length - 1, Math.max(0, Math.round(Number(frameIndex) || 0)));
     const frame = frames[state.previewFrameIndex];
-    const image = rootNode.querySelector("#pmt-tracking-image");
-    if (image) {
-      image.src = frame.url;
-    }
+    drawTrackingPreviewFrame(rootNode, state.previewFrameIndex);
     const point = rootNode.querySelector("#pmt-preview-point");
     if (point) {
       point.style.left = (Number(frame.x) * 100).toFixed(3) + "%";
@@ -351,16 +370,34 @@
     }
   }
 
-  // Warm UXP's image cache while the user reviews diagnostics, without delaying availability of the controls.
-  function warmTrackingPreviewFrames(frames) {
+  // Wait until every exported image is decoded before enabling canvas playback, preventing intermittent black frames.
+  async function warmTrackingPreviewFrames(frames) {
     if (typeof Image !== "function") {
-      return;
+      return [];
     }
-    state.previewImageCache = (frames || []).map((frame) => {
+    const cache = (frames || []).map((frame) => {
       const image = new Image();
-      image.src = frame.url;
       return image;
     });
+    await Promise.all(cache.map((image, index) => new Promise((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (!settled) {
+          settled = true;
+          resolve();
+        }
+      };
+      image.onload = finish;
+      image.onerror = finish;
+      image.src = frames[index].url;
+      if (image.complete) {
+        finish();
+      }
+      // Keep a malformed temporary URL from blocking the whole tracking result indefinitely.
+      setTimeout(finish, 2500);
+    })));
+    state.previewImageCache = cache;
+    return cache;
   }
 
   // Schedule direct image updates at the clip cadence; pause clears this exact timer before another frame is queued.
@@ -481,6 +518,8 @@
       }
       frames.push({
         url: exported.url,
+        width: Number(exported.width),
+        height: Number(exported.height),
         x: Number(sample.x),
         y: Number(sample.y),
         valid: Boolean(sample.valid),
@@ -490,11 +529,16 @@
       // Refresh only the banner so repeated UXP DOM replacement cannot duplicate the diagnostics card.
       updatePreviewBuildStatus(rootNode);
     }
+    await warmTrackingPreviewFrames(frames);
+    if (state.previewSkipRequested) {
+      state.previewImageCache = [];
+      addLog("Tracking preview skipped. The base In frame remains available.");
+      return false;
+    }
     state.trackingPreview = { frames, sourceFrameCount: state.tracking.length };
     state.previewFrameIndex = 0;
     state.previewSeconds = 0;
     state.previewPlaying = false;
-    warmTrackingPreviewFrames(frames);
     addLog("Tracking preview ready: " + frames.length + " cached sequence images available for review.");
     return true;
   }

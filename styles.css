@@ -191,7 +191,8 @@ input {
   cursor: crosshair;
 }
 
-.pmt-preview-image {
+.pmt-preview-image,
+.pmt-preview-canvas {
   display: block;
   width: 100%;
   height: auto;

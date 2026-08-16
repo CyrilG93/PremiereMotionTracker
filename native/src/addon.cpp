@@ -69,6 +69,37 @@ void readTrackingArguments(
     Check(UxpAddonApis.uxp_addon_get_value_double(env, arguments[4], &endSeconds));
 }
 
+// Read the source range and destination path used to encode a plugin-local MP4 review.
+void readPreviewArguments(
+    addon_env env,
+    addon_callback_info info,
+    std::string& mediaPath,
+    double& startSeconds,
+    double& endSeconds,
+    std::string& outputPath
+) {
+    addon_value arguments[4] = { nullptr, nullptr, nullptr, nullptr };
+    std::size_t argumentCount = 4;
+    Check(UxpAddonApis.uxp_addon_get_cb_info(env, info, &argumentCount, arguments, nullptr, nullptr));
+    if (argumentCount != 4) {
+        throw std::invalid_argument("Le proxy vidéo requiert un média, une plage et une destination.");
+    }
+    const auto readString = [env](addon_value value) {
+        std::size_t byteCount = 0;
+        Check(UxpAddonApis.uxp_addon_get_value_string_utf8(env, value, nullptr, 0, &byteCount));
+        std::vector<char> buffer(byteCount + 1, '\0');
+        std::size_t copiedByteCount = 0;
+        if (byteCount > 0) {
+            Check(UxpAddonApis.uxp_addon_get_value_string_utf8(env, value, buffer.data(), buffer.size(), &copiedByteCount));
+        }
+        return std::string(buffer.data(), copiedByteCount);
+    };
+    mediaPath = readString(arguments[0]);
+    Check(UxpAddonApis.uxp_addon_get_value_double(env, arguments[1], &startSeconds));
+    Check(UxpAddonApis.uxp_addon_get_value_double(env, arguments[2], &endSeconds));
+    outputPath = readString(arguments[3]);
+}
+
 // Store a native number as one property of the object returned to JavaScript.
 void setNumberProperty(addon_env env, addon_value object, const char* name, double value) {
     addon_value number = nullptr;
@@ -181,6 +212,35 @@ addon_value trackMedia(addon_env env, addon_callback_info info) {
     }
 }
 
+// Encode a short MP4 in plugin-temp, where the UXP video element can read it without external file access.
+addon_value createPreviewVideo(addon_env env, addon_callback_info info) {
+    try {
+#if defined(PMT_WITH_OPENCV)
+        std::string mediaPath;
+        std::string outputPath;
+        double startSeconds = 0.0;
+        double endSeconds = 0.0;
+        readPreviewArguments(env, info, mediaPath, startSeconds, endSeconds, outputPath);
+        const pmt::PreviewVideo preview = pmt::createPreviewVideo(mediaPath, startSeconds, endSeconds, outputPath);
+        addon_value result = nullptr;
+        Check(UxpAddonApis.uxp_addon_create_object(env, &result));
+        setStringProperty(env, result, "path", preview.path);
+        setStringProperty(env, result, "codec", preview.codec);
+        setNumberProperty(env, result, "width", preview.width);
+        setNumberProperty(env, result, "height", preview.height);
+        setNumberProperty(env, result, "frameCount", static_cast<double>(preview.frameCount));
+        setNumberProperty(env, result, "framesPerSecond", preview.framesPerSecond);
+        setNumberProperty(env, result, "durationSeconds", preview.durationSeconds);
+        return result;
+#else
+        (void)info;
+        throw std::runtime_error("L’addon a été construit sans OpenCV.");
+#endif
+    } catch (...) {
+        return CreateErrorFromException(env);
+    }
+}
+
 // Register one synchronous native function on the JavaScript exports object.
 void registerFunction(
     addon_env env,
@@ -204,6 +264,7 @@ addon_value init(addon_env env, addon_value exports, const addon_apis& addonAPIs
     registerFunction(env, exports, "runSelfTest", runSelfTest, addonAPIs);
     registerFunction(env, exports, "inspectMedia", inspectMedia, addonAPIs);
     registerFunction(env, exports, "trackMedia", trackMedia, addonAPIs);
+    registerFunction(env, exports, "createPreviewVideo", createPreviewVideo, addonAPIs);
     return exports;
 }
 

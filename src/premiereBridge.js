@@ -247,13 +247,14 @@
     return parts[parts.length - 1];
   }
 
-  // Wait for Premiere's asynchronous disk flush and tolerate its duplicated PNG extension.
-  async function resolveExportedPreview(temporaryFolder, fileStem) {
+  // Wait for a native or Premiere export to flush into UXP's private temporary folder.
+  async function resolveExportedFile(temporaryFolder, fileStem, extension) {
     const nativeFileSystem = require("fs");
+    const expectedExtension = String(extension || "").toLowerCase();
     let detectedNames = [];
     for (let attempt = 0; attempt < 20; attempt += 1) {
       const entries = await temporaryFolder.getEntries();
-      const entryMatch = entries.find((entry) => entry.isFile && entry.name.toLowerCase().startsWith(fileStem.toLowerCase()) && entry.name.toLowerCase().endsWith(".png"));
+      const entryMatch = entries.find((entry) => entry.isFile && entry.name.toLowerCase().startsWith(fileStem.toLowerCase()) && entry.name.toLowerCase().endsWith(expectedExtension));
       if (entryMatch) {
         return { url: entryMatch.url, name: entryMatch.name };
       }
@@ -261,7 +262,7 @@
         // The path-based API sees newly flushed files earlier than Folder.getEntries on some hosts.
         const nativeNames = await nativeFileSystem.readdir(temporaryFolder.nativePath);
         detectedNames = nativeNames.map(getPathName);
-        const nativeMatch = detectedNames.find((name) => name.toLowerCase().startsWith(fileStem.toLowerCase()) && name.toLowerCase().endsWith(".png"));
+        const nativeMatch = detectedNames.find((name) => name.toLowerCase().startsWith(fileStem.toLowerCase()) && name.toLowerCase().endsWith(expectedExtension));
         if (nativeMatch) {
           const folderUrl = String(temporaryFolder.url || "plugin-temp:/").replace(/\/?$/, "/");
           return { url: folderUrl + nativeMatch, name: nativeMatch };
@@ -272,7 +273,12 @@
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
     const detail = detectedNames.length ? " Fichiers détectés : " + detectedNames.slice(-8).join(", ") + "." : " Aucun fichier détecté.";
-    throw new Error("L’image a été exportée mais reste introuvable après attente." + detail);
+    throw new Error("Le fichier de prévisualisation reste introuvable après attente." + detail);
+  }
+
+  // Preserve the existing Premiere PNG export call while sharing its robust filesystem wait.
+  function resolveExportedPreview(temporaryFolder, fileStem) {
+    return resolveExportedFile(temporaryFolder, fileStem, ".png");
   }
 
   // Build an explicit PointF because UXP constructors can ignore positional arguments.
@@ -445,15 +451,28 @@
     };
   }
 
-  // Build the file URL UXP's video element needs to play the captured source without re-encoding it.
-  function getPlayableMediaUrl(mediaPath) {
-    const normalizedPath = String(mediaPath || "").replace(/\\/g, "/");
-    if (!normalizedPath) {
-      throw new Error("Le média source ne fournit pas de chemin lisible pour l’aperçu vidéo.");
+  // Ask the native OpenCV backend for a small MP4 inside plugin-temp, which UXP's player can access reliably.
+  async function exportTrackingPreviewVideo(mediaPath, startSeconds, endSeconds) {
+    if (!root.PMT_NATIVE || typeof root.PMT_NATIVE.createPreviewVideo !== "function") {
+      throw new Error("Le moteur natif ne peut pas générer le proxy vidéo de prévisualisation.");
     }
-    // file:/C:/... is UXP's documented Windows form; a leading double slash preserves UNC hosts.
-    const prefix = normalizedPath.startsWith("//") ? "file:" : "file:/";
-    return encodeURI(prefix + normalizedPath);
+    const storage = require("uxp").storage.localFileSystem;
+    const temporaryFolder = await storage.getTemporaryFolder();
+    const fileStem = "pmt-track-preview-video-" + Date.now();
+    const fileName = fileStem + ".mp4";
+    const outputPath = String(temporaryFolder.nativePath).replace(/[\\/]$/, "") + "/" + fileName;
+    const encoded = await root.PMT_NATIVE.createPreviewVideo(mediaPath, startSeconds, endSeconds, outputPath);
+    const videoEntry = await resolveExportedFile(temporaryFolder, fileStem, ".mp4");
+    return {
+      url: videoEntry.url,
+      fileName: videoEntry.name,
+      codec: String(encoded && encoded.codec || "inconnu"),
+      width: Number(encoded && encoded.width || 0),
+      height: Number(encoded && encoded.height || 0),
+      frameCount: Number(encoded && encoded.frameCount || 0),
+      framesPerSecond: Number(encoded && encoded.framesPerSecond || 0),
+      durationSeconds: Number(encoded && encoded.durationSeconds || 0)
+    };
   }
 
   // Expose whether the fragile source proxy is still available for the current panel session.
@@ -598,7 +617,7 @@
     captureSelectedClip,
     getActiveRange,
     exportPreviewFrame,
-    getPlayableMediaUrl,
+    exportTrackingPreviewVideo,
     getHandleStatus,
     applyTracking
   };

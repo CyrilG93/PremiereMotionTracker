@@ -13,7 +13,7 @@
     if (!candidate) {
       return names;
     }
-    ["getVersion", "runSelfTest", "inspectMedia", "trackMedia"].forEach((name) => {
+    ["getVersion", "runSelfTest", "inspectMedia", "trackMedia", "createPreviewVideo"].forEach((name) => {
       if (typeof candidate[name] === "function") {
         names.push(name);
       }
@@ -41,7 +41,7 @@
     if (!loadPromise) {
       loadPromise = (async () => {
         try {
-      const loadedAddon = await require("premiere-motion-tracker-0.2.4.uxpaddon");
+      const loadedAddon = await require("premiere-motion-tracker-0.2.5.uxpaddon");
           exportNames = collectExportNames(loadedAddon);
           if (!loadedAddon || typeof loadedAddon.getVersion !== "function") {
             throw new Error("L’addon ne fournit pas getVersion() (" + describeExports(loadedAddon) + ").");
@@ -96,10 +96,24 @@
     );
   }
 
+  // Generate a small plugin-local MP4 so UXP can review tracking without opening the user’s source path.
+  async function createPreviewVideo(mediaPath, startSeconds, endSeconds, outputPath) {
+    if (!addon || typeof addon.createPreviewVideo !== "function") {
+      throw new Error(loadError || "L’addon natif ne fournit pas createPreviewVideo().");
+    }
+    return addon.createPreviewVideo(
+      String(mediaPath || ""),
+      Number(startSeconds),
+      Number(endSeconds),
+      String(outputPath || "")
+    );
+  }
+
   root.PMT_NATIVE = {
     initialize,
     probe,
     inspectMedia,
-    trackMedia
+    trackMedia,
+    createPreviewVideo
   };
 }(window));

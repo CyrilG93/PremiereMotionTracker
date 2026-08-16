@@ -97,6 +97,9 @@
       // Keep the in-progress feedback limited to the existing stable UXP banner.
       return { tone: "warning", text: "Analyse OpenCV en cours… Ne fermez pas le panneau." };
     }
+    if (state.operation === "preview") {
+      return { tone: "warning", text: "Préparation du proxy vidéo de prévisualisation… Ne fermez pas le panneau." };
+    }
     if (!state.source) {
       return { tone: "warning", text: "Sélectionnez puis capturez le clip à analyser." };
     }
@@ -130,7 +133,7 @@
     const previewContent = videoPreview
       ? '<video class="pmt-preview-video" id="pmt-tracking-video" src="' + escapeHtml(videoPreview.url) + '" muted playsinline preload="metadata"></video>' + (videoPoint
         ? '<div class="pmt-tracking-point" id="pmt-preview-point" style="left:' + (Number(videoPoint.x) * 100).toFixed(3) + '%;top:' + (Number(videoPoint.y) * 100).toFixed(3) + '%"></div>'
-        : '') + '<div class="pmt-preview-status" id="pmt-preview-status">Média source · ' + escapeHtml(formatPreviewTime(state.previewSeconds)) + ' / ' + escapeHtml(formatPreviewTime(videoPreview.durationSeconds)) + '</div>'
+        : '') + '<div class="pmt-preview-status" id="pmt-preview-status">Proxy vidéo · ' + escapeHtml(formatPreviewTime(state.previewSeconds)) + ' / ' + escapeHtml(formatPreviewTime(videoPreview.durationSeconds)) + '</div>'
       : state.preview
       ? '<img class="pmt-preview-image" src="' + escapeHtml(state.preview.url) + '" alt="Image de la séquence au point In">' + (state.referencePoint
         ? '<div class="pmt-tracking-point" style="left:' + (state.referencePoint.x * 100).toFixed(3) + '%;top:' + (state.referencePoint.y * 100).toFixed(3) + '%"></div>'
@@ -207,14 +210,14 @@
   }
 
   // Move the video overlay, its time label, and the Spectrum scrubber without rebuilding the video element.
-  function updateTrackingVideoOverlay(rootNode, absoluteSeconds) {
+  function updateTrackingVideoOverlay(rootNode, relativeSeconds) {
     if (!state.trackingPreview) {
       return;
     }
     const duration = getPreviewDuration();
-    const relativeSeconds = Math.min(duration, Math.max(0, Number(absoluteSeconds) - Number(state.trackingPreview.startSeconds)));
-    const point = root.PMT_TRAJECTORY.interpolateTrackingPoint(state.tracking, Number(state.trackingPreview.startSeconds) + relativeSeconds);
-    state.previewSeconds = relativeSeconds;
+    const safeSeconds = Math.min(duration, Math.max(0, Number(relativeSeconds) || 0));
+    const point = root.PMT_TRAJECTORY.interpolateTrackingPoint(state.tracking, Number(state.trackingPreview.startSeconds) + safeSeconds);
+    state.previewSeconds = safeSeconds;
     const pointNode = rootNode.querySelector("#pmt-preview-point");
     if (pointNode && point) {
       pointNode.style.left = (Number(point.x) * 100).toFixed(3) + "%";
@@ -222,15 +225,15 @@
     }
     const statusNode = rootNode.querySelector("#pmt-preview-status");
     if (statusNode) {
-      statusNode.textContent = "Média source · " + formatPreviewTime(relativeSeconds) + " / " + formatPreviewTime(duration);
+      statusNode.textContent = "Proxy vidéo · " + formatPreviewTime(safeSeconds) + " / " + formatPreviewTime(duration);
     }
     const timeNode = rootNode.querySelector("#pmt-preview-time");
     if (timeNode) {
-      timeNode.textContent = formatPreviewTime(relativeSeconds);
+      timeNode.textContent = formatPreviewTime(safeSeconds);
     }
     const slider = rootNode.querySelector("#pmt-preview-scrubber sp-slider");
     if (slider) {
-      slider.value = relativeSeconds;
+      slider.value = safeSeconds;
     }
   }
 
@@ -245,7 +248,7 @@
     if (pauseFirst && typeof video.pause === "function") {
       video.pause();
     }
-    video.currentTime = Number(state.trackingPreview.startSeconds) + nextSeconds;
+    video.currentTime = nextSeconds;
     updateTrackingVideoOverlay(rootNode, video.currentTime);
   }
 
@@ -275,9 +278,9 @@
     video.addEventListener("play", () => updatePlaybackButton(rootNode, true));
     video.addEventListener("pause", () => updatePlaybackButton(rootNode, false));
     video.addEventListener("timeupdate", () => {
-      if (Number(video.currentTime) >= Number(preview.endSeconds) - endTolerance) {
+      if (Number(video.currentTime) >= Number(preview.durationSeconds) - endTolerance) {
         video.pause();
-        video.currentTime = Number(preview.endSeconds);
+        video.currentTime = Number(preview.durationSeconds);
       }
       updateTrackingVideoOverlay(rootNode, video.currentTime);
     });
@@ -379,23 +382,28 @@
     render(rootNode);
   }
 
-  // Prepare direct playback of the source media so review needs no slow frame-by-frame Premiere export.
-  function buildTrackingPreview(mediaRange) {
+  // Encode a plugin-local MP4 review so UXP can play tracking without relying on the external source path.
+  async function buildTrackingPreview(rootNode, mediaRange) {
     const startSeconds = Number(mediaRange && mediaRange.startSeconds);
     const endSeconds = Number(mediaRange && mediaRange.endSeconds);
     if (!Number.isFinite(startSeconds) || !Number.isFinite(endSeconds) || endSeconds <= startSeconds) {
       throw new Error("La plage média de l’aperçu vidéo est invalide.");
     }
+    state.operation = "preview";
+    render(rootNode);
+    await waitForPanelPaint();
+    const previewVideo = await root.PMT_PREMIERE.exportTrackingPreviewVideo(state.source && state.source.mediaPath, startSeconds, endSeconds);
     state.trackingPreview = {
-      url: root.PMT_PREMIERE.getPlayableMediaUrl(state.source && state.source.mediaPath),
+      url: previewVideo.url,
       startSeconds,
       endSeconds,
-      durationSeconds: endSeconds - startSeconds,
+      durationSeconds: Number(previewVideo.durationSeconds) || endSeconds - startSeconds,
+      codec: previewVideo.codec,
       sourceFrameCount: state.tracking.length
     };
     state.previewSeconds = 0;
     state.previewPlaying = false;
-    addLog("Aperçu vidéo prêt : média source lu de " + startSeconds.toFixed(3) + " s à " + endSeconds.toFixed(3) + " s.");
+    addLog("Aperçu vidéo prêt : " + previewVideo.fileName + " · " + previewVideo.width + " × " + previewVideo.height + " · " + previewVideo.codec + ".");
   }
 
   // Toggle the native media player, which gives UXP a reliable pause instead of a replacement image timer.
@@ -405,7 +413,7 @@
       return;
     }
     const frameRate = Math.max(1, Number(state.media && state.media.framesPerSecond) || 24);
-    if (video.paused || Number(video.currentTime) >= Number(state.trackingPreview.endSeconds) - 0.5 / frameRate) {
+    if (video.paused || Number(video.currentTime) >= getPreviewDuration() - 0.5 / frameRate) {
       seekTrackingVideo(rootNode, state.previewSeconds >= getPreviewDuration() - 0.5 / frameRate ? 0 : state.previewSeconds, false);
       Promise.resolve(video.play()).catch(() => {
         addLog("Aperçu vidéo indisponible : UXP a refusé de lancer ce média source.");
@@ -431,7 +439,7 @@
       addLog("Tracking OpenCV : " + state.tracking.length + " images de " + mediaRange.startSeconds.toFixed(3) + " s à " + mediaRange.endSeconds.toFixed(3) + " s.");
       addLog("Images incertaines : " + invalidCount + ".");
       try {
-        buildTrackingPreview(mediaRange);
+        await buildTrackingPreview(rootNode, mediaRange);
       } catch (previewError) {
         clearTrackingPreview();
         addLog("Aperçu vidéo indisponible : " + (previewError && previewError.message ? previewError.message : String(previewError)));

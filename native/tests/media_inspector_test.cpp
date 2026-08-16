@@ -44,6 +44,7 @@ int main() {
 
     // Create a small deterministic clip so the decoder is tested without depending on user media.
     const std::filesystem::path samplePath = std::filesystem::temp_directory_path() / "pmt-media-inspector-sample.avi";
+    const std::filesystem::path previewPath = std::filesystem::temp_directory_path() / "pmt-media-inspector-preview.mp4";
     const std::filesystem::path imagePath = std::filesystem::temp_directory_path() / "pmt-media-inspector-target.png";
     cv::VideoWriter writer(samplePath.string(), cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), 12.0, cv::Size(96, 64));
     passed &= expect(writer.isOpened(), "OpenCV should create the temporary motion-tracking sample");
@@ -76,6 +77,11 @@ int main() {
             const pmt::MediaTrackingSample& finalSample = samples.back();
             passed &= expect(finalSample.valid, "forward-backward tracking should validate the textured sample point");
             passed &= expect(std::abs(finalSample.x - 42.0 / 95.0) < 0.06 && std::abs(finalSample.y - 34.0 / 63.0) < 0.06, "tracker should recover the generated square motion");
+            const pmt::PreviewVideo preview = pmt::createPreviewVideo(samplePath.string(), 0.0, 0.3, previewPath.string());
+            passed &= expect(preview.frameCount >= 4, "preview encoder should keep the bounded source frames");
+            passed &= expect(preview.width <= 96 && preview.height <= 64, "preview encoder should avoid enlarging the source");
+            const pmt::MediaInspection previewInspection = pmt::inspectMedia(previewPath.string());
+            passed &= expect(previewInspection.frameCount >= 1, "decoder should reopen the generated MP4 preview");
         } catch (const std::exception& error) {
             passed &= expect(false, std::string("decoder should open the generated sample: ") + error.what());
         }
@@ -93,6 +99,8 @@ int main() {
     std::error_code removeError;
     std::filesystem::remove(samplePath, removeError);
     passed &= expect(!removeError, "temporary sample media should be removable");
+    std::filesystem::remove(previewPath, removeError);
+    passed &= expect(!removeError, "temporary preview media should be removable");
     std::filesystem::remove(imagePath, removeError);
     passed &= expect(!removeError, "temporary target image should be removable");
 

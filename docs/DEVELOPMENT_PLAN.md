@@ -19,7 +19,7 @@ Critère de validation : la trajectoire détectée dans le média déplace réel
 ## Phase 2 — Sessions et prévisualisation
 
 - Stocker une session sérialisable sans conserver les proxies UXP fragiles.
-- Lire directement le média source sur la plage trackée avec le point superposé et un curseur temporel avant l’application.
+- Générer un proxy MP4 temporaire de la plage trackée avec le point superposé et un curseur temporel avant l’application.
 - Permettre de poser le point de référence et choisir la zone de recherche.
 - Conserver les résultats, réglages et corrections manuelles.
 

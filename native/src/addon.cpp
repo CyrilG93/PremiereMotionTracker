@@ -1,9 +1,14 @@
 #include "UxpAddon.h"
 #include "tracker_core.h"
 
+#if defined(PMT_WITH_OPENCV)
+#include "media_inspector.h"
+#endif
+
 #include <cstdint>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -12,6 +17,38 @@ addon_value createString(addon_env env, const std::string& value) {
     addon_value result = nullptr;
     Check(UxpAddonApis.uxp_addon_create_string_utf8(env, value.c_str(), value.size(), &result));
     return result;
+}
+
+// Convert the first JavaScript argument into a UTF-8 string while it is valid on the callback stack.
+std::string readFirstStringArgument(addon_env env, addon_callback_info info) {
+    addon_value argument = nullptr;
+    std::size_t argumentCount = 1;
+    Check(UxpAddonApis.uxp_addon_get_cb_info(env, info, &argumentCount, &argument, nullptr, nullptr));
+    if (argumentCount != 1) {
+        throw std::invalid_argument("Un chemin média est requis.");
+    }
+    std::size_t byteCount = 0;
+    Check(UxpAddonApis.uxp_addon_get_value_string_utf8(env, argument, nullptr, 0, &byteCount));
+    // Reserve a trailing byte because the UXP API writes a null terminator with the UTF-8 text.
+    std::vector<char> buffer(byteCount + 1, '\0');
+    if (byteCount > 0) {
+        std::size_t copiedByteCount = 0;
+        Check(UxpAddonApis.uxp_addon_get_value_string_utf8(env, argument, buffer.data(), buffer.size(), &copiedByteCount));
+        return std::string(buffer.data(), copiedByteCount);
+    }
+    return {};
+}
+
+// Store a native number as one property of the object returned to JavaScript.
+void setNumberProperty(addon_env env, addon_value object, const char* name, double value) {
+    addon_value number = nullptr;
+    Check(UxpAddonApis.uxp_addon_create_double(env, value, &number));
+    Check(UxpAddonApis.uxp_addon_set_named_property(env, object, name, number));
+}
+
+// Store a native string as one property of the object returned to JavaScript.
+void setStringProperty(addon_env env, addon_value object, const char* name, const std::string& value) {
+    Check(UxpAddonApis.uxp_addon_set_named_property(env, object, name, createString(env, value)));
 }
 
 // Expose the native module version so diagnostics can prove which binary Premiere loaded.
@@ -53,6 +90,30 @@ addon_value runSelfTest(addon_env env, addon_callback_info info) {
     }
 }
 
+// Inspect one Premiere source path through OpenCV before the full frame-by-frame tracker is enabled.
+addon_value inspectMedia(addon_env env, addon_callback_info info) {
+    try {
+#if defined(PMT_WITH_OPENCV)
+        const pmt::MediaInspection inspection = pmt::inspectMedia(readFirstStringArgument(env, info));
+        addon_value result = nullptr;
+        Check(UxpAddonApis.uxp_addon_create_object(env, &result));
+        setStringProperty(env, result, "path", inspection.path);
+        setStringProperty(env, result, "backend", inspection.backend);
+        setNumberProperty(env, result, "width", inspection.width);
+        setNumberProperty(env, result, "height", inspection.height);
+        setNumberProperty(env, result, "frameCount", static_cast<double>(inspection.frameCount));
+        setNumberProperty(env, result, "framesPerSecond", inspection.framesPerSecond);
+        setNumberProperty(env, result, "durationSeconds", inspection.durationSeconds);
+        return result;
+#else
+        (void)info;
+        throw std::runtime_error("L’addon a été construit sans OpenCV.");
+#endif
+    } catch (...) {
+        return CreateErrorFromException(env);
+    }
+}
+
 // Register one synchronous native function on the JavaScript exports object.
 void registerFunction(
     addon_env env,
@@ -74,6 +135,7 @@ void registerFunction(
 addon_value init(addon_env env, addon_value exports, const addon_apis& addonAPIs) {
     registerFunction(env, exports, "getVersion", getVersion, addonAPIs);
     registerFunction(env, exports, "runSelfTest", runSelfTest, addonAPIs);
+    registerFunction(env, exports, "inspectMedia", inspectMedia, addonAPIs);
     return exports;
 }
 

@@ -3,6 +3,7 @@
 
   const state = {
     source: null,
+    media: null,
     range: null,
     preview: null,
     referencePoint: null,
@@ -32,6 +33,19 @@
       return emptyLabel;
     }
     return clip.name + " · V" + (clip.trackIndex + 1);
+  }
+
+  // Format native decoder metadata without exposing implementation-only fields in the panel.
+  function mediaLabel(media) {
+    if (!media) {
+      return "Métadonnées vidéo non lues";
+    }
+    const frameRate = Number(media.framesPerSecond || 0);
+    const frameCount = Number(media.frameCount || 0);
+    const size = Number(media.width || 0) + " × " + Number(media.height || 0);
+    const frameRateLabel = frameRate > 0 ? frameRate.toFixed(3).replace(/\.0+$/, "") + " i/s" : "cadence inconnue";
+    const frameCountLabel = frameCount > 0 ? frameCount + " images" : "nombre d’images inconnu";
+    return size + " · " + frameRateLabel + " · " + frameCountLabel + " · " + String(media.backend || "backend inconnu");
   }
 
   // Render a skin-free accessible control because Premiere adds an inner box to native buttons.
@@ -82,6 +96,7 @@
       '      <div class="pmt-slot-copy"><div class="pmt-label">Clip à analyser</div><div class="pmt-value">' + escapeHtml(clipLabel(state.source, "Aucun clip source")) + '</div></div>',
       '      ' + buttonMarkup("pmt-capture-source", "Capturer", [], state.busy),
       '    </div>',
+      state.source ? '    <div class="pmt-label">Vidéo : ' + escapeHtml(mediaLabel(state.media)) + '</div>' : '',
       '  </div>',
       '  <div class="pmt-card">',
       '    <h2 class="pmt-card-title">2. Prévisualisation</h2>',
@@ -118,6 +133,7 @@
     try {
       const clip = await root.PMT_PREMIERE.captureSelectedClip();
       state.source = clip;
+      state.media = null;
       // A newly captured clip invalidates the previously prepared sequence range.
       state.range = null;
       state.preview = null;
@@ -125,6 +141,14 @@
       addLog("Source capturée : " + clip.name);
       if (!clip.mediaPath) {
         addLog("Attention : Premiere n’a pas renvoyé de chemin média pour cette source.");
+      } else {
+        const nativeStatus = await root.PMT_NATIVE.initialize();
+        if (!nativeStatus.available) {
+          addLog("Lecture OpenCV indisponible : " + (nativeStatus.error || "addon non chargé"));
+        } else {
+          state.media = await root.PMT_NATIVE.inspectMedia(clip.mediaPath);
+          addLog("Média OpenCV : " + mediaLabel(state.media) + ".");
+        }
       }
       // Premiere versions may report normal speed as either a 1x factor or 100 percent.
       if (![1, 100].includes(clip.speed) || clip.reversed) {

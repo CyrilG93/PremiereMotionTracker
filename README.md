@@ -6,7 +6,7 @@ La première version visera un flux simple : sélectionner le clip à analyser, 
 
 ## État du projet
 
-Le projet est actuellement un prototype technique. Le panneau sait déjà capturer le clip source depuis la timeline, lire la plage In/Out, afficher l’image de séquence au point In, placer un point de tracking et lancer un test d’écriture de keyframes Transform sur les clips sélectionnés au moment de l’application. Le module Hybrid Windows charge désormais le cœur C++ et exécute un autotest au démarrage. La connexion au décodage vidéo et à OpenCV constitue le prochain jalon ; les binaires Windows et macOS seront inclus dans le produit final.
+Le projet est actuellement un prototype technique. Le panneau sait déjà capturer le clip source depuis la timeline, lire la plage In/Out, afficher l’image de séquence au point In, placer un point de tracking et lancer un test d’écriture de keyframes Transform sur les clips sélectionnés au moment de l’application. Le module Hybrid Windows charge le cœur C++, exécute un autotest et expose l’inspection des métadonnées vidéo avec OpenCV et Media Foundation. Le tracking image par image et son interface restent le prochain jalon ; les binaires Windows et macOS seront inclus dans le produit final.
 
 ## Tester le prototype
 
@@ -38,7 +38,7 @@ Les vérifications locales ne nécessitent aucune dépendance npm :
 npm run verify
 ```
 
-La construction du moteur natif demande le SDK Adobe UXP Hybrid, Visual Studio avec les outils C++, CMake et, au prochain jalon, OpenCV avec un backend de décodage vidéo. Ces dépendances seront intégrées au produit final : l’utilisateur n’aura pas à installer Python ou OpenCV séparément.
+La construction du moteur natif demande le SDK Adobe UXP Hybrid, Visual Studio avec les outils C++, CMake, vcpkg et OpenCV. Sur Windows, la configuration actuelle utilise Media Foundation pour décoder les médias. Ces dépendances seront intégrées au produit final : l’utilisateur n’aura pas à installer Python ou OpenCV séparément.
 
 Le plan complet est disponible dans [docs/DEVELOPMENT_PLAN.md](docs/DEVELOPMENT_PLAN.md).
 

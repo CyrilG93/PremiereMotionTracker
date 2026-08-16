@@ -41,7 +41,7 @@
     if (!loadPromise) {
       loadPromise = (async () => {
         try {
-          const loadedAddon = await require("premiere-motion-tracker-0.1.9.uxpaddon");
+          const loadedAddon = await require("premiere-motion-tracker-0.1.10.uxpaddon");
           exportNames = collectExportNames(loadedAddon);
           if (!loadedAddon || typeof loadedAddon.getVersion !== "function") {
             throw new Error("L’addon ne fournit pas getVersion() (" + describeExports(loadedAddon) + ").");
@@ -76,7 +76,7 @@
   // Keep one stable API for the UI while OpenCV decoding is implemented in the native milestone.
   async function inspectMedia(mediaPath) {
     if (!addon || typeof addon.inspectMedia !== "function") {
-      throw new Error(loadError);
+      throw new Error(loadError || "L’addon natif ne fournit pas inspectMedia().");
     }
     return addon.inspectMedia(String(mediaPath || ""));
   }

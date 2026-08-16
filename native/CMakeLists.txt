@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
-project(PremiereMotionTrackerAddon VERSION 0.1.9 LANGUAGES CXX)
+project(PremiereMotionTrackerAddon VERSION 0.1.10 LANGUAGES CXX)
+
+# Enable the OpenCV media decoder only in builds configured with vcpkg.
+option(PMT_ENABLE_OPENCV "Build OpenCV media inspection support" OFF)
 
 # Keep the algorithmic core independent from Adobe and OpenCV for portable tests.
 add_library(PremiereMotionTrackerCore STATIC src/tracker_core.cpp)
@@ -14,6 +17,31 @@ if(BUILD_TESTING)
   add_test(NAME PremiereMotionTrackerCoreTests COMMAND PremiereMotionTrackerCoreTests)
 endif()
 
+if(PMT_ENABLE_OPENCV)
+  # OpenCV videoio uses Microsoft Media Foundation on the current Windows build.
+  find_package(OpenCV CONFIG REQUIRED COMPONENTS core imgproc video videoio)
+  # Derive the triplet bin directory from vcpkg's OpenCV package config location.
+  get_filename_component(PMT_OPENCV_BIN_DIR "${OpenCV_DIR}/../../bin" ABSOLUTE)
+
+  add_library(PremiereMotionTrackerMedia STATIC src/media_inspector.cpp)
+  target_compile_features(PremiereMotionTrackerMedia PUBLIC cxx_std_17)
+  target_include_directories(PremiereMotionTrackerMedia PUBLIC include)
+  target_link_libraries(PremiereMotionTrackerMedia PUBLIC ${OpenCV_LIBS})
+  if(MSVC)
+    # Preserve French diagnostic strings encoded as UTF-8 in the native sources.
+    target_compile_options(PremiereMotionTrackerMedia PRIVATE /utf-8)
+  endif()
+
+  if(BUILD_TESTING)
+    # Exercise path validation separately from the UXP addon and Premiere host.
+    add_executable(PremiereMotionTrackerMediaTests tests/media_inspector_test.cpp)
+    target_link_libraries(PremiereMotionTrackerMediaTests PRIVATE PremiereMotionTrackerMedia)
+    add_test(NAME PremiereMotionTrackerMediaTests COMMAND PremiereMotionTrackerMediaTests)
+    # Let ctest locate the dynamic OpenCV libraries without changing the user's global PATH.
+    set_tests_properties(PremiereMotionTrackerMediaTests PROPERTIES ENVIRONMENT "PATH=${PMT_OPENCV_BIN_DIR};$ENV{PATH}")
+  endif()
+endif()
+
 # Build the UXP addon only after the manually downloaded Adobe SDK is available.
 if(DEFINED UXP_HYBRID_SDK_DIR)
   add_library(PremiereMotionTrackerAddon SHARED
@@ -24,6 +52,27 @@ if(DEFINED UXP_HYBRID_SDK_DIR)
   target_compile_definitions(PremiereMotionTrackerAddon PRIVATE PMT_ADDON_VERSION="${PROJECT_VERSION}-native")
   target_include_directories(PremiereMotionTrackerAddon PRIVATE "${UXP_HYBRID_SDK_DIR}/src/api" "${UXP_HYBRID_SDK_DIR}/src/utilities")
   target_link_libraries(PremiereMotionTrackerAddon PRIVATE PremiereMotionTrackerCore)
+  if(MSVC)
+    # Compile the Hybrid bridge as UTF-8 so its user-facing errors are preserved.
+    target_compile_options(PremiereMotionTrackerAddon PRIVATE /utf-8)
+  endif()
+
+  if(PMT_ENABLE_OPENCV)
+    # Link decoding support only when the vcpkg toolchain supplied OpenCV.
+    target_compile_definitions(PremiereMotionTrackerAddon PRIVATE PMT_WITH_OPENCV=1)
+    target_link_libraries(PremiereMotionTrackerAddon PRIVATE PremiereMotionTrackerMedia)
+    if(WIN32)
+      # Place the required OpenCV runtime DLLs beside the addon for Premiere's native loader.
+      add_custom_command(TARGET PremiereMotionTrackerAddon POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          "$<TARGET_FILE:opencv_core>"
+          "$<TARGET_FILE:opencv_imgproc>"
+          "$<TARGET_FILE:opencv_video>"
+          "$<TARGET_FILE:opencv_videoio>"
+          "$<TARGET_FILE_DIR:PremiereMotionTrackerAddon>"
+      )
+    endif()
+  endif()
 
   # UXP addons are platform libraries distributed with Adobe's .uxpaddon extension.
   set_target_properties(PremiereMotionTrackerAddon PROPERTIES

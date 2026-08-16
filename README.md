@@ -6,7 +6,7 @@ La première version visera un flux simple : sélectionner le clip à analyser, 
 
 ## État du projet
 
-Le projet est actuellement un prototype technique. Le panneau sait déjà capturer séparément un clip source et un clip cible depuis la timeline, lire la plage In/Out de la séquence et préparer une session de tracking. Le moteur OpenCV et l’application des keyframes seront ajoutés dans les prochains jalons.
+Le projet est actuellement un prototype technique. Le panneau sait déjà capturer séparément un clip source et un clip cible depuis la timeline, lire la plage In/Out de la séquence, préparer une session et lancer un test d’écriture de keyframes Transform. Le moteur OpenCV sera ajouté dans les prochains jalons.
 
 ## Tester le prototype
 
@@ -23,8 +23,9 @@ Pour tester la capture :
 1. Sélectionnez un clip vidéo dans la timeline et cliquez sur `Capturer` pour la source.
 2. Sélectionnez le clip qui recevra le mouvement et cliquez sur `Capturer` pour la cible.
 3. Placez les In/Out de la séquence puis cliquez sur `Lire les In/Out`.
+4. Sur deux clips différents, cliquez sur `Tester Transform` pour ajouter un effet de test avec deux keyframes Position au clip cible.
 
-Le bouton d’analyse reste volontairement désactivé jusqu’à l’intégration du moteur natif.
+Le test Transform modifie le projet Premiere et peut être retiré avec Annuler. Le bouton d’analyse reste volontairement désactivé jusqu’à l’intégration du moteur natif.
 
 ## Développement
 
@@ -41,4 +42,3 @@ Le plan complet est disponible dans [docs/DEVELOPMENT_PLAN.md](docs/DEVELOPMENT_
 ## Changelog
 
 Aucune version publique n’a encore été publiée.
-

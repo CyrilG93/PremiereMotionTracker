@@ -36,11 +36,15 @@
   // Compute the main readiness message from Premiere and native addon state.
   function getBanner() {
     const nativeStatus = root.PMT_NATIVE.probe();
+    const handles = root.PMT_PREMIERE.getHandleStatus();
     if (!state.source || !state.target) {
       return { tone: "warning", text: "Sélectionnez puis capturez un clip source et un clip cible." };
     }
-    if (!root.PMT_PREMIERE.getHandleStatus().sameSequence) {
+    if (!handles.sameSequence) {
       return { tone: "danger", text: "Les deux clips doivent appartenir à la même séquence." };
+    }
+    if (handles.sameItem) {
+      return { tone: "danger", text: "Vous avez capturé le même clip deux fois. Choisissez un autre clip cible." };
     }
     if (!nativeStatus.available) {
       return { tone: "warning", text: "Sélection validée. Le moteur OpenCV constitue le prochain jalon." };
@@ -52,7 +56,9 @@
   function render(rootNode) {
     const banner = getBanner();
     const nativeStatus = root.PMT_NATIVE.probe();
-    const canPrepare = Boolean(state.source && state.target && root.PMT_PREMIERE.getHandleStatus().sameSequence && !state.busy);
+    const handles = root.PMT_PREMIERE.getHandleStatus();
+    const canPrepare = Boolean(state.source && state.target && handles.sameSequence && !handles.sameItem && !state.busy);
+    const canTestTransform = Boolean(canPrepare && state.range && state.source && state.range.sequenceId === state.source.sequenceId);
     rootNode.innerHTML = [
       '<div class="pmt-shell">',
       '  <div class="pmt-header">',
@@ -78,6 +84,7 @@
       '      <button class="pmt-button" id="pmt-read-range"' + (!canPrepare ? " disabled" : "") + '>Lire les In/Out</button>',
       '      <button class="pmt-button pmt-button-primary" disabled>Analyser</button>',
       '    </div>',
+      '    <button class="pmt-button pmt-button-full" id="pmt-test-transform"' + (!canTestTransform ? " disabled" : "") + '>Tester Transform (+ déplacement horizontal)</button>',
       '  </div>',
       '  <div class="pmt-card">',
       '    <h2 class="pmt-card-title">Diagnostic</h2>',
@@ -96,6 +103,8 @@
     try {
       const clip = await root.PMT_PREMIERE.captureSelectedClip(role);
       state[role] = clip;
+      // A newly captured clip invalidates the previously prepared sequence range.
+      state.range = null;
       addLog((role === "source" ? "Source" : "Cible") + " capturée : " + clip.name);
       if (role === "source" && !clip.mediaPath) {
         addLog("Attention : Premiere n’a pas renvoyé de chemin média pour cette source.");
@@ -135,11 +144,28 @@
     }
   }
 
+  // Validate effect creation and Position keyframes before the tracker supplies real samples.
+  async function testTransform(rootNode) {
+    state.busy = true;
+    render(rootNode);
+    try {
+      const result = await root.PMT_PREMIERE.applyTransformTest();
+      addLog("Transform test ajouté avec deux keyframes Position.");
+      addLog("Position : " + result.initialPoint.x + ", " + result.initialPoint.y + " → " + result.finalPoint.x + ", " + result.finalPoint.y);
+    } catch (error) {
+      addLog("Erreur Transform : " + (error && error.message ? error.message : String(error)));
+    } finally {
+      state.busy = false;
+      render(rootNode);
+    }
+  }
+
   // Connect the freshly rendered buttons to their Premiere diagnostics.
   function bindEvents(rootNode) {
     const sourceButton = rootNode.querySelector("#pmt-capture-source");
     const targetButton = rootNode.querySelector("#pmt-capture-target");
     const rangeButton = rootNode.querySelector("#pmt-read-range");
+    const transformButton = rootNode.querySelector("#pmt-test-transform");
     if (sourceButton) {
       sourceButton.addEventListener("click", () => capture(rootNode, "source"));
     }
@@ -148,6 +174,9 @@
     }
     if (rangeButton) {
       rangeButton.addEventListener("click", () => readRange(rootNode));
+    }
+    if (transformButton) {
+      transformButton.addEventListener("click", () => testTransform(rootNode));
     }
   }
 

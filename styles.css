@@ -191,6 +191,10 @@ input {
   flex: 1 1 0;
 }
 
+.pmt-button-full {
+  width: 100%;
+}
+
 .pmt-log {
   min-height: 62px;
   margin: 0;

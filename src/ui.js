@@ -288,7 +288,8 @@
       addLog("Trajectoire appliquée à " + results.length + " clip(s) sélectionné(s). " + keyframes.length + " images clés par clip.");
       results.forEach((result) => {
         const scale = result.positionScale || { x: 1, y: 1 };
-        addLog(result.clipName + " : " + result.keyframeCount + " clés · compensation " + Number(scale.x).toFixed(3) + " × " + Number(scale.y).toFixed(3) + " · " + result.initialPoint.x + ", " + result.initialPoint.y + " → " + result.finalPoint.x + ", " + result.finalPoint.y);
+        const coordinateSpace = result.targetCoordinateSpace === "sequence" ? "Graphics Layer" : "média";
+        addLog(result.clipName + " : " + result.keyframeCount + " clés · " + coordinateSpace + " · compensation " + Number(scale.x).toFixed(3) + " × " + Number(scale.y).toFixed(3) + " · " + result.initialPoint.x + ", " + result.initialPoint.y + " → " + result.finalPoint.x + ", " + result.finalPoint.y);
       });
     } catch (error) {
       addLog("Erreur application : " + (error && error.message ? error.message : String(error)));

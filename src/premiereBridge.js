@@ -162,16 +162,25 @@
     return { x: width, y: height };
   }
 
-  // Read the source dimensions of one selected destination through the native OpenCV inspector.
-  async function getTargetMediaFrame(item) {
-    const projectItem = await item.getProjectItem();
-    const app = getPremiere();
-    const clipProjectItem = app && app.ClipProjectItem && typeof app.ClipProjectItem.cast === "function"
-      ? app.ClipProjectItem.cast(projectItem)
-      : projectItem;
-    const mediaPath = await readMethod(clipProjectItem, "getMediaFilePath", "");
+  // Read a file target's dimensions, or use the sequence canvas for Graphics Layers without a media path.
+  async function getTargetMediaFrame(context, item) {
+    let mediaPath = "";
+    try {
+      const projectItem = await item.getProjectItem();
+      const clipProjectItem = context.app && context.app.ClipProjectItem && typeof context.app.ClipProjectItem.cast === "function"
+        ? context.app.ClipProjectItem.cast(projectItem)
+        : projectItem;
+      mediaPath = await readMethod(clipProjectItem, "getMediaFilePath", "");
+    } catch (error) {
+      // Graphics Layers can expose a project item but no readable media proxy.
+    }
     if (!mediaPath) {
-      throw new Error("Le média cible ne fournit pas de chemin : ses dimensions ne peuvent pas être compensées.");
+      const width = Number(context.frameSize && context.frameSize.width);
+      const height = Number(context.frameSize && context.frameSize.height);
+      if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) {
+        throw new Error("La Graphics Layer ne fournit pas de média et la taille de séquence est indisponible.");
+      }
+      return { width, height, coordinateSpace: "sequence" };
     }
     if (!root.PMT_NATIVE || typeof root.PMT_NATIVE.inspectMedia !== "function") {
       throw new Error("Le moteur OpenCV est requis pour mesurer le média cible.");
@@ -182,7 +191,7 @@
     if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) {
       throw new Error("Le média cible ne fournit pas de dimensions exploitables.");
     }
-    return { width, height };
+    return { width, height, coordinateSpace: "media" };
   }
 
   // Read the intrinsic Motion Scale so a manually resized target keeps the correct sequence amplitude.
@@ -512,7 +521,7 @@
       throw new Error("Premiere n’a pas renvoyé une valeur Position compatible.");
     }
     const looksNormalized = Math.abs(initialPoint.x) <= 1.5 && Math.abs(initialPoint.y) <= 1.5;
-    const targetFrame = looksNormalized ? await getTargetMediaFrame(item) : null;
+    const targetFrame = looksNormalized ? await getTargetMediaFrame(context, item) : null;
     const motionScale = looksNormalized ? await getTargetMotionScale(item, inPoint) : null;
     const positionScale = getPositionScale(context, looksNormalized, targetFrame, motionScale);
     executeActions(context.project, [() => positionParam.createSetTimeVaryingAction(true)], "Motion Tracker : activer Position");
@@ -540,6 +549,7 @@
       },
       normalized: looksNormalized,
       positionScale,
+      targetCoordinateSpace: targetFrame ? targetFrame.coordinateSpace : "pixels",
       keyframeCount: keyframes.length
     };
   }

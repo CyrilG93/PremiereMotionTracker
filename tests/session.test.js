@@ -80,3 +80,12 @@ test("computeTargetPositionScale compensates a smaller target media and its Moti
   );
   assert.deepEqual(scale, { x: 10, y: 11.25 });
 });
+
+test("computeTargetPositionScale preserves Graphics Layers using the sequence canvas", () => {
+  const scale = trajectoryApi.computeTargetPositionScale(
+    { width: 1920, height: 1080 },
+    { width: 1920, height: 1080 },
+    { x: 100, y: 100 }
+  );
+  assert.deepEqual(scale, { x: 1, y: 1 });
+});

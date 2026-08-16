@@ -41,7 +41,7 @@
     if (!loadPromise) {
       loadPromise = (async () => {
         try {
-      const loadedAddon = await require("premiere-motion-tracker-0.2.7.uxpaddon");
+      const loadedAddon = await require("premiere-motion-tracker-0.2.8.uxpaddon");
           exportNames = collectExportNames(loadedAddon);
           if (!loadedAddon || typeof loadedAddon.getVersion !== "function") {
             throw new Error("L’addon ne fournit pas getVersion() (" + describeExports(loadedAddon) + ").");

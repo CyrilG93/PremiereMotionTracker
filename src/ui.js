@@ -280,7 +280,7 @@
       '  <div class="pmt-card">',
       '    <div class="pmt-card-header"><h2 class="pmt-card-title">' + escapeHtml(t("diagnostics")) + '</h2>' + buttonMarkup("pmt-copy-log", t("copy"), ["pmt-button-compact"], false) + '</div>',
       '    <div class="pmt-label">' + escapeHtml(t("nativeEngine")) + ': ' + escapeHtml(nativeLabel) + '</div>',
-      '    <textarea class="pmt-log" id="pmt-log" readonly>' + escapeHtml(state.log.join("\n")) + '</textarea>',
+      '    <div class="pmt-log" id="pmt-log" role="log" tabindex="0">' + escapeHtml(state.log.join("\n")) + '</div>',
       '  </div>',
       '</div>'
     ].join("");
@@ -611,12 +611,19 @@
     throw lastError || new Error("No compatible copy method");
   }
 
-  // Select the diagnostic so Ctrl+C remains available when UXP has not reloaded manifest permissions.
+  // Select the HTML diagnostic so Ctrl+C remains available without UXP's fragile native textarea control.
   function selectDiagnostics(rootNode) {
     const logArea = rootNode.querySelector("#pmt-log");
-    if (logArea) {
+    if (logArea && root.document && typeof root.document.createRange === "function" && typeof root.getSelection === "function") {
       logArea.focus();
-      logArea.select();
+      const selection = root.getSelection();
+      if (!selection) {
+        return;
+      }
+      const range = root.document.createRange();
+      range.selectNodeContents(logArea);
+      selection.removeAllRanges();
+      selection.addRange(range);
     }
   }
 

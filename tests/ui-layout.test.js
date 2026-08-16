@@ -25,10 +25,11 @@ test("panel cards use simple div containers in Premiere UXP", () => {
 });
 
 test("diagnostics are selectable and can be copied through the declared clipboard permission", () => {
-  assert.match(uiSource, /<textarea class="pmt-log"/);
+  assert.match(uiSource, /<div class="pmt-log" id="pmt-log" role="log" tabindex="0">/);
   assert.match(uiSource, /buttonMarkup\("pmt-copy-log"/);
   assert.match(uiSource, /clipboard\.setContent\(\{ "text\/plain": text \}\)/);
-  assert.match(uiSource, /logArea\.select\(\)/);
+  assert.match(uiSource, /range\.selectNodeContents\(logArea\)/);
+  assert.doesNotMatch(uiSource, /<textarea class="pmt-log"/);
   assert.equal(manifest.requiredPermissions.clipboard, "readAndWrite");
 });
 
@@ -90,7 +91,7 @@ test("manifest v6 loads the platform Hybrid addon and exposes its startup diagno
   assert.equal(manifest.requiredPermissions.enableAddon, true);
   assert.equal(manifest.requiredPermissions.localFileSystem, "plugin");
   assert.equal(manifest.addon.name, "premiere-motion-tracker-" + manifest.version + ".uxpaddon");
-  assert.match(nativeSource, /await require\("premiere-motion-tracker-0\.2\.7\.uxpaddon"\)/);
+  assert.match(nativeSource, /await require\("premiere-motion-tracker-0\.2\.8\.uxpaddon"\)/);
   assert.match(nativeSource, /loadedAddon\.runSelfTest\(\)/);
   assert.match(nativeSource, /addon\.inspectMedia/);
   assert.match(nativeSource, /addon\.trackMedia/);

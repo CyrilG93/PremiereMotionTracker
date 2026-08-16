@@ -84,7 +84,8 @@
   function getBanner() {
     const nativeStatus = root.PMT_NATIVE.probe();
     if (state.operation === "analysis") {
-      return { tone: "warning", text: "Analyse OpenCV en cours… le panneau reste actif dès que la trajectoire est prête." };
+      // Keep the in-progress feedback limited to the existing stable UXP banner.
+      return { tone: "warning", text: "Analyse OpenCV en cours… Ne fermez pas le panneau." };
     }
     if (!state.source) {
       return { tone: "warning", text: "Sélectionnez puis capturez le clip à analyser." };
@@ -112,9 +113,6 @@
     const canAnalyze = Boolean(canPrepare && state.media && state.range && state.preview && state.referencePoint);
     const canTestTransform = Boolean(canPrepare && state.range && state.range.sequenceId === state.source.sequenceId);
     const analyzeLabel = state.operation === "analysis" ? "Analyse en cours…" : "Analyser";
-    const analysisProgress = state.operation === "analysis"
-      ? '<div class="pmt-analysis-progress" role="status" aria-live="polite"><div class="pmt-analysis-progress-track"><div class="pmt-analysis-progress-indicator"></div></div><div>Analyse de la vidéo en cours. Ne fermez pas le panneau.</div></div>'
-      : "";
     const previewContent = state.preview
       ? '<img class="pmt-preview-image" src="' + escapeHtml(state.preview.url) + '" alt="Image de la séquence au point In">' + (state.referencePoint
         ? '<div class="pmt-tracking-point" style="left:' + (state.referencePoint.x * 100).toFixed(3) + '%;top:' + (state.referencePoint.y * 100).toFixed(3) + '%"></div>'
@@ -127,7 +125,6 @@
       '    <span class="pmt-version">v' + escapeHtml(root.PMT_VERSION) + '</span>',
       '  </div>',
       '  <div class="pmt-banner" data-tone="' + banner.tone + '">' + escapeHtml(banner.text) + '</div>',
-      analysisProgress,
       '  <div class="pmt-card">',
       '    <h2 class="pmt-card-title">1. Source du tracking</h2>',
       '    <div class="pmt-slot">',

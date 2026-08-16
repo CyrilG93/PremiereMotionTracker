@@ -63,7 +63,7 @@ test("manifest v6 loads the platform Hybrid addon and exposes its startup diagno
   assert.equal(manifest.manifestVersion, 6);
   assert.equal(manifest.requiredPermissions.enableAddon, true);
   assert.equal(manifest.addon.name, "premiere-motion-tracker-" + manifest.version + ".uxpaddon");
-  assert.match(nativeSource, /await require\("premiere-motion-tracker-0\.1\.13\.uxpaddon"\)/);
+  assert.match(nativeSource, /await require\("premiere-motion-tracker-0\.1\.14\.uxpaddon"\)/);
   assert.match(nativeSource, /loadedAddon\.runSelfTest\(\)/);
   assert.match(nativeSource, /addon\.inspectMedia/);
   assert.match(nativeSource, /addon\.trackMedia/);
@@ -72,8 +72,8 @@ test("manifest v6 loads the platform Hybrid addon and exposes its startup diagno
 });
 
 test("native analysis visibly enters an in-progress state before tracking begins", () => {
-  assert.match(uiSource, /pmt-analysis-progress/);
   assert.match(uiSource, /Analyse OpenCV en cours/);
+  assert.match(uiSource, /Analyse en cours…/);
   assert.match(uiSource, /waitForPanelPaint\(\)/);
-  assert.match(styles, /@keyframes pmt-analysis-progress/);
+  assert.doesNotMatch(styles, /pmt-analysis-progress|@keyframes/);
 });

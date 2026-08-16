@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(PremiereMotionTrackerAddon VERSION 0.1.13 LANGUAGES CXX)
+project(PremiereMotionTrackerAddon VERSION 0.1.14 LANGUAGES CXX)
 
 # Enable the OpenCV media decoder only in builds configured with vcpkg.
 option(PMT_ENABLE_OPENCV "Build OpenCV media inspection support" OFF)

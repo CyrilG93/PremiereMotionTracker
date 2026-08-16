@@ -82,36 +82,6 @@ input {
   color: var(--pmt-danger);
 }
 
-/* Show that synchronous native tracking is running before the panel receives its samples. */
-.pmt-analysis-progress {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin: -4px 0 10px;
-  color: var(--pmt-muted);
-  font-size: 11px;
-}
-
-.pmt-analysis-progress-track {
-  height: 4px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: var(--pmt-border);
-}
-
-.pmt-analysis-progress-indicator {
-  width: 42%;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--pmt-accent);
-  animation: pmt-analysis-progress 1.1s ease-in-out infinite;
-}
-
-@keyframes pmt-analysis-progress {
-  0% { transform: translateX(-110%); }
-  100% { transform: translateX(270%); }
-}
-
 .pmt-card {
   display: flex;
   flex-direction: column;

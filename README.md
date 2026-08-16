@@ -22,7 +22,7 @@ Pour tester la capture :
 
 1. Sélectionnez un clip vidéo dans la timeline et cliquez sur `Capturer` pour la source.
 2. Placez les In/Out de la séquence puis cliquez sur `Lire les In/Out` pour charger l’image du point In.
-3. Cliquez dans l’image pour placer le point de tracking, puis sur `Analyser` pour calculer la trajectoire sur la plage visible du clip. Une bannière et une barre animée indiquent clairement que l’analyse est en cours.
+3. Cliquez dans l’image pour placer le point de tracking, puis sur `Analyser` pour calculer la trajectoire sur la plage visible du clip. Une bannière et le bouton d’analyse indiquent clairement que l’analyse est en cours.
 4. Consultez le nombre d’images incertaines signalé dans le diagnostic.
 5. Sélectionnez ensuite un ou plusieurs clips de destination dans la timeline.
 6. Cliquez sur `Tester Transform sur la sélection` pour ajouter un effet de test avec deux keyframes Position à chaque clip sélectionné.

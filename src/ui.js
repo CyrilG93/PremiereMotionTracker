@@ -8,10 +8,16 @@
     preview: null,
     referencePoint: null,
     tracking: null,
+    trackingPreview: null,
+    previewFrameIndex: 0,
+    previewPlaying: false,
+    previewBuildCount: 0,
+    previewBuildTotal: 0,
     busy: false,
     operation: "",
     log: ["Prototype prêt. Capturez d’abord le clip source."]
   };
+  let previewPlaybackTimer = null;
 
   // Escape dynamic Premiere labels before inserting them into the panel markup.
   function escapeHtml(value) {
@@ -27,6 +33,19 @@
   function addLog(message) {
     state.log.push(String(message));
     state.log = state.log.slice(-100);
+  }
+
+  // Stop playback and discard obsolete preview frames after a new source, range, or reference point.
+  function clearTrackingPreview() {
+    if (previewPlaybackTimer) {
+      clearTimeout(previewPlaybackTimer);
+      previewPlaybackTimer = null;
+    }
+    state.trackingPreview = null;
+    state.previewFrameIndex = 0;
+    state.previewPlaying = false;
+    state.previewBuildCount = 0;
+    state.previewBuildTotal = 0;
   }
 
   // Format one captured clip for compact display in a docked panel.
@@ -53,7 +72,7 @@
   // Intersect the visible sequence range with the source clip and convert it into source-media seconds.
   function getTrackingMediaRange() {
     if (!state.source || !state.range || !state.referencePoint) {
-      throw new Error("Capturez une source, lisez les In/Out et placez le point de tracking.");
+      throw new Error("Capturez et préparez une source, puis placez le point de tracking.");
     }
     if (state.source.reversed) {
       throw new Error("Le tracking de clip inversé n’est pas encore pris en charge.");
@@ -87,6 +106,9 @@
       // Keep the in-progress feedback limited to the existing stable UXP banner.
       return { tone: "warning", text: "Analyse OpenCV en cours… Ne fermez pas le panneau." };
     }
+    if (state.operation === "preview") {
+      return { tone: "warning", text: "Préparation de l’aperçu vidéo : " + state.previewBuildCount + " / " + state.previewBuildTotal + " images." };
+    }
     if (!state.source) {
       return { tone: "warning", text: "Sélectionnez puis capturez le clip à analyser." };
     }
@@ -112,12 +134,17 @@
     const canPrepare = Boolean(state.source && !state.busy);
     const canAnalyze = Boolean(canPrepare && state.media && state.range && state.preview && state.referencePoint);
     const canApplyTracking = Boolean(canPrepare && state.tracking && state.tracking.length >= 2 && state.range && state.range.sequenceId === state.source.sequenceId);
+    const canPlayPreview = Boolean(!state.busy && state.trackingPreview && state.trackingPreview.frames.length > 1);
     const analyzeLabel = state.operation === "analysis" ? "Analyse en cours…" : "Analyser";
-    const previewContent = state.preview
+    const playbackLabel = state.previewPlaying ? "Pause aperçu" : "Lire l’aperçu";
+    const playbackFrame = state.trackingPreview && state.trackingPreview.frames[state.previewFrameIndex];
+    const previewContent = playbackFrame
+      ? '<img class="pmt-preview-image" src="' + escapeHtml(playbackFrame.url) + '" alt="Aperçu animé du tracking"><div class="pmt-tracking-point" style="left:' + (Number(playbackFrame.x) * 100).toFixed(3) + '%;top:' + (Number(playbackFrame.y) * 100).toFixed(3) + '%"></div><div class="pmt-preview-status">Aperçu tracking · image ' + (state.previewFrameIndex + 1) + ' / ' + state.trackingPreview.frames.length + '</div>'
+      : state.preview
       ? '<img class="pmt-preview-image" src="' + escapeHtml(state.preview.url) + '" alt="Image de la séquence au point In">' + (state.referencePoint
         ? '<div class="pmt-tracking-point" style="left:' + (state.referencePoint.x * 100).toFixed(3) + '%;top:' + (state.referencePoint.y * 100).toFixed(3) + '%"></div>'
         : "")
-      : '<div class="pmt-preview-grid"></div><div class="pmt-preview-copy">L’image de la séquence au point In apparaîtra ici après lecture de la plage.</div>';
+      : '<div class="pmt-preview-grid"></div><div class="pmt-preview-copy">L’image de la séquence au point In apparaîtra ici après préparation.</div>';
     rootNode.innerHTML = [
       '<div class="pmt-shell">',
       '  <div class="pmt-header">',
@@ -129,16 +156,16 @@
       '    <h2 class="pmt-card-title">1. Source du tracking</h2>',
       '    <div class="pmt-slot">',
       '      <div class="pmt-slot-copy"><div class="pmt-label">Clip à analyser</div><div class="pmt-value">' + escapeHtml(clipLabel(state.source, "Aucun clip source")) + '</div></div>',
-      '      ' + buttonMarkup("pmt-capture-source", "Capturer", [], state.busy),
+      '      ' + buttonMarkup("pmt-capture-source", "Capturer et préparer", [], state.busy),
       '    </div>',
       state.source ? '    <div class="pmt-label">Vidéo : ' + escapeHtml(mediaLabel(state.media)) + '</div>' : '',
       '  </div>',
       '  <div class="pmt-card">',
       '    <h2 class="pmt-card-title">2. Prévisualisation</h2>',
-      '    <div class="pmt-preview" id="pmt-preview" data-ready="' + String(Boolean(state.preview)) + '">' + previewContent + '</div>',
+      '    <div class="pmt-preview" id="pmt-preview" data-ready="' + String(Boolean(state.preview && !playbackFrame)) + '">' + previewContent + '</div>',
       '    <div class="pmt-actions">',
-      '      ' + buttonMarkup("pmt-read-range", "Lire les In/Out", [], !canPrepare),
       '      ' + buttonMarkup("pmt-analyze", analyzeLabel, ["pmt-button-primary"], !canAnalyze),
+      '      ' + buttonMarkup("pmt-play-preview", playbackLabel, [], !canPlayPreview),
       '    </div>',
       '  </div>',
       '  <div class="pmt-card">',
@@ -166,19 +193,43 @@
     return new Promise((resolve) => setTimeout(resolve, 30));
   }
 
-  // Capture the source from the current timeline selection and refresh the panel.
-  async function captureSource(rootNode) {
+  // Read the sequence range and its In image as the mandatory preparation that follows source capture.
+  async function prepareSourceRange() {
+    state.range = await root.PMT_PREMIERE.getActiveRange();
+    state.tracking = null;
+    clearTrackingPreview();
+    addLog("Plage séquence : " + state.range.inPoint.seconds.toFixed(3) + " s → " + state.range.outPoint.seconds.toFixed(3) + " s");
+    try {
+      state.preview = await root.PMT_PREMIERE.exportPreviewFrame();
+      state.referencePoint = { x: 0.5, y: 0.5 };
+      addLog("Image du point In chargée : " + state.preview.fileName + " · " + state.preview.width + " × " + state.preview.height + ".");
+    } catch (previewError) {
+      state.preview = null;
+      state.referencePoint = null;
+      addLog("Erreur image : " + (previewError && previewError.message ? previewError.message : String(previewError)));
+    }
+    const session = root.PMT_SESSION.createSession({
+      sequenceId: state.range.sequenceId,
+      source: state.source,
+      range: { inTicks: state.range.inPoint.ticks, outTicks: state.range.outPoint.ticks },
+      referencePoint: { x: 0.5, y: 0.5 }
+    });
+    addLog("Session préparée : " + session.id);
+  }
+
+  // Capture the selected source, inspect it, and immediately prepare its sequence range in one action.
+  async function captureAndPrepare(rootNode) {
     state.busy = true;
     render(rootNode);
     try {
       const clip = await root.PMT_PREMIERE.captureSelectedClip();
       state.source = clip;
       state.media = null;
-      // A newly captured clip invalidates the previously prepared sequence range.
       state.range = null;
       state.preview = null;
       state.referencePoint = null;
       state.tracking = null;
+      clearTrackingPreview();
       addLog("Source capturée : " + clip.name);
       if (!clip.mediaPath) {
         addLog("Attention : Premiere n’a pas renvoyé de chemin média pour cette source.");
@@ -195,38 +246,7 @@
       if (![1, 100].includes(clip.speed) || clip.reversed) {
         addLog("Attention : le remappage temporel sera refusé dans la première V1.");
       }
-    } catch (error) {
-      addLog("Erreur : " + (error && error.message ? error.message : String(error)));
-    } finally {
-      state.busy = false;
-      render(rootNode);
-    }
-  }
-
-  // Read and display the active sequence range without mutating the Premiere project.
-  async function readRange(rootNode) {
-    state.busy = true;
-    render(rootNode);
-    try {
-      state.range = await root.PMT_PREMIERE.getActiveRange();
-      state.tracking = null;
-      addLog("Plage séquence : " + state.range.inPoint.seconds.toFixed(3) + " s → " + state.range.outPoint.seconds.toFixed(3) + " s");
-      try {
-        state.preview = await root.PMT_PREMIERE.exportPreviewFrame();
-        state.referencePoint = { x: 0.5, y: 0.5 };
-        addLog("Image du point In chargée : " + state.preview.fileName + " · " + state.preview.width + " × " + state.preview.height + ".");
-      } catch (previewError) {
-        state.preview = null;
-        state.referencePoint = null;
-        addLog("Erreur image : " + (previewError && previewError.message ? previewError.message : String(previewError)));
-      }
-      const session = root.PMT_SESSION.createSession({
-        sequenceId: state.range.sequenceId,
-        source: state.source,
-        range: { inTicks: state.range.inPoint.ticks, outTicks: state.range.outPoint.ticks },
-        referencePoint: { x: 0.5, y: 0.5 }
-      });
-      addLog("Session préparée : " + session.id);
+      await prepareSourceRange();
     } catch (error) {
       addLog("Erreur : " + (error && error.message ? error.message : String(error)));
     } finally {
@@ -250,14 +270,76 @@
       y: (Number(event.clientY) - bounds.top) / bounds.height
     });
     state.tracking = null;
+    clearTrackingPreview();
     addLog("Point de tracking : " + (state.referencePoint.x * 100).toFixed(1) + " %, " + (state.referencePoint.y * 100).toFixed(1) + " %.");
     render(rootNode);
+  }
+
+  // Export a bounded sequence-image review for the tracked samples before any target clip is modified.
+  async function buildTrackingPreview(rootNode) {
+    const previewSamples = root.PMT_TRAJECTORY.selectPreviewSamples(state.tracking, 180);
+    const frames = [];
+    state.operation = "preview";
+    state.previewBuildCount = 0;
+    state.previewBuildTotal = previewSamples.length;
+    render(rootNode);
+    for (let index = 0; index < previewSamples.length; index += 1) {
+      const sample = previewSamples[index];
+      const exported = await root.PMT_PREMIERE.exportTrackingPreviewFrame(Number(sample.seconds), index);
+      frames.push({
+        url: exported.url,
+        x: Number(sample.x),
+        y: Number(sample.y),
+        valid: Boolean(sample.valid),
+        seconds: Number(sample.seconds)
+      });
+      state.previewBuildCount = index + 1;
+      // Refresh periodically so a long sequence export never resembles a frozen panel.
+      if (state.previewBuildCount === state.previewBuildTotal || state.previewBuildCount % 12 === 0) {
+        render(rootNode);
+      }
+    }
+    state.trackingPreview = { frames, sourceFrameCount: state.tracking.length };
+    state.previewFrameIndex = 0;
+    state.previewPlaying = false;
+    addLog("Aperçu vidéo prêt : " + frames.length + " image(s) exportée(s) pour vérifier le tracking.");
+  }
+
+  // Schedule the next exported frame with a conservative UXP-friendly playback cadence.
+  function schedulePreviewFrame(rootNode) {
+    const frameRate = Math.min(24, Math.max(6, Number(state.media && state.media.framesPerSecond) || 12));
+    previewPlaybackTimer = setTimeout(() => {
+      if (!state.previewPlaying || !state.trackingPreview || !state.trackingPreview.frames.length) {
+        previewPlaybackTimer = null;
+        return;
+      }
+      state.previewFrameIndex = (state.previewFrameIndex + 1) % state.trackingPreview.frames.length;
+      render(rootNode);
+      schedulePreviewFrame(rootNode);
+    }, Math.round(1000 / frameRate));
+  }
+
+  // Toggle the image-sequence playback without changing the tracking data or Premiere project.
+  function toggleTrackingPreview(rootNode) {
+    if (!state.trackingPreview || state.trackingPreview.frames.length < 2) {
+      return;
+    }
+    state.previewPlaying = !state.previewPlaying;
+    if (!state.previewPlaying && previewPlaybackTimer) {
+      clearTimeout(previewPlaybackTimer);
+      previewPlaybackTimer = null;
+    }
+    render(rootNode);
+    if (state.previewPlaying) {
+      schedulePreviewFrame(rootNode);
+    }
   }
 
   // Run the native Lucas-Kanade tracker for the source-media interval visible in the active sequence range.
   async function analyzeTracking(rootNode) {
     state.busy = true;
     state.operation = "analysis";
+    clearTrackingPreview();
     addLog("Analyse OpenCV en cours…");
     render(rootNode);
     try {
@@ -268,6 +350,12 @@
       const invalidCount = state.tracking.filter((sample) => !sample.valid).length;
       addLog("Tracking OpenCV : " + state.tracking.length + " images de " + mediaRange.startSeconds.toFixed(3) + " s à " + mediaRange.endSeconds.toFixed(3) + " s.");
       addLog("Images incertaines : " + invalidCount + ".");
+      try {
+        await buildTrackingPreview(rootNode);
+      } catch (previewError) {
+        clearTrackingPreview();
+        addLog("Aperçu vidéo indisponible : " + (previewError && previewError.message ? previewError.message : String(previewError)));
+      }
     } catch (error) {
       state.tracking = null;
       addLog("Erreur tracking : " + (error && error.message ? error.message : String(error)));
@@ -370,13 +458,13 @@
 
   // Connect the freshly rendered controls to their Premiere diagnostics.
   function bindEvents(rootNode) {
-    bindButton(rootNode, "pmt-capture-source", () => captureSource(rootNode));
-    bindButton(rootNode, "pmt-read-range", () => readRange(rootNode));
+    bindButton(rootNode, "pmt-capture-source", () => captureAndPrepare(rootNode));
     bindButton(rootNode, "pmt-analyze", () => analyzeTracking(rootNode));
+    bindButton(rootNode, "pmt-play-preview", () => toggleTrackingPreview(rootNode));
     bindButton(rootNode, "pmt-apply-tracking", () => applyTracking(rootNode));
     bindButton(rootNode, "pmt-copy-log", () => copyDiagnostics(rootNode));
     const preview = rootNode.querySelector("#pmt-preview");
-    if (preview && state.preview) {
+    if (preview && state.preview && !state.trackingPreview) {
       preview.addEventListener("click", (event) => chooseReferencePoint(rootNode, event));
     }
   }

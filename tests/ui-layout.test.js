@@ -42,12 +42,24 @@ test("custom buttons avoid Premiere's mismatched native inner border", () => {
 
 test("the In point frame is exported and accepts a normalized tracking point", () => {
   assert.match(uiSource, /exportPreviewFrame\(\)/);
+  assert.match(uiSource, /Capturer et préparer/);
+  assert.doesNotMatch(uiSource, /pmt-read-range/);
   assert.match(uiSource, /pmt-preview-image/);
   assert.match(uiSource, /PMT_SESSION\.normalizePoint/);
   assert.match(premiereSource, /Exporter\.exportSequenceFrame\(/);
   assert.match(premiereSource, /nativeFileSystem\.readdir\(temporaryFolder\.nativePath\)/);
   assert.match(premiereSource, /setTimeout\(resolve, 100\)/);
   assert.doesNotMatch(styles, /\.pmt-preview\[data-ready="true"\]\s*\{[^}]*min-height:\s*0;/s);
+});
+
+test("analysed tracking exports a bounded animated preview before application", () => {
+  assert.match(uiSource, /buildTrackingPreview/);
+  assert.match(uiSource, /selectPreviewSamples\(state\.tracking, 180\)/);
+  assert.match(uiSource, /exportTrackingPreviewFrame/);
+  assert.match(uiSource, /Lire l’aperçu/);
+  assert.match(premiereSource, /exportTrackingPreviewFrame/);
+  assert.match(premiereSource, /TickTime\.createWithSeconds/);
+  assert.doesNotMatch(styles, /pmt-analysis-progress|@keyframes/);
 });
 
 test("Transform Position falls back to a direct value read for proxy variants", () => {
@@ -71,7 +83,7 @@ test("manifest v6 loads the platform Hybrid addon and exposes its startup diagno
   assert.equal(manifest.manifestVersion, 6);
   assert.equal(manifest.requiredPermissions.enableAddon, true);
   assert.equal(manifest.addon.name, "premiere-motion-tracker-" + manifest.version + ".uxpaddon");
-  assert.match(nativeSource, /await require\("premiere-motion-tracker-0\.2\.2\.uxpaddon"\)/);
+  assert.match(nativeSource, /await require\("premiere-motion-tracker-0\.2\.3\.uxpaddon"\)/);
   assert.match(nativeSource, /loadedAddon\.runSelfTest\(\)/);
   assert.match(nativeSource, /addon\.inspectMedia/);
   assert.match(nativeSource, /addon\.trackMedia/);

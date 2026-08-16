@@ -6,7 +6,7 @@ La première version visera un flux simple : sélectionner le clip à analyser, 
 
 ## État du projet
 
-Le projet est actuellement un prototype technique. Le panneau sait déjà capturer le clip source depuis la timeline, lire la plage In/Out, afficher l’image de séquence au point In et placer un point de tracking. Le module Hybrid Windows charge le cœur C++, exécute un autotest, lit les métadonnées vidéo avec OpenCV et Media Foundation, puis suit le point image par image avec Lucas-Kanade et un contrôle aller-retour. La trajectoire validée peut maintenant être appliquée à un ou plusieurs clips de destination : le plugin ajoute un effet Transform et crée une clé Position par image valide. La correction visuelle des dérives reste un prochain jalon ; les binaires Windows et macOS seront inclus dans le produit final.
+Le projet est actuellement un prototype technique. Le panneau sait déjà capturer le clip source depuis la timeline, lire la plage In/Out, afficher l’image de séquence au point In et placer un point de tracking. Le module Hybrid Windows charge le cœur C++, exécute un autotest, lit les métadonnées vidéo avec OpenCV et Media Foundation, puis suit le point image par image avec Lucas-Kanade et un contrôle aller-retour. Après analyse, un aperçu animé de la séquence avec le point tracké superposé permet de vérifier la trajectoire avant application. La trajectoire validée peut ensuite être appliquée à un ou plusieurs clips de destination : le plugin ajoute un effet Transform et crée une clé Position par image valide. La correction visuelle des dérives reste un prochain jalon ; les binaires Windows et macOS seront inclus dans le produit final.
 
 ## Tester le prototype
 
@@ -20,9 +20,9 @@ Dans UXP Developer Tool, ajoutez le dossier du projet, chargez le plugin, puis o
 
 Pour tester la capture :
 
-1. Sélectionnez un clip vidéo dans la timeline et cliquez sur `Capturer` pour la source.
-2. Placez les In/Out de la séquence puis cliquez sur `Lire les In/Out` pour charger l’image du point In.
-3. Cliquez dans l’image pour placer le point de tracking, puis sur `Analyser` pour calculer la trajectoire sur la plage visible du clip. Une bannière et le bouton d’analyse indiquent clairement que l’analyse est en cours.
+1. Placez les In/Out de la séquence, sélectionnez le clip vidéo dans la timeline puis cliquez sur `Capturer et préparer`.
+2. Cliquez dans l’image pour placer le point de tracking, puis sur `Analyser` pour calculer la trajectoire sur la plage visible du clip. Une bannière indique clairement que l’analyse puis la préparation de l’aperçu sont en cours.
+3. Cliquez sur `Lire l’aperçu` pour vérifier le point superposé sur la vidéo avant de modifier le projet.
 4. Consultez le nombre d’images incertaines signalé dans le diagnostic.
 5. Sélectionnez ensuite un ou plusieurs clips de destination dans la timeline.
 6. Cliquez sur `Appliquer la trajectoire` pour ajouter un effet Transform et une clé Position par image valide à chaque clip sélectionné.

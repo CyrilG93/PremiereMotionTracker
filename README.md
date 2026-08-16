@@ -25,7 +25,7 @@ Pour tester la capture :
 3. Placez les In/Out de la séquence puis cliquez sur `Lire les In/Out`.
 4. Sur deux clips différents, cliquez sur `Tester Transform` pour ajouter un effet de test avec deux keyframes Position au clip cible.
 
-Le test Transform modifie le projet Premiere et peut être retiré avec Annuler. Le bouton d’analyse reste volontairement désactivé jusqu’à l’intégration du moteur natif.
+Le test Transform modifie le projet Premiere. Dans ce prototype, utilisez Annuler jusqu’à la disparition des keyframes et de l’effet de test. Le bouton d’analyse reste volontairement désactivé jusqu’à l’intégration du moteur natif.
 
 ## Développement
 

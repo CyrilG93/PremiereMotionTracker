@@ -29,31 +29,6 @@ cv::Mat toGray(const cv::Mat& frame) {
 // Limit the first synchronous addon iteration so an accidental long range cannot freeze the panel indefinitely.
 constexpr std::int64_t maximumTrackedFrames = 3600;
 
-// Keep the review light while preserving enough pixels to visually validate the tracked point.
-cv::Size getPreviewSize(const cv::Size& sourceSize) {
-    const double scale = std::min({ 1.0, 640.0 / sourceSize.width, 360.0 / sourceSize.height });
-    const int width = std::max(2, static_cast<int>(std::lround(sourceSize.width * scale)) & ~1);
-    const int height = std::max(2, static_cast<int>(std::lround(sourceSize.height * scale)) & ~1);
-    return { width, height };
-}
-
-// Open an MP4 writer through the platform backend, preferring H.264 but retaining a compatible MPEG-4 fallback.
-cv::VideoWriter openPreviewWriter(const std::string& outputPath, double framesPerSecond, const cv::Size& frameSize, std::string& codec) {
-    const std::vector<std::pair<int, const char*>> candidates {
-        { cv::VideoWriter::fourcc('a', 'v', 'c', '1'), "avc1" },
-        { cv::VideoWriter::fourcc('H', '2', '6', '4'), "H264" },
-        { cv::VideoWriter::fourcc('m', 'p', '4', 'v'), "mp4v" }
-    };
-    for (const auto& candidate : candidates) {
-        cv::VideoWriter writer;
-        if (writer.open(outputPath, cv::CAP_ANY, candidate.first, framesPerSecond, frameSize, true)) {
-            codec = candidate.second;
-            return writer;
-        }
-    }
-    throw std::runtime_error("OpenCV ne peut pas encoder le proxy MP4 de prévisualisation.");
-}
-
 } // namespace
 
 MediaInspection inspectMedia(const std::string& mediaPath) {
@@ -176,58 +151,6 @@ std::vector<MediaTrackingSample> trackMedia(
         previousGray = std::move(currentGray);
     }
     return samples;
-}
-
-PreviewVideo createPreviewVideo(
-    const std::string& mediaPath,
-    double startSeconds,
-    double endSeconds,
-    const std::string& outputPath
-) {
-    if (outputPath.empty()) {
-        throw std::invalid_argument("Le chemin de sortie du proxy vidéo est vide.");
-    }
-    if (!std::isfinite(startSeconds) || !std::isfinite(endSeconds) || startSeconds < 0.0 || endSeconds <= startSeconds) {
-        throw std::invalid_argument("La plage média de prévisualisation est invalide.");
-    }
-    cv::VideoCapture capture(mediaPath, cv::CAP_ANY);
-    if (!capture.isOpened()) {
-        throw std::runtime_error("Impossible d’ouvrir le média source pour l’aperçu vidéo : " + mediaPath);
-    }
-    const double framesPerSecond = capture.get(cv::CAP_PROP_FPS);
-    if (!std::isfinite(framesPerSecond) || framesPerSecond <= 0.0) {
-        throw std::runtime_error("Le média ne fournit pas de cadence image exploitable pour l’aperçu vidéo.");
-    }
-    const std::int64_t firstFrame = std::max<std::int64_t>(0, static_cast<std::int64_t>(std::floor(startSeconds * framesPerSecond)));
-    const std::int64_t lastFrame = static_cast<std::int64_t>(std::ceil(endSeconds * framesPerSecond));
-    if (lastFrame - firstFrame + 1 > maximumTrackedFrames) {
-        throw std::runtime_error("La plage dépasse 3600 images ; réduisez les In/Out avant de préparer l’aperçu vidéo.");
-    }
-    if (!capture.set(cv::CAP_PROP_POS_FRAMES, static_cast<double>(firstFrame))) {
-        throw std::runtime_error("OpenCV ne peut pas atteindre le début de la plage pour l’aperçu vidéo.");
-    }
-    cv::Mat decodedFrame;
-    if (!capture.read(decodedFrame) || decodedFrame.empty()) {
-        throw std::runtime_error("OpenCV ne peut pas lire la première image de l’aperçu vidéo.");
-    }
-    const cv::Size previewSize = getPreviewSize(decodedFrame.size());
-    std::string codec;
-    cv::VideoWriter writer = openPreviewWriter(outputPath, framesPerSecond, previewSize, codec);
-    std::int64_t frameCount = 0;
-    for (std::int64_t frame = firstFrame; frame <= lastFrame; frame += 1) {
-        if (frame != firstFrame && (!capture.read(decodedFrame) || decodedFrame.empty())) {
-            break;
-        }
-        cv::Mat previewFrame;
-        cv::resize(decodedFrame, previewFrame, previewSize, 0.0, 0.0, cv::INTER_AREA);
-        writer.write(previewFrame);
-        frameCount += 1;
-    }
-    writer.release();
-    if (frameCount < 2) {
-        throw std::runtime_error("Le proxy vidéo ne contient pas assez d’images pour être lu.");
-    }
-    return { outputPath, codec, previewSize.width, previewSize.height, frameCount, framesPerSecond, static_cast<double>(frameCount) / framesPerSecond };
 }
 
 } // namespace pmt

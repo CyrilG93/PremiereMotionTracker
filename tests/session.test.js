@@ -90,10 +90,10 @@ test("computeTargetPositionScale preserves Graphics Layers using the sequence ca
   assert.deepEqual(scale, { x: 1, y: 1 });
 });
 
-test("interpolateTrackingPoint follows native playback between tracked frames", () => {
-  const point = trajectoryApi.interpolateTrackingPoint([
-    { seconds: 4, x: 0.25, y: 0.5, valid: true },
-    { seconds: 5, x: 0.5, y: 0.25, valid: true }
-  ], 4.5);
-  assert.deepEqual(point, { seconds: 4.5, x: 0.375, y: 0.375 });
+test("selectPreviewSamples bounds a long cached review while preserving both ends", () => {
+  const samples = Array.from({ length: 10 }, (_, index) => ({ frame: index }));
+  const preview = trajectoryApi.selectPreviewSamples(samples, 4);
+  assert.equal(preview.length, 4);
+  assert.equal(preview[0].frame, 0);
+  assert.equal(preview[preview.length - 1].frame, 9);
 });

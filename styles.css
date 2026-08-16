@@ -184,16 +184,10 @@ input {
   cursor: crosshair;
 }
 
-.pmt-preview-image,
-.pmt-preview-video {
+.pmt-preview-image {
   display: block;
   width: 100%;
   height: auto;
-}
-
-.pmt-preview-video {
-  max-height: 360px;
-  background: #000000;
 }
 
 .pmt-tracking-point {
@@ -247,29 +241,6 @@ input {
 
 .pmt-actions .pmt-button {
   flex: 1 1 0;
-}
-
-.pmt-preview-timeline {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-}
-
-.pmt-preview-time {
-  flex: 0 0 auto;
-  color: var(--pmt-muted);
-  font-family: Consolas, Monaco, monospace;
-  font-size: 10px;
-}
-
-.pmt-preview-scrubber {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.pmt-preview-scrubber sp-slider {
-  width: 100%;
 }
 
 .pmt-button-full {

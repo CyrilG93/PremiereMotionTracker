@@ -94,43 +94,19 @@
     };
   }
 
-  // Interpolate the verified point at a media timestamp so the video overlay follows native playback.
-  function interpolateTrackingPoint(samples, seconds) {
-    const requestedSeconds = Number(seconds);
-    if (!Number.isFinite(requestedSeconds)) {
-      return null;
+  // Keep the review bounded on unusually long ranges while retaining its first and last tracked frames.
+  function selectPreviewSamples(samples, maximumFrames) {
+    const source = Array.isArray(samples) ? samples.slice() : [];
+    const limit = Math.max(2, Math.floor(Number(maximumFrames) || 180));
+    if (source.length <= limit) {
+      return source;
     }
-    const validSamples = (Array.isArray(samples) ? samples : []).filter((sample) => {
-      return sample && sample.valid !== false
-        && Number.isFinite(Number(sample.seconds))
-        && Number.isFinite(Number(sample.x))
-        && Number.isFinite(Number(sample.y));
-    });
-    if (!validSamples.length) {
-      return null;
+    const selected = [];
+    for (let index = 0; index < limit; index += 1) {
+      const sourceIndex = Math.round(index * (source.length - 1) / (limit - 1));
+      selected.push(source[sourceIndex]);
     }
-    let previous = validSamples[0];
-    let next = validSamples[validSamples.length - 1];
-    for (let index = 0; index < validSamples.length; index += 1) {
-      const sample = validSamples[index];
-      if (Number(sample.seconds) <= requestedSeconds) {
-        previous = sample;
-      }
-      if (Number(sample.seconds) >= requestedSeconds) {
-        next = sample;
-        break;
-      }
-    }
-    const previousSeconds = Number(previous.seconds);
-    const nextSeconds = Number(next.seconds);
-    const ratio = nextSeconds > previousSeconds
-      ? Math.min(1, Math.max(0, (requestedSeconds - previousSeconds) / (nextSeconds - previousSeconds)))
-      : 0;
-    return {
-      x: Number(previous.x) + (Number(next.x) - Number(previous.x)) * ratio,
-      y: Number(previous.y) + (Number(next.y) - Number(previous.y)) * ratio,
-      seconds: requestedSeconds
-    };
+    return selected;
   }
 
   return {
@@ -138,6 +114,6 @@
     findUncertainSamples,
     buildPositionKeyframes,
     computeTargetPositionScale,
-    interpolateTrackingPoint
+    selectPreviewSamples
   };
 }));

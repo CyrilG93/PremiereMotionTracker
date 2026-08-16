@@ -9,12 +9,17 @@
     referencePoint: null,
     tracking: null,
     trackingPreview: null,
+    previewFrameIndex: 0,
     previewSeconds: 0,
     previewPlaying: false,
+    previewImageCache: [],
+    previewBuildCount: 0,
+    previewBuildTotal: 0,
     busy: false,
     operation: "",
     log: ["Prototype prêt. Capturez d’abord le clip source."]
   };
+  let previewPlaybackTimer = null;
 
   // Escape dynamic Premiere labels before inserting them into the panel markup.
   function escapeHtml(value) {
@@ -32,11 +37,19 @@
     state.log = state.log.slice(-100);
   }
 
-  // Discard an obsolete media preview after a new source, range, or reference point.
+  // Stop playback and discard an obsolete frame preview after a new source, range, or reference point.
   function clearTrackingPreview() {
+    if (previewPlaybackTimer) {
+      clearTimeout(previewPlaybackTimer);
+      previewPlaybackTimer = null;
+    }
     state.trackingPreview = null;
+    state.previewFrameIndex = 0;
     state.previewSeconds = 0;
     state.previewPlaying = false;
+    state.previewImageCache = [];
+    state.previewBuildCount = 0;
+    state.previewBuildTotal = 0;
   }
 
   // Format one captured clip for compact display in a docked panel.
@@ -98,7 +111,7 @@
       return { tone: "warning", text: "Analyse OpenCV en cours… Ne fermez pas le panneau." };
     }
     if (state.operation === "preview") {
-      return { tone: "warning", text: "Préparation du proxy vidéo de prévisualisation… Ne fermez pas le panneau." };
+      return { tone: "warning", text: "Préparation de l’aperçu : " + state.previewBuildCount + " / " + state.previewBuildTotal + " images." };
     }
     if (!state.source) {
       return { tone: "warning", text: "Sélectionnez puis capturez le clip à analyser." };
@@ -125,15 +138,13 @@
     const canPrepare = Boolean(state.source && !state.busy);
     const canAnalyze = Boolean(canPrepare && state.media && state.range && state.preview && state.referencePoint);
     const canApplyTracking = Boolean(canPrepare && state.tracking && state.tracking.length >= 2 && state.range && state.range.sequenceId === state.source.sequenceId);
-    const canPlayPreview = Boolean(!state.busy && state.trackingPreview);
+    const canPlayPreview = Boolean(!state.busy && state.trackingPreview && state.trackingPreview.frames.length > 1);
     const analyzeLabel = state.operation === "analysis" ? "Analyse en cours…" : "Analyser";
     const playbackLabel = state.previewPlaying ? "Pause" : "Lire";
-    const videoPreview = state.trackingPreview;
-    const videoPoint = videoPreview ? root.PMT_TRAJECTORY.interpolateTrackingPoint(state.tracking, Number(videoPreview.startSeconds) + state.previewSeconds) : null;
-    const previewContent = videoPreview
-      ? '<video class="pmt-preview-video" id="pmt-tracking-video" src="' + escapeHtml(videoPreview.url) + '" muted playsinline preload="metadata"></video>' + (videoPoint
-        ? '<div class="pmt-tracking-point" id="pmt-preview-point" style="left:' + (Number(videoPoint.x) * 100).toFixed(3) + '%;top:' + (Number(videoPoint.y) * 100).toFixed(3) + '%"></div>'
-        : '') + '<div class="pmt-preview-status" id="pmt-preview-status">Proxy vidéo · ' + escapeHtml(formatPreviewTime(state.previewSeconds)) + ' / ' + escapeHtml(formatPreviewTime(videoPreview.durationSeconds)) + '</div>'
+    const imagePreview = state.trackingPreview;
+    const playbackFrame = imagePreview && imagePreview.frames[state.previewFrameIndex];
+    const previewContent = playbackFrame
+      ? '<img class="pmt-preview-image" id="pmt-tracking-image" src="' + escapeHtml(playbackFrame.url) + '" alt="Aperçu du tracking"><div class="pmt-tracking-point" id="pmt-preview-point" style="left:' + (Number(playbackFrame.x) * 100).toFixed(3) + '%;top:' + (Number(playbackFrame.y) * 100).toFixed(3) + '%"></div><div class="pmt-preview-status" id="pmt-preview-status">Aperçu tracking · image ' + (state.previewFrameIndex + 1) + ' / ' + imagePreview.frames.length + '</div>'
       : state.preview
       ? '<img class="pmt-preview-image" src="' + escapeHtml(state.preview.url) + '" alt="Image de la séquence au point In">' + (state.referencePoint
         ? '<div class="pmt-tracking-point" style="left:' + (state.referencePoint.x * 100).toFixed(3) + '%;top:' + (state.referencePoint.y * 100).toFixed(3) + '%"></div>'
@@ -156,15 +167,14 @@
       '  </div>',
       '  <div class="pmt-card">',
       '    <h2 class="pmt-card-title">2. Prévisualisation</h2>',
-      '    <div class="pmt-preview" id="pmt-preview" data-ready="' + String(Boolean(state.preview && !videoPreview)) + '">' + previewContent + '</div>',
+      '    <div class="pmt-preview" id="pmt-preview" data-ready="' + String(Boolean(state.preview && !playbackFrame)) + '">' + previewContent + '</div>',
       '    <div class="pmt-actions">',
       '      ' + buttonMarkup("pmt-analyze", analyzeLabel, ["pmt-button-primary"], !canAnalyze),
       '      ' + buttonMarkup("pmt-play-preview", playbackLabel, [], !canPlayPreview),
-      videoPreview ? '      ' + buttonMarkup("pmt-preview-reset", "Début", [], !canPlayPreview) : '',
-      videoPreview && !hasSpectrumSlider() ? '      ' + buttonMarkup("pmt-preview-previous", "− image", [], !canPlayPreview) : '',
-      videoPreview && !hasSpectrumSlider() ? '      ' + buttonMarkup("pmt-preview-next", "+ image", [], !canPlayPreview) : '',
+      imagePreview ? '      ' + buttonMarkup("pmt-preview-reset", "Début", [], !canPlayPreview) : '',
+      imagePreview ? '      ' + buttonMarkup("pmt-preview-previous", "− image", [], !canPlayPreview) : '',
+      imagePreview ? '      ' + buttonMarkup("pmt-preview-next", "+ image", [], !canPlayPreview) : '',
       '    </div>',
-      videoPreview ? '    <div class="pmt-preview-timeline"><span class="pmt-preview-time" id="pmt-preview-time">' + escapeHtml(formatPreviewTime(state.previewSeconds)) + '</span><div class="pmt-preview-scrubber" id="pmt-preview-scrubber"></div><span class="pmt-preview-time">' + escapeHtml(formatPreviewTime(videoPreview.durationSeconds)) + '</span></div>' : '',
       '  </div>',
       '  <div class="pmt-card">',
       '    <h2 class="pmt-card-title">3. Application</h2>',
@@ -191,68 +201,17 @@
     return new Promise((resolve) => setTimeout(resolve, 30));
   }
 
-  // Prefer Spectrum's native slider because hand-drawn range controls render unreliably in Premiere UXP.
-  function hasSpectrumSlider() {
-    return Boolean(root.customElements && root.customElements.get && root.customElements.get("sp-slider"));
+  // Repeat one deferred render after host work because Premiere UXP can miss the first paint after an awaited export.
+  function refreshAfterHostWork(rootNode) {
+    render(rootNode);
+    setTimeout(() => {
+      if (!state.previewPlaying) {
+        render(rootNode);
+      }
+    }, 60);
   }
 
-  // Format a media-relative timestamp so the review controls remain compact in a docked panel.
-  function formatPreviewTime(seconds) {
-    const safeSeconds = Math.max(0, Number(seconds) || 0);
-    const minutes = Math.floor(safeSeconds / 60);
-    const remainingSeconds = safeSeconds - minutes * 60;
-    return minutes + ":" + remainingSeconds.toFixed(2).padStart(5, "0");
-  }
-
-  // Return the current preview duration while protecting video controls from invalid host timestamps.
-  function getPreviewDuration() {
-    return Math.max(0, Number(state.trackingPreview && state.trackingPreview.durationSeconds) || 0);
-  }
-
-  // Move the video overlay, its time label, and the Spectrum scrubber without rebuilding the video element.
-  function updateTrackingVideoOverlay(rootNode, relativeSeconds) {
-    if (!state.trackingPreview) {
-      return;
-    }
-    const duration = getPreviewDuration();
-    const safeSeconds = Math.min(duration, Math.max(0, Number(relativeSeconds) || 0));
-    const point = root.PMT_TRAJECTORY.interpolateTrackingPoint(state.tracking, Number(state.trackingPreview.startSeconds) + safeSeconds);
-    state.previewSeconds = safeSeconds;
-    const pointNode = rootNode.querySelector("#pmt-preview-point");
-    if (pointNode && point) {
-      pointNode.style.left = (Number(point.x) * 100).toFixed(3) + "%";
-      pointNode.style.top = (Number(point.y) * 100).toFixed(3) + "%";
-    }
-    const statusNode = rootNode.querySelector("#pmt-preview-status");
-    if (statusNode) {
-      statusNode.textContent = "Proxy vidéo · " + formatPreviewTime(safeSeconds) + " / " + formatPreviewTime(duration);
-    }
-    const timeNode = rootNode.querySelector("#pmt-preview-time");
-    if (timeNode) {
-      timeNode.textContent = formatPreviewTime(safeSeconds);
-    }
-    const slider = rootNode.querySelector("#pmt-preview-scrubber sp-slider");
-    if (slider) {
-      slider.value = safeSeconds;
-    }
-  }
-
-  // Seek only inside the analysed media interval, optionally pausing first for precise inspection.
-  function seekTrackingVideo(rootNode, relativeSeconds, pauseFirst) {
-    const video = rootNode.querySelector("#pmt-tracking-video");
-    if (!video || !state.trackingPreview) {
-      return;
-    }
-    const duration = getPreviewDuration();
-    const nextSeconds = Math.min(duration, Math.max(0, Number(relativeSeconds) || 0));
-    if (pauseFirst && typeof video.pause === "function") {
-      video.pause();
-    }
-    video.currentTime = nextSeconds;
-    updateTrackingVideoOverlay(rootNode, video.currentTime);
-  }
-
-  // Reflect native video play and pause state on the custom UXP-friendly control without re-rendering the player.
+  // Reflect playback state on the custom UXP-friendly control without replacing its cached image.
   function updatePlaybackButton(rootNode, playing) {
     state.previewPlaying = Boolean(playing);
     const button = rootNode.querySelector("#pmt-play-preview");
@@ -261,43 +220,52 @@
     }
   }
 
-  // Attach native video events once so time updates never replace the playback element during a review.
-  function bindTrackingVideo(rootNode) {
-    const video = rootNode.querySelector("#pmt-tracking-video");
-    if (!video || !state.trackingPreview) {
+  // Switch only the cached image and overlay so the UI does not rebuild its complete DOM on every frame.
+  function showTrackingPreviewFrame(rootNode, frameIndex) {
+    const frames = state.trackingPreview && state.trackingPreview.frames;
+    if (!frames || !frames.length) {
       return;
     }
-    const preview = state.trackingPreview;
-    const frameRate = Math.max(1, Number(state.media && state.media.framesPerSecond) || 24);
-    const endTolerance = 0.5 / frameRate;
-    const initializePosition = () => seekTrackingVideo(rootNode, state.previewSeconds, false);
-    video.addEventListener("loadedmetadata", initializePosition);
-    if (Number(video.duration) > 0) {
-      initializePosition();
+    state.previewFrameIndex = Math.min(frames.length - 1, Math.max(0, Math.round(Number(frameIndex) || 0)));
+    const frame = frames[state.previewFrameIndex];
+    const image = rootNode.querySelector("#pmt-tracking-image");
+    if (image) {
+      image.src = frame.url;
     }
-    video.addEventListener("play", () => updatePlaybackButton(rootNode, true));
-    video.addEventListener("pause", () => updatePlaybackButton(rootNode, false));
-    video.addEventListener("timeupdate", () => {
-      if (Number(video.currentTime) >= Number(preview.durationSeconds) - endTolerance) {
-        video.pause();
-        video.currentTime = Number(preview.durationSeconds);
+    const point = rootNode.querySelector("#pmt-preview-point");
+    if (point) {
+      point.style.left = (Number(frame.x) * 100).toFixed(3) + "%";
+      point.style.top = (Number(frame.y) * 100).toFixed(3) + "%";
+    }
+    const status = rootNode.querySelector("#pmt-preview-status");
+    if (status) {
+      status.textContent = "Aperçu tracking · image " + (state.previewFrameIndex + 1) + " / " + frames.length;
+    }
+  }
+
+  // Warm UXP's image cache while the user reviews diagnostics, without delaying availability of the controls.
+  function warmTrackingPreviewFrames(frames) {
+    if (typeof Image !== "function") {
+      return;
+    }
+    state.previewImageCache = (frames || []).map((frame) => {
+      const image = new Image();
+      image.src = frame.url;
+      return image;
+    });
+  }
+
+  // Schedule direct image updates at the clip cadence; pause clears this exact timer before another frame is queued.
+  function scheduleTrackingPreviewFrame(rootNode) {
+    const frameRate = Math.min(24, Math.max(6, Number(state.media && state.media.framesPerSecond) || 12));
+    previewPlaybackTimer = setTimeout(() => {
+      if (!state.previewPlaying || !state.trackingPreview || !state.trackingPreview.frames.length) {
+        previewPlaybackTimer = null;
+        return;
       }
-      updateTrackingVideoOverlay(rootNode, video.currentTime);
-    });
-    video.addEventListener("error", () => {
-      addLog("Aperçu vidéo indisponible : UXP ne peut pas lire ce média source dans le panneau.");
-    });
-    const scrubberContainer = rootNode.querySelector("#pmt-preview-scrubber");
-    if (scrubberContainer && hasSpectrumSlider()) {
-      const slider = root.document.createElement("sp-slider");
-      slider.setAttribute("min", "0");
-      slider.setAttribute("max", String(getPreviewDuration()));
-      slider.setAttribute("step", String(1 / frameRate));
-      slider.setAttribute("value", String(state.previewSeconds));
-      slider.value = state.previewSeconds;
-      slider.addEventListener("input", () => seekTrackingVideo(rootNode, Number(slider.value), true));
-      scrubberContainer.appendChild(slider);
-    }
+      showTrackingPreviewFrame(rootNode, (state.previewFrameIndex + 1) % state.trackingPreview.frames.length);
+      scheduleTrackingPreviewFrame(rootNode);
+    }, Math.round(1000 / frameRate));
   }
 
   // Read the sequence range and its In image as the mandatory preparation that follows source capture.
@@ -358,7 +326,7 @@
       addLog("Erreur : " + (error && error.message ? error.message : String(error)));
     } finally {
       state.busy = false;
-      render(rootNode);
+      refreshAfterHostWork(rootNode);
     }
   }
 
@@ -382,44 +350,52 @@
     render(rootNode);
   }
 
-  // Encode a plugin-local MP4 review so UXP can play tracking without relying on the external source path.
-  async function buildTrackingPreview(rootNode, mediaRange) {
-    const startSeconds = Number(mediaRange && mediaRange.startSeconds);
-    const endSeconds = Number(mediaRange && mediaRange.endSeconds);
-    if (!Number.isFinite(startSeconds) || !Number.isFinite(endSeconds) || endSeconds <= startSeconds) {
-      throw new Error("La plage média de l’aperçu vidéo est invalide.");
-    }
+  // Export the tracked sequence frames once, then reuse those cached images during all playback and review actions.
+  async function buildTrackingPreview(rootNode) {
+    const previewSamples = root.PMT_TRAJECTORY.selectPreviewSamples(state.tracking, 180);
+    const frames = [];
     state.operation = "preview";
+    state.previewBuildCount = 0;
+    state.previewBuildTotal = previewSamples.length;
     render(rootNode);
     await waitForPanelPaint();
-    const previewVideo = await root.PMT_PREMIERE.exportTrackingPreviewVideo(state.source && state.source.mediaPath, startSeconds, endSeconds);
-    state.trackingPreview = {
-      url: previewVideo.url,
-      startSeconds,
-      endSeconds,
-      durationSeconds: Number(previewVideo.durationSeconds) || endSeconds - startSeconds,
-      codec: previewVideo.codec,
-      sourceFrameCount: state.tracking.length
-    };
+    for (let index = 0; index < previewSamples.length; index += 1) {
+      const sample = previewSamples[index];
+      const exported = await root.PMT_PREMIERE.exportTrackingPreviewFrame(Number(sample.seconds), index);
+      frames.push({
+        url: exported.url,
+        x: Number(sample.x),
+        y: Number(sample.y),
+        valid: Boolean(sample.valid),
+        seconds: Number(sample.seconds)
+      });
+      state.previewBuildCount = index + 1;
+      // Refresh periodically so the longer frame export never looks like a frozen panel.
+      if (state.previewBuildCount === state.previewBuildTotal || state.previewBuildCount % 12 === 0) {
+        render(rootNode);
+      }
+    }
+    state.trackingPreview = { frames, sourceFrameCount: state.tracking.length };
+    state.previewFrameIndex = 0;
     state.previewSeconds = 0;
     state.previewPlaying = false;
-    addLog("Aperçu vidéo prêt : " + previewVideo.fileName + " · " + previewVideo.width + " × " + previewVideo.height + " · " + previewVideo.codec + ".");
+    warmTrackingPreviewFrames(frames);
+    addLog("Aperçu prêt : " + frames.length + " image(s) de séquence mises en cache pour vérifier le tracking.");
   }
 
-  // Toggle the native media player, which gives UXP a reliable pause instead of a replacement image timer.
+  // Toggle cached-image playback without rebuilding the whole panel, so Pause takes effect immediately.
   function toggleTrackingPreview(rootNode) {
-    const video = rootNode.querySelector("#pmt-tracking-video");
-    if (!video || !state.trackingPreview) {
+    if (!state.trackingPreview || state.trackingPreview.frames.length < 2) {
       return;
     }
-    const frameRate = Math.max(1, Number(state.media && state.media.framesPerSecond) || 24);
-    if (video.paused || Number(video.currentTime) >= getPreviewDuration() - 0.5 / frameRate) {
-      seekTrackingVideo(rootNode, state.previewSeconds >= getPreviewDuration() - 0.5 / frameRate ? 0 : state.previewSeconds, false);
-      Promise.resolve(video.play()).catch(() => {
-        addLog("Aperçu vidéo indisponible : UXP a refusé de lancer ce média source.");
-      });
-    } else {
-      video.pause();
+    state.previewPlaying = !state.previewPlaying;
+    if (!state.previewPlaying && previewPlaybackTimer) {
+      clearTimeout(previewPlaybackTimer);
+      previewPlaybackTimer = null;
+    }
+    updatePlaybackButton(rootNode, state.previewPlaying);
+    if (state.previewPlaying) {
+      scheduleTrackingPreviewFrame(rootNode);
     }
   }
 
@@ -439,10 +415,10 @@
       addLog("Tracking OpenCV : " + state.tracking.length + " images de " + mediaRange.startSeconds.toFixed(3) + " s à " + mediaRange.endSeconds.toFixed(3) + " s.");
       addLog("Images incertaines : " + invalidCount + ".");
       try {
-        await buildTrackingPreview(rootNode, mediaRange);
+        await buildTrackingPreview(rootNode);
       } catch (previewError) {
         clearTrackingPreview();
-        addLog("Aperçu vidéo indisponible : " + (previewError && previewError.message ? previewError.message : String(previewError)));
+        addLog("Aperçu indisponible : " + (previewError && previewError.message ? previewError.message : String(previewError)));
       }
     } catch (error) {
       state.tracking = null;
@@ -450,7 +426,7 @@
     } finally {
       state.busy = false;
       state.operation = "";
-      render(rootNode);
+      refreshAfterHostWork(rootNode);
     }
   }
 
@@ -549,18 +525,35 @@
     bindButton(rootNode, "pmt-capture-source", () => captureAndPrepare(rootNode));
     bindButton(rootNode, "pmt-analyze", () => analyzeTracking(rootNode));
     bindButton(rootNode, "pmt-play-preview", () => toggleTrackingPreview(rootNode));
-    bindButton(rootNode, "pmt-preview-reset", () => seekTrackingVideo(rootNode, 0, true));
+    bindButton(rootNode, "pmt-preview-reset", () => {
+      state.previewPlaying = false;
+      if (previewPlaybackTimer) {
+        clearTimeout(previewPlaybackTimer);
+        previewPlaybackTimer = null;
+      }
+      updatePlaybackButton(rootNode, false);
+      showTrackingPreviewFrame(rootNode, 0);
+    });
     bindButton(rootNode, "pmt-preview-previous", () => {
-      const frameRate = Math.max(1, Number(state.media && state.media.framesPerSecond) || 24);
-      seekTrackingVideo(rootNode, state.previewSeconds - 1 / frameRate, true);
+      state.previewPlaying = false;
+      if (previewPlaybackTimer) {
+        clearTimeout(previewPlaybackTimer);
+        previewPlaybackTimer = null;
+      }
+      updatePlaybackButton(rootNode, false);
+      showTrackingPreviewFrame(rootNode, state.previewFrameIndex - 1);
     });
     bindButton(rootNode, "pmt-preview-next", () => {
-      const frameRate = Math.max(1, Number(state.media && state.media.framesPerSecond) || 24);
-      seekTrackingVideo(rootNode, state.previewSeconds + 1 / frameRate, true);
+      state.previewPlaying = false;
+      if (previewPlaybackTimer) {
+        clearTimeout(previewPlaybackTimer);
+        previewPlaybackTimer = null;
+      }
+      updatePlaybackButton(rootNode, false);
+      showTrackingPreviewFrame(rootNode, state.previewFrameIndex + 1);
     });
     bindButton(rootNode, "pmt-apply-tracking", () => applyTracking(rootNode));
     bindButton(rootNode, "pmt-copy-log", () => copyDiagnostics(rootNode));
-    bindTrackingVideo(rootNode);
     const preview = rootNode.querySelector("#pmt-preview");
     if (preview && state.preview && !state.trackingPreview) {
       preview.addEventListener("click", (event) => chooseReferencePoint(rootNode, event));

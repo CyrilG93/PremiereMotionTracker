@@ -52,16 +52,16 @@ test("the In point frame is exported and accepts a normalized tracking point", (
   assert.doesNotMatch(styles, /\.pmt-preview\[data-ready="true"\]\s*\{[^}]*min-height:\s*0;/s);
 });
 
-test("analysed tracking plays the source video with native temporal controls before application", () => {
+test("analysed tracking caches sequence images with stable playback controls before application", () => {
   assert.match(uiSource, /buildTrackingPreview/);
-  assert.match(uiSource, /pmt-tracking-video/);
-  assert.match(uiSource, /pmt-preview-scrubber/);
-  assert.match(uiSource, /seekTrackingVideo/);
-  assert.match(uiSource, /video\.pause\(\)/);
-  assert.match(uiSource, /interpolateTrackingPoint/);
-  assert.match(premiereSource, /exportTrackingPreviewVideo/);
-  assert.match(premiereSource, /createPreviewVideo/);
-  assert.doesNotMatch(uiSource, /exportTrackingPreviewFrame/);
+  assert.match(uiSource, /selectPreviewSamples\(state\.tracking, 180\)/);
+  assert.match(uiSource, /pmt-tracking-image/);
+  assert.match(uiSource, /showTrackingPreviewFrame/);
+  assert.match(uiSource, /warmTrackingPreviewFrames/);
+  assert.match(uiSource, /clearTimeout\(previewPlaybackTimer\)/);
+  assert.match(premiereSource, /exportTrackingPreviewFrame/);
+  assert.doesNotMatch(uiSource, /<video/);
+  assert.doesNotMatch(nativeSource, /createPreviewVideo/);
   assert.doesNotMatch(styles, /pmt-analysis-progress|@keyframes/);
 });
 
@@ -87,11 +87,10 @@ test("manifest v6 loads the platform Hybrid addon and exposes its startup diagno
   assert.equal(manifest.requiredPermissions.enableAddon, true);
   assert.equal(manifest.requiredPermissions.localFileSystem, "plugin");
   assert.equal(manifest.addon.name, "premiere-motion-tracker-" + manifest.version + ".uxpaddon");
-  assert.match(nativeSource, /await require\("premiere-motion-tracker-0\.2\.5\.uxpaddon"\)/);
+  assert.match(nativeSource, /await require\("premiere-motion-tracker-0\.2\.6\.uxpaddon"\)/);
   assert.match(nativeSource, /loadedAddon\.runSelfTest\(\)/);
   assert.match(nativeSource, /addon\.inspectMedia/);
   assert.match(nativeSource, /addon\.trackMedia/);
-  assert.match(nativeSource, /addon\.createPreviewVideo/);
   assert.match(uiSource, /PMT_NATIVE\.initialize\(\)/);
   assert.match(uiSource, /Moteur natif chargé/);
 });

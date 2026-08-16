@@ -27,17 +27,6 @@ struct MediaTrackingSample {
     bool valid = false;
 };
 
-// Describe the short plugin-local video generated to review one finished tracking pass.
-struct PreviewVideo {
-    std::string path;
-    std::string codec;
-    int width = 0;
-    int height = 0;
-    std::int64_t frameCount = 0;
-    double framesPerSecond = 0.0;
-    double durationSeconds = 0.0;
-};
-
 // Open a local video through OpenCV and return durable metadata for the tracking session.
 MediaInspection inspectMedia(const std::string& mediaPath);
 
@@ -48,14 +37,6 @@ std::vector<MediaTrackingSample> trackMedia(
     double normalizedY,
     double startSeconds,
     double endSeconds
-);
-
-// Encode the bounded source range as a small MP4 inside plugin-temp so UXP can play it without file-system access.
-PreviewVideo createPreviewVideo(
-    const std::string& mediaPath,
-    double startSeconds,
-    double endSeconds,
-    const std::string& outputPath
 );
 
 } // namespace pmt

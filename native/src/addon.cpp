@@ -18,7 +18,7 @@ addon_value createString(addon_env env, const std::string& value) {
 addon_value getVersion(addon_env env, addon_callback_info info) {
     try {
         (void)info;
-        return createString(env, "0.1.8-native");
+        return createString(env, PMT_ADDON_VERSION);
     } catch (...) {
         return CreateErrorFromException(env);
     }

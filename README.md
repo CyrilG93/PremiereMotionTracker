@@ -16,7 +16,7 @@ Prérequis :
 - UXP Developer Tool 2.2 ou plus récent ;
 - mode développeur activé dans les préférences Plugins de Premiere.
 
-Dans UXP Developer Tool, ajoutez le dossier du projet, chargez le plugin, puis ouvrez `Fenêtre > UXP Plugins > Motion Tracker` dans Premiere. Après une modification du manifeste ou de l’addon natif, utilisez `Unload`, puis `Load` : `Reload` ne recharge pas ces éléments.
+Dans UXP Developer Tool, ajoutez le dossier du projet, chargez le plugin, puis ouvrez `Fenêtre > UXP Plugins > Motion Tracker` dans Premiere. Après une modification du manifeste ou de l’addon natif, utilisez `Unload`, puis `Load` : `Reload` ne recharge pas ces éléments. Le diagnostic doit alors indiquer `Moteur natif chargé`, sa version et `autotest ok`.
 
 Pour tester la capture :
 

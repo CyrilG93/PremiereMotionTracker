@@ -47,6 +47,7 @@ test("the In point frame is exported and accepts a normalized tracking point", (
   assert.match(premiereSource, /Exporter\.exportSequenceFrame\(/);
   assert.match(premiereSource, /nativeFileSystem\.readdir\(temporaryFolder\.nativePath\)/);
   assert.match(premiereSource, /setTimeout\(resolve, 100\)/);
+  assert.doesNotMatch(styles, /\.pmt-preview\[data-ready="true"\]\s*\{[^}]*min-height:\s*0;/s);
 });
 
 test("Transform Position falls back to a direct value read for proxy variants", () => {
@@ -61,8 +62,9 @@ test("destination clips are selected only when applying the finished tracking", 
 test("manifest v6 loads the platform Hybrid addon and exposes its startup diagnostic", () => {
   assert.equal(manifest.manifestVersion, 6);
   assert.equal(manifest.requiredPermissions.enableAddon, true);
-  assert.equal(manifest.addon.name, "premiere-motion-tracker.uxpaddon");
-  assert.match(nativeSource, /require\("premiere-motion-tracker\.uxpaddon"\)/);
-  assert.match(nativeSource, /addon\.runSelfTest\(\)/);
+  assert.equal(manifest.addon.name, "premiere-motion-tracker-" + manifest.version + ".uxpaddon");
+  assert.match(nativeSource, /await require\("premiere-motion-tracker-0\.1\.9\.uxpaddon"\)/);
+  assert.match(nativeSource, /loadedAddon\.runSelfTest\(\)/);
+  assert.match(uiSource, /PMT_NATIVE\.initialize\(\)/);
   assert.match(uiSource, /Moteur natif chargé/);
 });

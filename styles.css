@@ -181,7 +181,6 @@ input {
 }
 
 .pmt-preview[data-ready="true"] {
-  min-height: 0;
   cursor: crosshair;
 }
 

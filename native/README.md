@@ -28,4 +28,4 @@ cmake --build native/build-hybrid --config Release
 ctest --test-dir native/build-hybrid -C Release --output-on-failure
 ```
 
-Le binaire est généré dans `win/x64/premiere-motion-tracker.uxpaddon`, là où UXP le recherche. Les builds macOS utiliseront respectivement `mac/x64` et `mac/arm64` ; ils devront être produits et validés sur macOS avant la distribution.
+Le binaire est généré dans `win/x64/premiere-motion-tracker-<version>.uxpaddon`, là où UXP le recherche. Son nom versionné évite qu’un addon encore verrouillé par Premiere bloque la compilation de la version suivante. Les builds macOS utiliseront respectivement `mac/x64` et `mac/arm64` ; ils devront être produits et validés sur macOS avant la distribution.

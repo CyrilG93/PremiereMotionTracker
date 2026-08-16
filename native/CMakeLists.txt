@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(PremiereMotionTrackerAddon LANGUAGES CXX)
+project(PremiereMotionTrackerAddon VERSION 0.1.9 LANGUAGES CXX)
 
 # Keep the algorithmic core independent from Adobe and OpenCV for portable tests.
 add_library(PremiereMotionTrackerCore STATIC src/tracker_core.cpp)
@@ -21,12 +21,14 @@ if(DEFINED UXP_HYBRID_SDK_DIR)
     "${UXP_HYBRID_SDK_DIR}/src/utilities/UxpAddon.cpp"
   )
   target_compile_features(PremiereMotionTrackerAddon PRIVATE cxx_std_17)
+  target_compile_definitions(PremiereMotionTrackerAddon PRIVATE PMT_ADDON_VERSION="${PROJECT_VERSION}-native")
   target_include_directories(PremiereMotionTrackerAddon PRIVATE "${UXP_HYBRID_SDK_DIR}/src/api" "${UXP_HYBRID_SDK_DIR}/src/utilities")
   target_link_libraries(PremiereMotionTrackerAddon PRIVATE PremiereMotionTrackerCore)
 
   # UXP addons are platform libraries distributed with Adobe's .uxpaddon extension.
   set_target_properties(PremiereMotionTrackerAddon PROPERTIES
-    OUTPUT_NAME "premiere-motion-tracker"
+    # Version the filename so a loaded Premiere process does not lock the next build target.
+    OUTPUT_NAME "premiere-motion-tracker-${PROJECT_VERSION}"
     PREFIX ""
     SUFFIX ".uxpaddon"
   )

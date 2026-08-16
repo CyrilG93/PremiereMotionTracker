@@ -59,6 +59,9 @@
   function render(rootNode) {
     const banner = getBanner();
     const nativeStatus = root.PMT_NATIVE.probe();
+    const nativeLabel = nativeStatus.available
+      ? nativeStatus.version + " · autotest " + nativeStatus.selfTest
+      : (nativeStatus.loading ? "chargement…" : "indisponible");
     const canPrepare = Boolean(state.source && !state.busy);
     const canTestTransform = Boolean(canPrepare && state.range && state.range.sequenceId === state.source.sequenceId);
     const previewContent = state.preview
@@ -95,7 +98,7 @@
       '  </div>',
       '  <div class="pmt-card">',
       '    <div class="pmt-card-header"><h2 class="pmt-card-title">Diagnostic</h2>' + buttonMarkup("pmt-copy-log", "Copier", ["pmt-button-compact"], false) + '</div>',
-      '    <div class="pmt-label">Moteur natif : ' + escapeHtml(nativeStatus.available ? nativeStatus.version + " · autotest " + nativeStatus.selfTest : "indisponible") + '</div>',
+      '    <div class="pmt-label">Moteur natif : ' + escapeHtml(nativeLabel) + '</div>',
       '    <textarea class="pmt-log" id="pmt-log" readonly>' + escapeHtml(state.log.join("\n")) + '</textarea>',
       '  </div>',
       '</div>'
@@ -285,13 +288,17 @@
 
   // Mount the panel once and let later actions update the same root node.
   function mount(rootNode) {
-    const nativeStatus = root.PMT_NATIVE.probe();
-    if (nativeStatus.available) {
-      addLog("Moteur natif chargé : " + nativeStatus.version + " · autotest " + nativeStatus.selfTest + ".");
-    } else {
-      addLog("Moteur natif indisponible : " + (nativeStatus.error || "raison inconnue") + ".");
-    }
+    const nativeInitialization = root.PMT_NATIVE.initialize();
     render(rootNode);
+    nativeInitialization.then((nativeStatus) => {
+      if (nativeStatus.available) {
+        addLog("Moteur natif chargé : " + nativeStatus.version + " · autotest " + nativeStatus.selfTest + ".");
+        addLog("Exports natifs : " + nativeStatus.exportNames.join(", ") + ".");
+      } else {
+        addLog("Moteur natif indisponible : " + (nativeStatus.error || "raison inconnue") + ".");
+      }
+      render(rootNode);
+    });
   }
 
   root.PMT_UI = { mount };

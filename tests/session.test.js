@@ -55,3 +55,19 @@ test("findUncertainSamples returns only samples below the threshold", () => {
   assert.equal(uncertain.length, 1);
   assert.equal(uncertain[0].confidence, 0.4);
 });
+
+test("buildPositionKeyframes retains one Position keyframe for every valid frame", () => {
+  const keyframes = trajectoryApi.buildPositionKeyframes([
+    { frame: 100, seconds: 4, x: 0.25, y: 0.5, confidence: 1, valid: true },
+    { frame: 101, seconds: 4.04, x: 0.3, y: 0.45, confidence: 0.9, valid: true },
+    { frame: 102, seconds: 4.08, x: 0.4, y: 0.35, confidence: 0.2, valid: false },
+    { frame: 103, seconds: 4.12, x: 0.35, y: 0.4, confidence: 0.8, valid: true }
+  ], { x: 0.25, y: 0.5 });
+  assert.equal(keyframes.length, 3);
+  assert.deepEqual(keyframes.map((keyframe) => keyframe.frame), [100, 101, 103]);
+  assert.equal(keyframes[0].progress, 0);
+  assert.ok(Math.abs(keyframes[1].progress - (1 / 3)) < 0.000001);
+  assert.equal(keyframes[2].progress, 1);
+  assert.ok(Math.abs(keyframes[1].dx - 0.05) < 0.000001);
+  assert.ok(Math.abs(keyframes[1].dy + 0.05) < 0.000001);
+});

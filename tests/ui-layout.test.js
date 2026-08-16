@@ -56,14 +56,18 @@ test("Transform Position falls back to a direct value read for proxy variants", 
 
 test("destination clips are selected only when applying the finished tracking", () => {
   assert.doesNotMatch(uiSource, /pmt-capture-target/);
-  assert.match(uiSource, /Tester Transform sur la sélection/);
+  assert.match(uiSource, /Appliquer la trajectoire/);
+  assert.match(uiSource, /buildPositionKeyframes/);
+  assert.match(premiereSource, /applyTracking\(keyframes\)/);
+  assert.match(premiereSource, /TickTime\.createWithSeconds/);
+  assert.match(premiereSource, /keyframes\.map\(\(sample\)/);
 });
 
 test("manifest v6 loads the platform Hybrid addon and exposes its startup diagnostic", () => {
   assert.equal(manifest.manifestVersion, 6);
   assert.equal(manifest.requiredPermissions.enableAddon, true);
   assert.equal(manifest.addon.name, "premiere-motion-tracker-" + manifest.version + ".uxpaddon");
-  assert.match(nativeSource, /await require\("premiere-motion-tracker-0\.1\.14\.uxpaddon"\)/);
+  assert.match(nativeSource, /await require\("premiere-motion-tracker-0\.2\.0\.uxpaddon"\)/);
   assert.match(nativeSource, /loadedAddon\.runSelfTest\(\)/);
   assert.match(nativeSource, /addon\.inspectMedia/);
   assert.match(nativeSource, /addon\.trackMedia/);

@@ -12,9 +12,9 @@ Premiere Pro 26.2 ou plus récent est la cible minimale. Windows x64 est validé
 - Lire le média source, les temps du clip et la plage In/Out de la séquence.
 - Charger un module C++ minimal construit avec le SDK UXP Hybrid Adobe. (Windows prêt à valider dans Premiere)
 - Décoder des images du média avec OpenCV.
-- Ajouter Transform aux clips sélectionnés après le tracking et écrire deux keyframes Position.
+- Ajouter Transform aux clips sélectionnés après le tracking et écrire une keyframe Position par image valide.
 
-Critère de validation : deux positions détectées dans le média déplacent réellement les clips sélectionnés dans Premiere.
+Critère de validation : la trajectoire détectée dans le média déplace réellement les clips sélectionnés dans Premiere image par image.
 
 ## Phase 2 — Sessions et prévisualisation
 
@@ -68,4 +68,4 @@ Critère de validation : deux positions détectées dans le média déplacent r�
 - Modèle de session et calcul des offsets couverts par des tests automatisés.
 - SDK Adobe UXP Hybrid disponible localement ; manifeste v6 et bootstrap C++ relié au panneau avec un autotest natif.
 - Visual Studio Build Tools 2019 et son CMake intégré permettent le build Windows x64. Les binaires macOS resteront construits sur macOS pour Intel et Apple Silicon.
-- OpenCV est relié statiquement au module Hybrid Windows pour inspecter un média via Media Foundation et calculer un suivi Lucas-Kanade avec contrôle aller-retour sur une plage bornée ; la correction visuelle et l’écriture de cette trajectoire dans Premiere restent à intégrer.
+- OpenCV est relié statiquement au module Hybrid Windows pour inspecter un média via Media Foundation et calculer un suivi Lucas-Kanade avec contrôle aller-retour sur une plage bornée ; l’application crée maintenant une clé Position par image valide sur chaque clip de destination. La correction visuelle reste à intégrer.

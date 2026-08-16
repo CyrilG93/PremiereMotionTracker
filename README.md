@@ -6,7 +6,7 @@ La première version visera un flux simple : sélectionner le clip à analyser, 
 
 ## État du projet
 
-Le projet est actuellement un prototype technique. Le panneau sait déjà capturer le clip source depuis la timeline, lire la plage In/Out, afficher l’image de séquence au point In et placer un point de tracking. Le module Hybrid Windows charge le cœur C++, exécute un autotest, lit les métadonnées vidéo avec OpenCV et Media Foundation, puis suit le point image par image avec Lucas-Kanade et un contrôle aller-retour. La correction visuelle des dérives et l’écriture de la vraie trajectoire dans Premiere restent les prochains jalons ; les binaires Windows et macOS seront inclus dans le produit final.
+Le projet est actuellement un prototype technique. Le panneau sait déjà capturer le clip source depuis la timeline, lire la plage In/Out, afficher l’image de séquence au point In et placer un point de tracking. Le module Hybrid Windows charge le cœur C++, exécute un autotest, lit les métadonnées vidéo avec OpenCV et Media Foundation, puis suit le point image par image avec Lucas-Kanade et un contrôle aller-retour. La trajectoire validée peut maintenant être appliquée à un ou plusieurs clips de destination : le plugin ajoute un effet Transform et crée une clé Position par image valide. La correction visuelle des dérives reste un prochain jalon ; les binaires Windows et macOS seront inclus dans le produit final.
 
 ## Tester le prototype
 
@@ -25,9 +25,9 @@ Pour tester la capture :
 3. Cliquez dans l’image pour placer le point de tracking, puis sur `Analyser` pour calculer la trajectoire sur la plage visible du clip. Une bannière et le bouton d’analyse indiquent clairement que l’analyse est en cours.
 4. Consultez le nombre d’images incertaines signalé dans le diagnostic.
 5. Sélectionnez ensuite un ou plusieurs clips de destination dans la timeline.
-6. Cliquez sur `Tester Transform sur la sélection` pour ajouter un effet de test avec deux keyframes Position à chaque clip sélectionné.
+6. Cliquez sur `Appliquer la trajectoire` pour ajouter un effet Transform et une clé Position par image valide à chaque clip sélectionné.
 
-Le choix des destinations se fait volontairement après l’analyse : une même trajectoire pourra ainsi être appliquée à plusieurs clips. Le test Transform modifie le projet Premiere. Dans ce prototype, utilisez Annuler jusqu’à la disparition des keyframes et de l’effet de test. Le bouton d’analyse reste volontairement désactivé jusqu’à l’intégration du moteur natif.
+Le choix des destinations se fait volontairement après l’analyse : une même trajectoire peut ainsi être appliquée à plusieurs clips. L’application modifie le projet Premiere ; dans ce prototype, utilisez Annuler pour retirer les clés et l’effet Transform ajoutés.
 
 Le diagnostic peut être copié avec le bouton `Copier`. Si Premiere refuse temporairement l’accès au presse-papiers après une mise à jour du plugin, le texte est automatiquement sélectionné pour permettre `Ctrl+C` ; retirez puis ajoutez à nouveau le plugin dans UXP Developer Tool afin de recharger les permissions du manifest.
 

@@ -102,6 +102,36 @@
     return null;
   }
 
+  // Create a clip-relative TickTime for every native frame instead of retaining only both endpoints.
+  function createTimeAtProgress(app, inPoint, outPoint, progress) {
+    const safeProgress = Math.min(1, Math.max(0, Number(progress) || 0));
+    const startSeconds = Number(describeTime(inPoint).seconds);
+    const endSeconds = Number(describeTime(outPoint).seconds);
+    if (app && app.TickTime && typeof app.TickTime.createWithSeconds === "function" && Number.isFinite(startSeconds) && Number.isFinite(endSeconds)) {
+      return app.TickTime.createWithSeconds(startSeconds + (endSeconds - startSeconds) * safeProgress);
+    }
+    if (safeProgress === 0) {
+      return inPoint;
+    }
+    if (safeProgress === 1) {
+      return outPoint;
+    }
+    throw new Error("Premiere n’expose pas TickTime.createWithSeconds(), nécessaire pour écrire chaque image clé.");
+  }
+
+  // Convert normalized tracker motion into the Position unit used by the inserted Transform effect.
+  function getPositionScale(context, normalized) {
+    if (normalized) {
+      return { x: 1, y: 1 };
+    }
+    const width = Number(context.frameSize && context.frameSize.width);
+    const height = Number(context.frameSize && context.frameSize.height);
+    if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) {
+      throw new Error("Premiere n’a pas renvoyé la taille de séquence nécessaire aux clés Position.");
+    }
+    return { x: width, y: height };
+  }
+
   // Convert Premiere's RectF frame size into safe export dimensions.
   function getPreviewDimensions(frameSize) {
     const sourceWidth = Number(frameSize && frameSize.width) || 1920;
@@ -216,7 +246,9 @@
     if (!videoItems.length) {
       throw new Error("Sélectionnez un clip vidéo dans la timeline.");
     }
-    return { app, project, sequence, item: videoItems[0], videoItems, selectedCount: videoItems.length };
+    const rawFrameSize = await readMethod(sequence, "getFrameSize", null);
+    const frameSize = rawFrameSize ? { width: Number(rawFrameSize.width), height: Number(rawFrameSize.height) } : null;
+    return { app, project, sequence, item: videoItems[0], videoItems, selectedCount: videoItems.length, frameSize };
   }
 
   // Convert the selected source item into durable metadata and retain its live proxy for this panel session.
@@ -357,8 +389,8 @@
     return null;
   }
 
-  // Add one Transform test to one destination clip and return a compact result for diagnostics.
-  async function applyTransformTestToItem(context, item) {
+  // Add a Transform effect and write every valid native sample to one destination clip.
+  async function applyTrackingToItem(context, item, keyframes) {
     const chain = await item.getComponentChain();
     const previousCount = chain && typeof chain.getComponentCount === "function" ? chain.getComponentCount() : 0;
     const transform = await createTransformComponent(context.app);
@@ -366,7 +398,7 @@
     const preferredIndex = canInsert ? 0 : previousCount;
     executeActions(context.project, [() => canInsert
       ? chain.createInsertComponentAction(transform.component, preferredIndex)
-      : chain.createAppendComponentAction(transform.component)], "Motion Tracker : ajouter Transform test");
+      : chain.createAppendComponentAction(transform.component)], "Motion Tracker : ajouter Transform");
     await waitForHostPaint();
 
     const updatedChain = await item.getComponentChain();
@@ -391,32 +423,42 @@
       throw new Error("Premiere n’a pas renvoyé une valeur Position compatible.");
     }
     const looksNormalized = Math.abs(initialPoint.x) <= 1.5 && Math.abs(initialPoint.y) <= 1.5;
-    const deltaX = looksNormalized ? 0.05 : 100;
+    const positionScale = getPositionScale(context, looksNormalized);
     executeActions(context.project, [() => positionParam.createSetTimeVaryingAction(true)], "Motion Tracker : activer Position");
     await waitForHostPaint();
-
-    const firstKey = positionParam.createKeyframe(createPoint(context.app, initialPoint.x, initialPoint.y));
-    firstKey.position = inPoint;
-    const lastKey = positionParam.createKeyframe(createPoint(context.app, initialPoint.x + deltaX, initialPoint.y));
-    lastKey.position = outPoint;
-    executeActions(context.project, [
-      () => positionParam.createAddKeyframeAction(firstKey),
-      () => positionParam.createAddKeyframeAction(lastKey)
-    ], "Motion Tracker : keyframes Transform test");
+    // Create the keyframe and its action inside Premiere's locked transaction to avoid stale proxies.
+    executeActions(context.project, keyframes.map((sample) => () => {
+      const value = createPoint(
+        context.app,
+        initialPoint.x + Number(sample.dx) * positionScale.x,
+        initialPoint.y + Number(sample.dy) * positionScale.y
+      );
+      const keyframe = positionParam.createKeyframe(value);
+      keyframe.position = createTimeAtProgress(context.app, inPoint, outPoint, sample.progress);
+      return positionParam.createAddKeyframeAction(keyframe);
+    }), "Motion Tracker : appliquer la trajectoire");
     const clipName = await readMethod(item, "getName", "Clip cible");
+    const finalSample = keyframes[keyframes.length - 1];
     return {
       clipName: String(clipName),
       matchName: transform.matchName,
       initialPoint,
-      finalPoint: { x: initialPoint.x + deltaX, y: initialPoint.y },
-      normalized: looksNormalized
+      finalPoint: {
+        x: initialPoint.x + Number(finalSample.dx) * positionScale.x,
+        y: initialPoint.y + Number(finalSample.dy) * positionScale.y
+      },
+      normalized: looksNormalized,
+      keyframeCount: keyframes.length
     };
   }
 
-  // Apply the same test motion to every selected destination after the source session is prepared.
-  async function applyTransformTest() {
+  // Apply the analysed frame-by-frame trajectory to every selected destination clip.
+  async function applyTracking(keyframes) {
     if (!getHandleStatus().source) {
       throw new Error("Capturez d’abord le clip source.");
+    }
+    if (!Array.isArray(keyframes) || keyframes.length < 2) {
+      throw new Error("Analysez au moins deux images valides avant d’appliquer la trajectoire.");
     }
     const context = await getSelectionContext();
     if (String(context.sequence.guid || context.sequence.name || "") !== handles.source.descriptor.sequenceId) {
@@ -434,7 +476,7 @@
     }
     const results = [];
     for (const item of targets) {
-      results.push(await applyTransformTestToItem(context, item));
+      results.push(await applyTrackingToItem(context, item, keyframes));
     }
     return results;
   }
@@ -444,6 +486,6 @@
     getActiveRange,
     exportPreviewFrame,
     getHandleStatus,
-    applyTransformTest
+    applyTracking
   };
 }(window));

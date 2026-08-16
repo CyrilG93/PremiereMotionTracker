@@ -111,7 +111,7 @@
       : (nativeStatus.loading ? "chargement…" : "indisponible");
     const canPrepare = Boolean(state.source && !state.busy);
     const canAnalyze = Boolean(canPrepare && state.media && state.range && state.preview && state.referencePoint);
-    const canTestTransform = Boolean(canPrepare && state.range && state.range.sequenceId === state.source.sequenceId);
+    const canApplyTracking = Boolean(canPrepare && state.tracking && state.tracking.length >= 2 && state.range && state.range.sequenceId === state.source.sequenceId);
     const analyzeLabel = state.operation === "analysis" ? "Analyse en cours…" : "Analyser";
     const previewContent = state.preview
       ? '<img class="pmt-preview-image" src="' + escapeHtml(state.preview.url) + '" alt="Image de la séquence au point In">' + (state.referencePoint
@@ -143,8 +143,8 @@
       '  </div>',
       '  <div class="pmt-card">',
       '    <h2 class="pmt-card-title">3. Application</h2>',
-      '    <div class="pmt-label">Après le tracking, sélectionnez un ou plusieurs clips de destination dans la timeline.</div>',
-      '    ' + buttonMarkup("pmt-test-transform", "Tester Transform sur la sélection", ["pmt-button-full"], !canTestTransform),
+      '    <div class="pmt-label">Après le tracking, sélectionnez un ou plusieurs clips de destination. Une clé Position sera créée pour chaque image valide.</div>',
+      '    ' + buttonMarkup("pmt-apply-tracking", "Appliquer la trajectoire", ["pmt-button-full"], !canApplyTracking),
       '  </div>',
       '  <div class="pmt-card">',
       '    <div class="pmt-card-header"><h2 class="pmt-card-title">Diagnostic</h2>' + buttonMarkup("pmt-copy-log", "Copier", ["pmt-button-compact"], false) + '</div>',
@@ -278,18 +278,19 @@
     }
   }
 
-  // Validate effect creation and Position keyframes before the tracker supplies real samples.
-  async function testTransform(rootNode) {
+  // Convert native frame samples into offsets, then apply every valid sample to selected destinations.
+  async function applyTracking(rootNode) {
     state.busy = true;
     render(rootNode);
     try {
-      const results = await root.PMT_PREMIERE.applyTransformTest();
-      addLog("Transform test appliqué à " + results.length + " clip(s) sélectionné(s).");
+      const keyframes = root.PMT_TRAJECTORY.buildPositionKeyframes(state.tracking, state.referencePoint);
+      const results = await root.PMT_PREMIERE.applyTracking(keyframes);
+      addLog("Trajectoire appliquée à " + results.length + " clip(s) sélectionné(s). " + keyframes.length + " images clés par clip.");
       results.forEach((result) => {
-        addLog(result.clipName + " : " + result.initialPoint.x + ", " + result.initialPoint.y + " → " + result.finalPoint.x + ", " + result.finalPoint.y);
+        addLog(result.clipName + " : " + result.keyframeCount + " clés · " + result.initialPoint.x + ", " + result.initialPoint.y + " → " + result.finalPoint.x + ", " + result.finalPoint.y);
       });
     } catch (error) {
-      addLog("Erreur Transform : " + (error && error.message ? error.message : String(error)));
+      addLog("Erreur application : " + (error && error.message ? error.message : String(error)));
     } finally {
       state.busy = false;
       render(rootNode);
@@ -370,7 +371,7 @@
     bindButton(rootNode, "pmt-capture-source", () => captureSource(rootNode));
     bindButton(rootNode, "pmt-read-range", () => readRange(rootNode));
     bindButton(rootNode, "pmt-analyze", () => analyzeTracking(rootNode));
-    bindButton(rootNode, "pmt-test-transform", () => testTransform(rootNode));
+    bindButton(rootNode, "pmt-apply-tracking", () => applyTracking(rootNode));
     bindButton(rootNode, "pmt-copy-log", () => copyDiagnostics(rootNode));
     const preview = rootNode.querySelector("#pmt-preview");
     if (preview && state.preview) {

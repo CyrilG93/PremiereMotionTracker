@@ -2,6 +2,7 @@
   "use strict";
 
   const state = {
+    language: "en",
     source: null,
     media: null,
     range: null,
@@ -15,11 +16,100 @@
     previewImageCache: [],
     previewBuildCount: 0,
     previewBuildTotal: 0,
+    previewSkipRequested: false,
     busy: false,
     operation: "",
-    log: ["Prototype prêt. Capturez d’abord le clip source."]
+    log: ["Prototype ready. Capture the source clip first."]
   };
   let previewPlaybackTimer = null;
+
+  // Keep the visible panel wording separate from technical diagnostics and default to English.
+  const translations = {
+    en: {
+      noClip: "No source clip",
+      noMedia: "Video metadata not read",
+      sourceClip: "Clip to analyze",
+      capturePrepare: "Capture and prepare",
+      video: "Video",
+      selectCapture: "Select and capture the clip to analyze.",
+      analysisRunning: "OpenCV analysis in progress… Do not close the panel.",
+      preparingPreview: "Preparing tracking preview: {count} / {total} images.",
+      skippingPreview: "Skipping the tracking preview. The base In frame will remain available.",
+      analysisReady: "{count} frames analyzed. Review uncertain frames before applying.",
+      inImageLoaded: "In-point image loaded. Click the image to place the tracking point.",
+      sourceReady: "Selection confirmed. The OpenCV engine is the next milestone.",
+      readyToAnalyze: "Ready to analyze the In/Out range.",
+      loading: "loading…",
+      unavailable: "unavailable",
+      analyze: "Analyze",
+      analyzing: "Analyzing…",
+      play: "Play",
+      pause: "Pause",
+      trackingPreview: "Tracking preview · frame {current} / {total}",
+      trackingPreviewAlt: "Tracking preview",
+      inImageAlt: "Sequence image at the In point",
+      emptyPreview: "The sequence image at the In point will appear here after preparation.",
+      sourceTitle: "1. Tracking source",
+      previewTitle: "2. Preview",
+      skipPreview: "Skip preview",
+      start: "Start",
+      previousFrame: "− frame",
+      nextFrame: "+ frame",
+      applyTitle: "3. Apply",
+      applyHelp: "After tracking, select one or more destination clips. One Position keyframe will be created for every valid frame.",
+      applyTrajectory: "Apply trajectory",
+      diagnostics: "Diagnostics",
+      copy: "Copy",
+      nativeEngine: "Native engine",
+      languageButton: "FR"
+    },
+    fr: {
+      noClip: "Aucun clip source",
+      noMedia: "Métadonnées vidéo non lues",
+      sourceClip: "Clip à analyser",
+      capturePrepare: "Capturer et préparer",
+      video: "Vidéo",
+      selectCapture: "Sélectionnez puis capturez le clip à analyser.",
+      analysisRunning: "Analyse OpenCV en cours… Ne fermez pas le panneau.",
+      preparingPreview: "Préparation de l’aperçu : {count} / {total} images.",
+      skippingPreview: "Aperçu du tracking ignoré. L’image de base au point In reste disponible.",
+      analysisReady: "{count} images analysées. Vérifiez les images incertaines avant l’application.",
+      inImageLoaded: "Image du point In chargée. Cliquez dans l’image pour placer le point de tracking.",
+      sourceReady: "Sélection validée. Le moteur OpenCV constitue le prochain jalon.",
+      readyToAnalyze: "Prêt à analyser la plage In/Out.",
+      loading: "chargement…",
+      unavailable: "indisponible",
+      analyze: "Analyser",
+      analyzing: "Analyse en cours…",
+      play: "Lire",
+      pause: "Pause",
+      trackingPreview: "Aperçu tracking · image {current} / {total}",
+      trackingPreviewAlt: "Aperçu du tracking",
+      inImageAlt: "Image de la séquence au point In",
+      emptyPreview: "L’image de la séquence au point In apparaîtra ici après préparation.",
+      sourceTitle: "1. Source du tracking",
+      previewTitle: "2. Prévisualisation",
+      skipPreview: "Ignorer l’aperçu",
+      start: "Début",
+      previousFrame: "− image",
+      nextFrame: "+ image",
+      applyTitle: "3. Application",
+      applyHelp: "Après le tracking, sélectionnez un ou plusieurs clips de destination. Une clé Position sera créée pour chaque image valide.",
+      applyTrajectory: "Appliquer la trajectoire",
+      diagnostics: "Diagnostic",
+      copy: "Copier",
+      nativeEngine: "Moteur natif",
+      languageButton: "EN"
+    }
+  };
+
+  // Format a translated panel string and leave missing placeholders visible during development.
+  function t(key, values) {
+    const template = translations[state.language][key] || translations.en[key] || key;
+    return template.replace(/\{(\w+)\}/g, (match, name) => {
+      return values && values[name] !== undefined ? String(values[name]) : match;
+    });
+  }
 
   // Escape dynamic Premiere labels before inserting them into the panel markup.
   function escapeHtml(value) {
@@ -50,6 +140,7 @@
     state.previewImageCache = [];
     state.previewBuildCount = 0;
     state.previewBuildTotal = 0;
+    state.previewSkipRequested = false;
   }
 
   // Format one captured clip for compact display in a docked panel.
@@ -63,33 +154,33 @@
   // Format native decoder metadata without exposing implementation-only fields in the panel.
   function mediaLabel(media) {
     if (!media) {
-      return "Métadonnées vidéo non lues";
+      return t("noMedia");
     }
     const frameRate = Number(media.framesPerSecond || 0);
     const frameCount = Number(media.frameCount || 0);
     const size = Number(media.width || 0) + " × " + Number(media.height || 0);
-    const frameRateLabel = frameRate > 0 ? frameRate.toFixed(3).replace(/\.0+$/, "") + " i/s" : "cadence inconnue";
-    const frameCountLabel = frameCount > 0 ? frameCount + " images" : "nombre d’images inconnu";
-    return size + " · " + frameRateLabel + " · " + frameCountLabel + " · " + String(media.backend || "backend inconnu");
+    const frameRateLabel = frameRate > 0 ? frameRate.toFixed(3).replace(/\.0+$/, "") + " fps" : "unknown frame rate";
+    const frameCountLabel = frameCount > 0 ? frameCount + " frames" : "unknown frame count";
+    return size + " · " + frameRateLabel + " · " + frameCountLabel + " · " + String(media.backend || "unknown backend");
   }
 
   // Intersect the visible sequence range with the source clip and convert it into source-media seconds.
   function getTrackingMediaRange() {
     if (!state.source || !state.range || !state.referencePoint) {
-      throw new Error("Capturez et préparez une source, puis placez le point de tracking.");
+      throw new Error("Capture and prepare a source, then place the tracking point.");
     }
     if (state.source.reversed) {
-      throw new Error("Le tracking de clip inversé n’est pas encore pris en charge.");
+      throw new Error("Reversed clip tracking is not supported yet.");
     }
     const speed = Number(state.source.speed);
     const normalizedSpeed = speed === 100 ? 1 : speed;
     if (!Number.isFinite(normalizedSpeed) || normalizedSpeed <= 0) {
-      throw new Error("La vitesse du clip source est invalide.");
+      throw new Error("The source clip speed is invalid.");
     }
     const sequenceStart = Math.max(Number(state.range.inPoint.seconds), Number(state.source.start.seconds));
     const sequenceEnd = Math.min(Number(state.range.outPoint.seconds), Number(state.source.end.seconds));
     if (!Number.isFinite(sequenceStart) || !Number.isFinite(sequenceEnd) || sequenceEnd <= sequenceStart) {
-      throw new Error("Les In/Out de la séquence ne recouvrent pas le clip source.");
+      throw new Error("The sequence In/Out range does not overlap the source clip.");
     }
     return {
       startSeconds: Number(state.source.inPoint.seconds) + (sequenceStart - Number(state.source.start.seconds)) * normalizedSpeed,
@@ -108,24 +199,27 @@
     const nativeStatus = root.PMT_NATIVE.probe();
     if (state.operation === "analysis") {
       // Keep the in-progress feedback limited to the existing stable UXP banner.
-      return { tone: "warning", text: "Analyse OpenCV en cours… Ne fermez pas le panneau." };
+      return { tone: "warning", text: t("analysisRunning") };
     }
     if (state.operation === "preview") {
-      return { tone: "warning", text: "Préparation de l’aperçu : " + state.previewBuildCount + " / " + state.previewBuildTotal + " images." };
+      if (state.previewSkipRequested) {
+        return { tone: "warning", text: t("skippingPreview") };
+      }
+      return { tone: "warning", text: t("preparingPreview", { count: state.previewBuildCount, total: state.previewBuildTotal }) };
     }
     if (!state.source) {
-      return { tone: "warning", text: "Sélectionnez puis capturez le clip à analyser." };
+      return { tone: "warning", text: t("selectCapture") };
     }
     if (state.preview) {
       if (state.tracking) {
-        return { tone: "success", text: state.tracking.length + " images analysées. Vérifiez les images incertaines avant l’application." };
+        return { tone: "success", text: t("analysisReady", { count: state.tracking.length }) };
       }
-      return { tone: "success", text: "Image du point In chargée. Cliquez dans l’image pour placer le point de tracking." };
+      return { tone: "success", text: t("inImageLoaded") };
     }
     if (!nativeStatus.available) {
-      return { tone: "warning", text: "Sélection validée. Le moteur OpenCV constitue le prochain jalon." };
+      return { tone: "warning", text: t("sourceReady") };
     }
-    return { tone: "success", text: "Prêt à analyser la plage In/Out." };
+    return { tone: "success", text: t("readyToAnalyze") };
   }
 
   // Render the complete prototype panel after each state change.
@@ -133,57 +227,59 @@
     const banner = getBanner();
     const nativeStatus = root.PMT_NATIVE.probe();
     const nativeLabel = nativeStatus.available
-      ? nativeStatus.version + " · autotest " + nativeStatus.selfTest
-      : (nativeStatus.loading ? "chargement…" : "indisponible");
+      ? nativeStatus.version + " · self-test " + nativeStatus.selfTest
+      : (nativeStatus.loading ? t("loading") : t("unavailable"));
     const canPrepare = Boolean(state.source && !state.busy);
     const canAnalyze = Boolean(canPrepare && state.media && state.range && state.preview && state.referencePoint);
     const canApplyTracking = Boolean(canPrepare && state.tracking && state.tracking.length >= 2 && state.range && state.range.sequenceId === state.source.sequenceId);
     const canPlayPreview = Boolean(!state.busy && state.trackingPreview && state.trackingPreview.frames.length > 1);
-    const analyzeLabel = state.operation === "analysis" ? "Analyse en cours…" : "Analyser";
-    const playbackLabel = state.previewPlaying ? "Pause" : "Lire";
+    const canSkipPreview = Boolean(state.operation === "preview" && !state.previewSkipRequested);
+    const analyzeLabel = state.operation === "analysis" ? t("analyzing") : t("analyze");
+    const playbackLabel = state.previewPlaying ? t("pause") : t("play");
     const imagePreview = state.trackingPreview;
     const playbackFrame = imagePreview && imagePreview.frames[state.previewFrameIndex];
     const previewContent = playbackFrame
-      ? '<img class="pmt-preview-image" id="pmt-tracking-image" src="' + escapeHtml(playbackFrame.url) + '" alt="Aperçu du tracking"><div class="pmt-tracking-point" id="pmt-preview-point" style="left:' + (Number(playbackFrame.x) * 100).toFixed(3) + '%;top:' + (Number(playbackFrame.y) * 100).toFixed(3) + '%"></div><div class="pmt-preview-status" id="pmt-preview-status">Aperçu tracking · image ' + (state.previewFrameIndex + 1) + ' / ' + imagePreview.frames.length + '</div>'
+      ? '<img class="pmt-preview-image" id="pmt-tracking-image" src="' + escapeHtml(playbackFrame.url) + '" alt="' + escapeHtml(t("trackingPreviewAlt")) + '"><div class="pmt-tracking-point" id="pmt-preview-point" style="left:' + (Number(playbackFrame.x) * 100).toFixed(3) + '%;top:' + (Number(playbackFrame.y) * 100).toFixed(3) + '%"></div><div class="pmt-preview-status" id="pmt-preview-status">' + escapeHtml(t("trackingPreview", { current: state.previewFrameIndex + 1, total: imagePreview.frames.length })) + '</div>'
       : state.preview
-      ? '<img class="pmt-preview-image" src="' + escapeHtml(state.preview.url) + '" alt="Image de la séquence au point In">' + (state.referencePoint
+      ? '<img class="pmt-preview-image" src="' + escapeHtml(state.preview.url) + '" alt="' + escapeHtml(t("inImageAlt")) + '">' + (state.referencePoint
         ? '<div class="pmt-tracking-point" style="left:' + (state.referencePoint.x * 100).toFixed(3) + '%;top:' + (state.referencePoint.y * 100).toFixed(3) + '%"></div>'
         : "")
-      : '<div class="pmt-preview-grid"></div><div class="pmt-preview-copy">L’image de la séquence au point In apparaîtra ici après préparation.</div>';
+      : '<div class="pmt-preview-grid"></div><div class="pmt-preview-copy">' + escapeHtml(t("emptyPreview")) + '</div>';
     rootNode.innerHTML = [
       '<div class="pmt-shell">',
       '  <div class="pmt-header">',
       '    <h1 class="pmt-title">Motion Tracker</h1>',
-      '    <span class="pmt-version">v' + escapeHtml(root.PMT_VERSION) + '</span>',
+      '    <div class="pmt-header-tools">' + buttonMarkup("pmt-toggle-language", t("languageButton"), ["pmt-button-compact"], false) + '<span class="pmt-version">v' + escapeHtml(root.PMT_VERSION) + '</span></div>',
       '  </div>',
       '  <div class="pmt-banner" data-tone="' + banner.tone + '">' + escapeHtml(banner.text) + '</div>',
       '  <div class="pmt-card">',
-      '    <h2 class="pmt-card-title">1. Source du tracking</h2>',
+      '    <h2 class="pmt-card-title">' + escapeHtml(t("sourceTitle")) + '</h2>',
       '    <div class="pmt-slot">',
-      '      <div class="pmt-slot-copy"><div class="pmt-label">Clip à analyser</div><div class="pmt-value">' + escapeHtml(clipLabel(state.source, "Aucun clip source")) + '</div></div>',
-      '      ' + buttonMarkup("pmt-capture-source", "Capturer et préparer", [], state.busy),
+      '      <div class="pmt-slot-copy"><div class="pmt-label">' + escapeHtml(t("sourceClip")) + '</div><div class="pmt-value">' + escapeHtml(clipLabel(state.source, t("noClip"))) + '</div></div>',
+      '      ' + buttonMarkup("pmt-capture-source", t("capturePrepare"), [], state.busy),
       '    </div>',
-      state.source ? '    <div class="pmt-label">Vidéo : ' + escapeHtml(mediaLabel(state.media)) + '</div>' : '',
+      state.source ? '    <div class="pmt-label">' + escapeHtml(t("video")) + ': ' + escapeHtml(mediaLabel(state.media)) + '</div>' : '',
       '  </div>',
       '  <div class="pmt-card">',
-      '    <h2 class="pmt-card-title">2. Prévisualisation</h2>',
+      '    <h2 class="pmt-card-title">' + escapeHtml(t("previewTitle")) + '</h2>',
       '    <div class="pmt-preview" id="pmt-preview" data-ready="' + String(Boolean(state.preview && !playbackFrame)) + '">' + previewContent + '</div>',
       '    <div class="pmt-actions">',
       '      ' + buttonMarkup("pmt-analyze", analyzeLabel, ["pmt-button-primary"], !canAnalyze),
       '      ' + buttonMarkup("pmt-play-preview", playbackLabel, [], !canPlayPreview),
-      imagePreview ? '      ' + buttonMarkup("pmt-preview-reset", "Début", [], !canPlayPreview) : '',
-      imagePreview ? '      ' + buttonMarkup("pmt-preview-previous", "− image", [], !canPlayPreview) : '',
-      imagePreview ? '      ' + buttonMarkup("pmt-preview-next", "+ image", [], !canPlayPreview) : '',
+      state.operation === "preview" ? '      ' + buttonMarkup("pmt-skip-preview", t("skipPreview"), [], !canSkipPreview) : '',
+      imagePreview ? '      ' + buttonMarkup("pmt-preview-reset", t("start"), [], !canPlayPreview) : '',
+      imagePreview ? '      ' + buttonMarkup("pmt-preview-previous", t("previousFrame"), [], !canPlayPreview) : '',
+      imagePreview ? '      ' + buttonMarkup("pmt-preview-next", t("nextFrame"), [], !canPlayPreview) : '',
       '    </div>',
       '  </div>',
       '  <div class="pmt-card">',
-      '    <h2 class="pmt-card-title">3. Application</h2>',
-      '    <div class="pmt-label">Après le tracking, sélectionnez un ou plusieurs clips de destination. Une clé Position sera créée pour chaque image valide.</div>',
-      '    ' + buttonMarkup("pmt-apply-tracking", "Appliquer la trajectoire", ["pmt-button-full"], !canApplyTracking),
+      '    <h2 class="pmt-card-title">' + escapeHtml(t("applyTitle")) + '</h2>',
+      '    <div class="pmt-label">' + escapeHtml(t("applyHelp")) + '</div>',
+      '    ' + buttonMarkup("pmt-apply-tracking", t("applyTrajectory"), ["pmt-button-full"], !canApplyTracking),
       '  </div>',
       '  <div class="pmt-card">',
-      '    <div class="pmt-card-header"><h2 class="pmt-card-title">Diagnostic</h2>' + buttonMarkup("pmt-copy-log", "Copier", ["pmt-button-compact"], false) + '</div>',
-      '    <div class="pmt-label">Moteur natif : ' + escapeHtml(nativeLabel) + '</div>',
+      '    <div class="pmt-card-header"><h2 class="pmt-card-title">' + escapeHtml(t("diagnostics")) + '</h2>' + buttonMarkup("pmt-copy-log", t("copy"), ["pmt-button-compact"], false) + '</div>',
+      '    <div class="pmt-label">' + escapeHtml(t("nativeEngine")) + ': ' + escapeHtml(nativeLabel) + '</div>',
       '    <textarea class="pmt-log" id="pmt-log" readonly>' + escapeHtml(state.log.join("\n")) + '</textarea>',
       '  </div>',
       '</div>'
@@ -201,14 +297,16 @@
     return new Promise((resolve) => setTimeout(resolve, 30));
   }
 
-  // Repeat one deferred render after host work because Premiere UXP can miss the first paint after an awaited export.
-  function refreshAfterHostWork(rootNode) {
+  // Repeat one deferred render only after source preparation because Premiere can miss that first exported image paint.
+  function refreshAfterHostWork(rootNode, repeatRender) {
     render(rootNode);
-    setTimeout(() => {
-      if (!state.previewPlaying) {
-        render(rootNode);
-      }
-    }, 60);
+    if (repeatRender) {
+      setTimeout(() => {
+        if (!state.previewPlaying) {
+          render(rootNode);
+        }
+      }, 60);
+    }
   }
 
   // Reflect playback state on the custom UXP-friendly control without replacing its cached image.
@@ -216,7 +314,7 @@
     state.previewPlaying = Boolean(playing);
     const button = rootNode.querySelector("#pmt-play-preview");
     if (button) {
-      button.textContent = state.previewPlaying ? "Pause" : "Lire";
+      button.textContent = state.previewPlaying ? t("pause") : t("play");
     }
   }
 
@@ -239,7 +337,17 @@
     }
     const status = rootNode.querySelector("#pmt-preview-status");
     if (status) {
-      status.textContent = "Aperçu tracking · image " + (state.previewFrameIndex + 1) + " / " + frames.length;
+      status.textContent = t("trackingPreview", { current: state.previewFrameIndex + 1, total: frames.length });
+    }
+  }
+
+  // Update the existing UXP banner instead of replacing the whole panel during long image exports.
+  function updatePreviewBuildStatus(rootNode) {
+    const banner = rootNode.querySelector(".pmt-banner");
+    if (banner) {
+      banner.textContent = state.previewSkipRequested
+        ? t("skippingPreview")
+        : t("preparingPreview", { count: state.previewBuildCount, total: state.previewBuildTotal });
     }
   }
 
@@ -273,15 +381,15 @@
     state.range = await root.PMT_PREMIERE.getActiveRange();
     state.tracking = null;
     clearTrackingPreview();
-    addLog("Plage séquence : " + state.range.inPoint.seconds.toFixed(3) + " s → " + state.range.outPoint.seconds.toFixed(3) + " s");
+    addLog("Sequence range: " + state.range.inPoint.seconds.toFixed(3) + " s → " + state.range.outPoint.seconds.toFixed(3) + " s");
     try {
       state.preview = await root.PMT_PREMIERE.exportPreviewFrame();
       state.referencePoint = { x: 0.5, y: 0.5 };
-      addLog("Image du point In chargée : " + state.preview.fileName + " · " + state.preview.width + " × " + state.preview.height + ".");
+      addLog("In-point image loaded: " + state.preview.fileName + " · " + state.preview.width + " × " + state.preview.height + ".");
     } catch (previewError) {
       state.preview = null;
       state.referencePoint = null;
-      addLog("Erreur image : " + (previewError && previewError.message ? previewError.message : String(previewError)));
+      addLog("Image error: " + (previewError && previewError.message ? previewError.message : String(previewError)));
     }
     const session = root.PMT_SESSION.createSession({
       sequenceId: state.range.sequenceId,
@@ -289,7 +397,7 @@
       range: { inTicks: state.range.inPoint.ticks, outTicks: state.range.outPoint.ticks },
       referencePoint: { x: 0.5, y: 0.5 }
     });
-    addLog("Session préparée : " + session.id);
+    addLog("Session prepared: " + session.id);
   }
 
   // Capture the selected source, inspect it, and immediately prepare its sequence range in one action.
@@ -305,28 +413,28 @@
       state.referencePoint = null;
       state.tracking = null;
       clearTrackingPreview();
-      addLog("Source capturée : " + clip.name);
+      addLog("Source captured: " + clip.name);
       if (!clip.mediaPath) {
-        addLog("Attention : Premiere n’a pas renvoyé de chemin média pour cette source.");
+        addLog("Warning: Premiere did not return a media path for this source.");
       } else {
         const nativeStatus = await root.PMT_NATIVE.initialize();
         if (!nativeStatus.available) {
-          addLog("Lecture OpenCV indisponible : " + (nativeStatus.error || "addon non chargé"));
+          addLog("OpenCV reading unavailable: " + (nativeStatus.error || "addon not loaded"));
         } else {
           state.media = await root.PMT_NATIVE.inspectMedia(clip.mediaPath);
-          addLog("Média OpenCV : " + mediaLabel(state.media) + ".");
+          addLog("OpenCV media: " + mediaLabel(state.media) + ".");
         }
       }
       // Premiere versions may report normal speed as either a 1x factor or 100 percent.
       if (![1, 100].includes(clip.speed) || clip.reversed) {
-        addLog("Attention : le remappage temporel sera refusé dans la première V1.");
+        addLog("Warning: time remapping will be rejected in this first V1.");
       }
       await prepareSourceRange();
     } catch (error) {
-      addLog("Erreur : " + (error && error.message ? error.message : String(error)));
+      addLog("Error: " + (error && error.message ? error.message : String(error)));
     } finally {
       state.busy = false;
-      refreshAfterHostWork(rootNode);
+      refreshAfterHostWork(rootNode, true);
     }
   }
 
@@ -346,7 +454,7 @@
     });
     state.tracking = null;
     clearTrackingPreview();
-    addLog("Point de tracking : " + (state.referencePoint.x * 100).toFixed(1) + " %, " + (state.referencePoint.y * 100).toFixed(1) + " %.");
+    addLog("Tracking point: " + (state.referencePoint.x * 100).toFixed(1) + "%, " + (state.referencePoint.y * 100).toFixed(1) + "%.");
     render(rootNode);
   }
 
@@ -357,11 +465,20 @@
     state.operation = "preview";
     state.previewBuildCount = 0;
     state.previewBuildTotal = previewSamples.length;
+    state.previewSkipRequested = false;
     render(rootNode);
     await waitForPanelPaint();
     for (let index = 0; index < previewSamples.length; index += 1) {
+      if (state.previewSkipRequested) {
+        addLog("Tracking preview skipped. The base In frame remains available.");
+        return false;
+      }
       const sample = previewSamples[index];
       const exported = await root.PMT_PREMIERE.exportTrackingPreviewFrame(Number(sample.seconds), index);
+      if (state.previewSkipRequested) {
+        addLog("Tracking preview skipped. The base In frame remains available.");
+        return false;
+      }
       frames.push({
         url: exported.url,
         x: Number(sample.x),
@@ -370,17 +487,31 @@
         seconds: Number(sample.seconds)
       });
       state.previewBuildCount = index + 1;
-      // Refresh periodically so the longer frame export never looks like a frozen panel.
-      if (state.previewBuildCount === state.previewBuildTotal || state.previewBuildCount % 12 === 0) {
-        render(rootNode);
-      }
+      // Refresh only the banner so repeated UXP DOM replacement cannot duplicate the diagnostics card.
+      updatePreviewBuildStatus(rootNode);
     }
     state.trackingPreview = { frames, sourceFrameCount: state.tracking.length };
     state.previewFrameIndex = 0;
     state.previewSeconds = 0;
     state.previewPlaying = false;
     warmTrackingPreviewFrames(frames);
-    addLog("Aperçu prêt : " + frames.length + " image(s) de séquence mises en cache pour vérifier le tracking.");
+    addLog("Tracking preview ready: " + frames.length + " cached sequence images available for review.");
+    return true;
+  }
+
+  // Request cancellation between two Premiere frame exports and keep the original In image as the lightweight preview.
+  function skipTrackingPreview(rootNode) {
+    if (state.operation !== "preview" || state.previewSkipRequested) {
+      return;
+    }
+    state.previewSkipRequested = true;
+    updatePreviewBuildStatus(rootNode);
+    const button = rootNode.querySelector("#pmt-skip-preview");
+    if (button) {
+      button.setAttribute("data-disabled", "true");
+      button.setAttribute("aria-disabled", "true");
+      button.textContent = t("skippingPreview");
+    }
   }
 
   // Toggle cached-image playback without rebuilding the whole panel, so Pause takes effect immediately.
@@ -404,7 +535,7 @@
     state.busy = true;
     state.operation = "analysis";
     clearTrackingPreview();
-    addLog("Analyse OpenCV en cours…");
+    addLog("OpenCV analysis in progress…");
     render(rootNode);
     try {
       await waitForPanelPaint();
@@ -412,21 +543,21 @@
       const samples = await root.PMT_NATIVE.trackMedia(state.source.mediaPath, state.referencePoint, mediaRange.startSeconds, mediaRange.endSeconds);
       state.tracking = Array.prototype.slice.call(samples || []);
       const invalidCount = state.tracking.filter((sample) => !sample.valid).length;
-      addLog("Tracking OpenCV : " + state.tracking.length + " images de " + mediaRange.startSeconds.toFixed(3) + " s à " + mediaRange.endSeconds.toFixed(3) + " s.");
-      addLog("Images incertaines : " + invalidCount + ".");
+      addLog("OpenCV tracking: " + state.tracking.length + " frames from " + mediaRange.startSeconds.toFixed(3) + " s to " + mediaRange.endSeconds.toFixed(3) + " s.");
+      addLog("Uncertain frames: " + invalidCount + ".");
       try {
         await buildTrackingPreview(rootNode);
       } catch (previewError) {
         clearTrackingPreview();
-        addLog("Aperçu indisponible : " + (previewError && previewError.message ? previewError.message : String(previewError)));
+        addLog("Preview unavailable: " + (previewError && previewError.message ? previewError.message : String(previewError)));
       }
     } catch (error) {
       state.tracking = null;
-      addLog("Erreur tracking : " + (error && error.message ? error.message : String(error)));
+      addLog("Tracking error: " + (error && error.message ? error.message : String(error)));
     } finally {
       state.busy = false;
       state.operation = "";
-      refreshAfterHostWork(rootNode);
+      refreshAfterHostWork(rootNode, false);
     }
   }
 
@@ -437,14 +568,14 @@
     try {
       const keyframes = root.PMT_TRAJECTORY.buildPositionKeyframes(state.tracking, state.referencePoint);
       const results = await root.PMT_PREMIERE.applyTracking(keyframes);
-      addLog("Trajectoire appliquée à " + results.length + " clip(s) sélectionné(s). " + keyframes.length + " images clés par clip.");
+      addLog("Trajectory applied to " + results.length + " selected clip(s). " + keyframes.length + " keyframes per clip.");
       results.forEach((result) => {
         const scale = result.positionScale || { x: 1, y: 1 };
-        const coordinateSpace = result.targetCoordinateSpace === "sequence" ? "Graphics Layer" : "média";
-        addLog(result.clipName + " : " + result.keyframeCount + " clés · " + coordinateSpace + " · compensation " + Number(scale.x).toFixed(3) + " × " + Number(scale.y).toFixed(3) + " · " + result.initialPoint.x + ", " + result.initialPoint.y + " → " + result.finalPoint.x + ", " + result.finalPoint.y);
+        const coordinateSpace = result.targetCoordinateSpace === "sequence" ? "Graphics Layer" : "media";
+        addLog(result.clipName + ": " + result.keyframeCount + " keys · " + coordinateSpace + " · compensation " + Number(scale.x).toFixed(3) + " × " + Number(scale.y).toFixed(3) + " · " + result.initialPoint.x + ", " + result.initialPoint.y + " → " + result.finalPoint.x + ", " + result.finalPoint.y);
       });
     } catch (error) {
-      addLog("Erreur application : " + (error && error.message ? error.message : String(error)));
+      addLog("Application error: " + (error && error.message ? error.message : String(error)));
     } finally {
       state.busy = false;
       render(rootNode);
@@ -456,7 +587,7 @@
     const clipboard = navigator.clipboard;
     const errors = [];
     if (!clipboard) {
-      throw new Error("API presse-papiers indisponible");
+      throw new Error("Clipboard API unavailable");
     }
     if (typeof clipboard.setContent === "function") {
       try {
@@ -477,7 +608,7 @@
       }
     }
     const lastError = errors[errors.length - 1];
-    throw lastError || new Error("Aucune méthode de copie compatible");
+    throw lastError || new Error("No compatible copy method");
   }
 
   // Select the diagnostic so Ctrl+C remains available when UXP has not reloaded manifest permissions.
@@ -494,13 +625,13 @@
     const text = state.log.join("\n");
     try {
       await writeClipboardText(text);
-      addLog("Diagnostic copié dans le presse-papiers.");
+      addLog("Diagnostics copied to the clipboard.");
     } catch (error) {
-      addLog("Copie impossible : " + (error && error.message ? error.message : String(error)));
-      addLog("Diagnostic sélectionné : appuyez sur Ctrl+C. Si nécessaire, retirez puis ajoutez à nouveau le plugin dans UXP Developer Tool.");
+      addLog("Copy failed: " + (error && error.message ? error.message : String(error)));
+      addLog("Diagnostics selected: press Ctrl+C. If needed, remove and add the plugin again in UXP Developer Tool.");
     }
     render(rootNode);
-    if (state.log[state.log.length - 1].indexOf("Diagnostic sélectionné") === 0) {
+    if (state.log[state.log.length - 1].indexOf("Diagnostics selected") === 0) {
       selectDiagnostics(rootNode);
     }
   }
@@ -522,9 +653,14 @@
 
   // Connect the freshly rendered controls to their Premiere diagnostics.
   function bindEvents(rootNode) {
+    bindButton(rootNode, "pmt-toggle-language", () => {
+      state.language = state.language === "en" ? "fr" : "en";
+      render(rootNode);
+    });
     bindButton(rootNode, "pmt-capture-source", () => captureAndPrepare(rootNode));
     bindButton(rootNode, "pmt-analyze", () => analyzeTracking(rootNode));
     bindButton(rootNode, "pmt-play-preview", () => toggleTrackingPreview(rootNode));
+    bindButton(rootNode, "pmt-skip-preview", () => skipTrackingPreview(rootNode));
     bindButton(rootNode, "pmt-preview-reset", () => {
       state.previewPlaying = false;
       if (previewPlaybackTimer) {
@@ -566,10 +702,10 @@
     render(rootNode);
     nativeInitialization.then((nativeStatus) => {
       if (nativeStatus.available) {
-        addLog("Moteur natif chargé : " + nativeStatus.version + " · autotest " + nativeStatus.selfTest + ".");
-        addLog("Exports natifs : " + nativeStatus.exportNames.join(", ") + ".");
+        addLog("Native engine loaded: " + nativeStatus.version + " · self-test " + nativeStatus.selfTest + ".");
+        addLog("Native exports: " + nativeStatus.exportNames.join(", ") + ".");
       } else {
-        addLog("Moteur natif indisponible : " + (nativeStatus.error || "raison inconnue") + ".");
+        addLog("Native engine unavailable: " + (nativeStatus.error || "unknown reason") + ".");
       }
       render(rootNode);
     });

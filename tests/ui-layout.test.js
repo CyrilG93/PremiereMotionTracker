@@ -59,6 +59,9 @@ test("analysed tracking caches sequence images with stable playback controls bef
   assert.match(uiSource, /showTrackingPreviewFrame/);
   assert.match(uiSource, /warmTrackingPreviewFrames/);
   assert.match(uiSource, /clearTimeout\(previewPlaybackTimer\)/);
+  assert.match(uiSource, /pmt-skip-preview/);
+  assert.match(uiSource, /skipTrackingPreview/);
+  assert.match(uiSource, /updatePreviewBuildStatus/);
   assert.match(premiereSource, /exportTrackingPreviewFrame/);
   assert.doesNotMatch(uiSource, /<video/);
   assert.doesNotMatch(nativeSource, /createPreviewVideo/);
@@ -87,17 +90,24 @@ test("manifest v6 loads the platform Hybrid addon and exposes its startup diagno
   assert.equal(manifest.requiredPermissions.enableAddon, true);
   assert.equal(manifest.requiredPermissions.localFileSystem, "plugin");
   assert.equal(manifest.addon.name, "premiere-motion-tracker-" + manifest.version + ".uxpaddon");
-  assert.match(nativeSource, /await require\("premiere-motion-tracker-0\.2\.6\.uxpaddon"\)/);
+  assert.match(nativeSource, /await require\("premiere-motion-tracker-0\.2\.7\.uxpaddon"\)/);
   assert.match(nativeSource, /loadedAddon\.runSelfTest\(\)/);
   assert.match(nativeSource, /addon\.inspectMedia/);
   assert.match(nativeSource, /addon\.trackMedia/);
   assert.match(uiSource, /PMT_NATIVE\.initialize\(\)/);
-  assert.match(uiSource, /Moteur natif chargé/);
+  assert.match(uiSource, /Native engine loaded/);
 });
 
 test("native analysis visibly enters an in-progress state before tracking begins", () => {
-  assert.match(uiSource, /Analyse OpenCV en cours/);
-  assert.match(uiSource, /Analyse en cours…/);
+  assert.match(uiSource, /OpenCV analysis in progress/);
+  assert.match(uiSource, /Analyzing…/);
   assert.match(uiSource, /waitForPanelPaint\(\)/);
   assert.doesNotMatch(styles, /pmt-analysis-progress|@keyframes/);
+});
+
+test("English is the default panel language and a compact French switch remains available", () => {
+  assert.match(uiSource, /language: "en"/);
+  assert.match(uiSource, /languageButton: "FR"/);
+  assert.match(uiSource, /pmt-toggle-language/);
+  assert.match(styles, /\.pmt-header-tools\s*\{[^}]*display:\s*flex;/s);
 });

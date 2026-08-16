@@ -79,8 +79,18 @@
   function readPointValue(value) {
     let current = value;
     let depth = 0;
-    while (current && typeof current === "object" && Object.prototype.hasOwnProperty.call(current, "value") && depth < 3) {
-      current = current.value;
+    while (current && typeof current === "object" && depth < 4) {
+      let nestedValue;
+      try {
+        // Premiere proxy properties are not always reported as own JavaScript properties.
+        nestedValue = current.value;
+      } catch (error) {
+        break;
+      }
+      if (nestedValue === undefined || nestedValue === current) {
+        break;
+      }
+      current = nestedValue;
       depth += 1;
     }
     if (Array.isArray(current) && current.length >= 2) {
@@ -90,6 +100,17 @@
       return { x: Number(current.x), y: Number(current.y) };
     }
     return null;
+  }
+
+  // Convert Premiere's RectF frame size into safe export dimensions.
+  function getPreviewDimensions(frameSize) {
+    const sourceWidth = Number(frameSize && frameSize.width) || 1920;
+    const sourceHeight = Number(frameSize && frameSize.height) || 1080;
+    const scale = Math.min(1, 960 / sourceWidth, 540 / sourceHeight);
+    return {
+      width: Math.max(1, Math.round(sourceWidth * scale)),
+      height: Math.max(1, Math.round(sourceHeight * scale))
+    };
   }
 
   // Build an explicit PointF because UXP constructors can ignore positional arguments.
@@ -213,12 +234,53 @@
     if (!sequence) {
       throw new Error("Aucune séquence active.");
     }
+    const rawFrameSize = await readMethod(sequence, "getFrameSize", null);
     return {
       sequenceId: String(sequence.guid || sequence.name || ""),
       inPoint: describeTime(await readMethod(sequence, "getInPoint", null)),
       outPoint: describeTime(await readMethod(sequence, "getOutPoint", null)),
-      frameSize: await readMethod(sequence, "getFrameSize", null),
+      frameSize: rawFrameSize ? { width: Number(rawFrameSize.width), height: Number(rawFrameSize.height) } : null,
       timebase: String(await readMethod(sequence, "getTimebase", ""))
+    };
+  }
+
+  // Export the sequence frame at its In point into UXP's private temporary folder.
+  async function exportPreviewFrame() {
+    if (!handles.source || !handles.source.sequence) {
+      throw new Error("Capturez d’abord le clip source.");
+    }
+    const app = handles.source.app;
+    if (!app.Exporter || typeof app.Exporter.exportSequenceFrame !== "function") {
+      throw new Error("Cette version de Premiere n’expose pas l’export d’image de séquence.");
+    }
+    const storage = require("uxp").storage.localFileSystem;
+    const temporaryFolder = await storage.getTemporaryFolder();
+    const frameTime = await handles.source.sequence.getInPoint();
+    const frameSize = await handles.source.sequence.getFrameSize();
+    const dimensions = getPreviewDimensions(frameSize);
+    const fileName = "pmt-preview-" + Date.now() + ".png";
+    const exported = await app.Exporter.exportSequenceFrame(
+      handles.source.sequence,
+      frameTime,
+      fileName,
+      temporaryFolder.nativePath,
+      dimensions.width,
+      dimensions.height
+    );
+    if (!exported) {
+      throw new Error("Premiere a refusé l’export de l’image au point In.");
+    }
+    const entries = await temporaryFolder.getEntries();
+    // Some Premiere builds append the requested format a second time.
+    const imageEntry = entries.find((entry) => entry.isFile && (entry.name === fileName || entry.name === fileName + ".png"));
+    if (!imageEntry) {
+      throw new Error("L’image a été exportée mais reste introuvable dans le dossier temporaire UXP.");
+    }
+    return {
+      url: imageEntry.url,
+      width: dimensions.width,
+      height: dimensions.height,
+      time: describeTime(frameTime)
     };
   }
 
@@ -286,15 +348,19 @@
       throw new Error("Le paramètre Position est introuvable. Paramètres exposés : " + (positionResult.names.join(", ") || "aucun"));
     }
     const positionParam = positionResult.param;
+    const inPoint = await item.getInPoint();
+    const outPoint = await item.getOutPoint();
     const startValue = await positionParam.getStartValue();
-    const initialPoint = readPointValue(startValue);
+    let initialPoint = readPointValue(startValue);
+    if (!initialPoint && typeof positionParam.getValueAtTime === "function") {
+      // getValueAtTime returns PointF directly on hosts where getStartValue wraps it differently.
+      initialPoint = readPointValue(await positionParam.getValueAtTime(inPoint));
+    }
     if (!initialPoint) {
       throw new Error("Premiere n’a pas renvoyé une valeur Position compatible.");
     }
     const looksNormalized = Math.abs(initialPoint.x) <= 1.5 && Math.abs(initialPoint.y) <= 1.5;
     const deltaX = looksNormalized ? 0.05 : 100;
-    const inPoint = await item.getInPoint();
-    const outPoint = await item.getOutPoint();
     executeActions(context.project, [() => positionParam.createSetTimeVaryingAction(true)], "Motion Tracker : activer Position");
     await waitForHostPaint();
 
@@ -345,6 +411,7 @@
   root.PMT_PREMIERE = {
     captureSelectedClip,
     getActiveRange,
+    exportPreviewFrame,
     getHandleStatus,
     applyTransformTest
   };

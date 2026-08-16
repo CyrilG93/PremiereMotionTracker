@@ -24,14 +24,9 @@ body {
   font-size: 13px;
 }
 
-button,
 select,
 input {
   font: inherit;
-}
-
-button {
-  appearance: none;
 }
 
 .pmt-shell {
@@ -139,6 +134,9 @@ button {
 }
 
 .pmt-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   min-height: 30px;
   padding: 6px 10px;
   border: 1px solid var(--pmt-border);
@@ -146,10 +144,14 @@ button {
   color: var(--pmt-text);
   background: var(--pmt-panel-strong);
   cursor: pointer;
+  line-height: 1.2;
+  user-select: none;
 }
 
-.pmt-button:hover:not(:disabled) {
+.pmt-button:hover:not([data-disabled="true"]),
+.pmt-button:focus:not([data-disabled="true"]) {
   border-color: var(--pmt-accent-hover);
+  outline: none;
 }
 
 .pmt-button-primary {
@@ -157,8 +159,9 @@ button {
   background: var(--pmt-accent);
 }
 
-.pmt-button:disabled {
+.pmt-button[data-disabled="true"] {
   color: #777777;
+  background: var(--pmt-panel-strong);
   cursor: default;
   opacity: 0.75;
 }
@@ -175,6 +178,30 @@ button {
   background: #111111;
   color: var(--pmt-muted);
   text-align: center;
+}
+
+.pmt-preview[data-ready="true"] {
+  min-height: 0;
+  cursor: crosshair;
+}
+
+.pmt-preview-image {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.pmt-tracking-point {
+  position: absolute;
+  z-index: 2;
+  width: 16px;
+  height: 16px;
+  border: 2px solid #ffffff;
+  border-radius: 999px;
+  background: rgba(91, 141, 239, 0.35);
+  box-shadow: 0 0 0 1px #000000;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
 }
 
 .pmt-preview-grid {

@@ -9,6 +9,7 @@ const path = require("node:path");
 const projectRoot = path.resolve(__dirname, "..");
 const styles = fs.readFileSync(path.join(projectRoot, "styles.css"), "utf8");
 const uiSource = fs.readFileSync(path.join(projectRoot, "src", "ui.js"), "utf8");
+const premiereSource = fs.readFileSync(path.join(projectRoot, "src", "premiereBridge.js"), "utf8");
 const manifest = JSON.parse(fs.readFileSync(path.join(projectRoot, "manifest.json"), "utf8"));
 
 test("interactive rows use flex instead of hidden UXP grid layouts", () => {
@@ -24,15 +25,29 @@ test("panel cards use simple div containers in Premiere UXP", () => {
 
 test("diagnostics are selectable and can be copied through the declared clipboard permission", () => {
   assert.match(uiSource, /<textarea class="pmt-log"/);
-  assert.match(uiSource, /id="pmt-copy-log"/);
+  assert.match(uiSource, /buttonMarkup\("pmt-copy-log"/);
   assert.match(uiSource, /clipboard\.setContent\(\{ "text\/plain": text \}\)/);
   assert.match(uiSource, /logArea\.select\(\)/);
   assert.equal(manifest.requiredPermissions.clipboard, "readAndWrite");
 });
 
-test("buttons disable the native UXP skin so their border uses one consistent radius", () => {
-  assert.match(styles, /button\s*\{[^}]*appearance:\s*none;/s);
+test("custom buttons avoid Premiere's mismatched native inner border", () => {
+  assert.doesNotMatch(uiSource, /<button/);
+  assert.match(uiSource, /role="button"/);
+  assert.match(uiSource, /data-disabled=/);
+  assert.match(styles, /\.pmt-button\s*\{[^}]*display:\s*flex;/s);
   assert.match(styles, /\.pmt-button\s*\{[^}]*border-radius:\s*7px;/s);
+});
+
+test("the In point frame is exported and accepts a normalized tracking point", () => {
+  assert.match(uiSource, /exportPreviewFrame\(\)/);
+  assert.match(uiSource, /pmt-preview-image/);
+  assert.match(uiSource, /PMT_SESSION\.normalizePoint/);
+  assert.match(premiereSource, /Exporter\.exportSequenceFrame\(/);
+});
+
+test("Transform Position falls back to a direct value read for proxy variants", () => {
+  assert.match(premiereSource, /positionParam\.getValueAtTime\(inPoint\)/);
 });
 
 test("destination clips are selected only when applying the finished tracking", () => {

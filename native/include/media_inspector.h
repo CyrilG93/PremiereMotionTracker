@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace pmt {
 
@@ -16,7 +17,26 @@ struct MediaInspection {
     double durationSeconds = 0.0;
 };
 
+// Preserve one image-to-image result before it is converted into Premiere timeline keyframes.
+struct MediaTrackingSample {
+    std::int64_t frame = 0;
+    double seconds = 0.0;
+    double x = 0.0;
+    double y = 0.0;
+    double confidence = 0.0;
+    bool valid = false;
+};
+
 // Open a local video through OpenCV and return durable metadata for the tracking session.
 MediaInspection inspectMedia(const std::string& mediaPath);
+
+// Track a normalized point across a bounded media interval with Lucas-Kanade and a forward-backward check.
+std::vector<MediaTrackingSample> trackMedia(
+    const std::string& mediaPath,
+    double normalizedX,
+    double normalizedY,
+    double startSeconds,
+    double endSeconds
+);
 
 } // namespace pmt

@@ -7,6 +7,7 @@
     range: null,
     preview: null,
     referencePoint: null,
+    tracking: null,
     busy: false,
     log: ["Prototype prêt. Capturez d’abord le clip source."]
   };
@@ -48,6 +49,30 @@
     return size + " · " + frameRateLabel + " · " + frameCountLabel + " · " + String(media.backend || "backend inconnu");
   }
 
+  // Intersect the visible sequence range with the source clip and convert it into source-media seconds.
+  function getTrackingMediaRange() {
+    if (!state.source || !state.range || !state.referencePoint) {
+      throw new Error("Capturez une source, lisez les In/Out et placez le point de tracking.");
+    }
+    if (state.source.reversed) {
+      throw new Error("Le tracking de clip inversé n’est pas encore pris en charge.");
+    }
+    const speed = Number(state.source.speed);
+    const normalizedSpeed = speed === 100 ? 1 : speed;
+    if (!Number.isFinite(normalizedSpeed) || normalizedSpeed <= 0) {
+      throw new Error("La vitesse du clip source est invalide.");
+    }
+    const sequenceStart = Math.max(Number(state.range.inPoint.seconds), Number(state.source.start.seconds));
+    const sequenceEnd = Math.min(Number(state.range.outPoint.seconds), Number(state.source.end.seconds));
+    if (!Number.isFinite(sequenceStart) || !Number.isFinite(sequenceEnd) || sequenceEnd <= sequenceStart) {
+      throw new Error("Les In/Out de la séquence ne recouvrent pas le clip source.");
+    }
+    return {
+      startSeconds: Number(state.source.inPoint.seconds) + (sequenceStart - Number(state.source.start.seconds)) * normalizedSpeed,
+      endSeconds: Number(state.source.inPoint.seconds) + (sequenceEnd - Number(state.source.start.seconds)) * normalizedSpeed
+    };
+  }
+
   // Render a skin-free accessible control because Premiere adds an inner box to native buttons.
   function buttonMarkup(id, label, classNames, disabled) {
     const classes = ["pmt-button"].concat(classNames || []).join(" ");
@@ -61,6 +86,9 @@
       return { tone: "warning", text: "Sélectionnez puis capturez le clip à analyser." };
     }
     if (state.preview) {
+      if (state.tracking) {
+        return { tone: "success", text: state.tracking.length + " images analysées. Vérifiez les images incertaines avant l’application." };
+      }
       return { tone: "success", text: "Image du point In chargée. Cliquez dans l’image pour placer le point de tracking." };
     }
     if (!nativeStatus.available) {
@@ -77,6 +105,7 @@
       ? nativeStatus.version + " · autotest " + nativeStatus.selfTest
       : (nativeStatus.loading ? "chargement…" : "indisponible");
     const canPrepare = Boolean(state.source && !state.busy);
+    const canAnalyze = Boolean(canPrepare && state.media && state.range && state.preview && state.referencePoint);
     const canTestTransform = Boolean(canPrepare && state.range && state.range.sequenceId === state.source.sequenceId);
     const previewContent = state.preview
       ? '<img class="pmt-preview-image" src="' + escapeHtml(state.preview.url) + '" alt="Image de la séquence au point In">' + (state.referencePoint
@@ -103,7 +132,7 @@
       '    <div class="pmt-preview" id="pmt-preview" data-ready="' + String(Boolean(state.preview)) + '">' + previewContent + '</div>',
       '    <div class="pmt-actions">',
       '      ' + buttonMarkup("pmt-read-range", "Lire les In/Out", [], !canPrepare),
-      '      ' + buttonMarkup("pmt-analyze", "Analyser", ["pmt-button-primary"], true),
+      '      ' + buttonMarkup("pmt-analyze", "Analyser", ["pmt-button-primary"], !canAnalyze),
       '    </div>',
       '  </div>',
       '  <div class="pmt-card">',
@@ -138,6 +167,7 @@
       state.range = null;
       state.preview = null;
       state.referencePoint = null;
+      state.tracking = null;
       addLog("Source capturée : " + clip.name);
       if (!clip.mediaPath) {
         addLog("Attention : Premiere n’a pas renvoyé de chemin média pour cette source.");
@@ -168,6 +198,7 @@
     render(rootNode);
     try {
       state.range = await root.PMT_PREMIERE.getActiveRange();
+      state.tracking = null;
       addLog("Plage séquence : " + state.range.inPoint.seconds.toFixed(3) + " s → " + state.range.outPoint.seconds.toFixed(3) + " s");
       try {
         state.preview = await root.PMT_PREMIERE.exportPreviewFrame();
@@ -207,8 +238,29 @@
       x: (Number(event.clientX) - bounds.left) / bounds.width,
       y: (Number(event.clientY) - bounds.top) / bounds.height
     });
+    state.tracking = null;
     addLog("Point de tracking : " + (state.referencePoint.x * 100).toFixed(1) + " %, " + (state.referencePoint.y * 100).toFixed(1) + " %.");
     render(rootNode);
+  }
+
+  // Run the native Lucas-Kanade tracker for the source-media interval visible in the active sequence range.
+  async function analyzeTracking(rootNode) {
+    state.busy = true;
+    render(rootNode);
+    try {
+      const mediaRange = getTrackingMediaRange();
+      const samples = await root.PMT_NATIVE.trackMedia(state.source.mediaPath, state.referencePoint, mediaRange.startSeconds, mediaRange.endSeconds);
+      state.tracking = Array.prototype.slice.call(samples || []);
+      const invalidCount = state.tracking.filter((sample) => !sample.valid).length;
+      addLog("Tracking OpenCV : " + state.tracking.length + " images de " + mediaRange.startSeconds.toFixed(3) + " s à " + mediaRange.endSeconds.toFixed(3) + " s.");
+      addLog("Images incertaines : " + invalidCount + ".");
+    } catch (error) {
+      state.tracking = null;
+      addLog("Erreur tracking : " + (error && error.message ? error.message : String(error)));
+    } finally {
+      state.busy = false;
+      render(rootNode);
+    }
   }
 
   // Validate effect creation and Position keyframes before the tracker supplies real samples.
@@ -302,6 +354,7 @@
   function bindEvents(rootNode) {
     bindButton(rootNode, "pmt-capture-source", () => captureSource(rootNode));
     bindButton(rootNode, "pmt-read-range", () => readRange(rootNode));
+    bindButton(rootNode, "pmt-analyze", () => analyzeTracking(rootNode));
     bindButton(rootNode, "pmt-test-transform", () => testTransform(rootNode));
     bindButton(rootNode, "pmt-copy-log", () => copyDiagnostics(rootNode));
     const preview = rootNode.querySelector("#pmt-preview");

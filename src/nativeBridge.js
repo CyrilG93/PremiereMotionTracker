@@ -13,7 +13,7 @@
     if (!candidate) {
       return names;
     }
-    ["getVersion", "runSelfTest", "inspectMedia"].forEach((name) => {
+    ["getVersion", "runSelfTest", "inspectMedia", "trackMedia"].forEach((name) => {
       if (typeof candidate[name] === "function") {
         names.push(name);
       }
@@ -41,7 +41,7 @@
     if (!loadPromise) {
       loadPromise = (async () => {
         try {
-          const loadedAddon = await require("premiere-motion-tracker-0.1.10.uxpaddon");
+          const loadedAddon = await require("premiere-motion-tracker-0.1.11.uxpaddon");
           exportNames = collectExportNames(loadedAddon);
           if (!loadedAddon || typeof loadedAddon.getVersion !== "function") {
             throw new Error("L’addon ne fournit pas getVersion() (" + describeExports(loadedAddon) + ").");
@@ -81,9 +81,25 @@
     return addon.inspectMedia(String(mediaPath || ""));
   }
 
+  // Delegate bounded Lucas-Kanade tracking to the addon without retaining native frame objects in UXP.
+  async function trackMedia(mediaPath, normalizedPoint, startSeconds, endSeconds) {
+    if (!addon || typeof addon.trackMedia !== "function") {
+      throw new Error(loadError || "L’addon natif ne fournit pas trackMedia().");
+    }
+    const point = normalizedPoint || {};
+    return addon.trackMedia(
+      String(mediaPath || ""),
+      Number(point.x),
+      Number(point.y),
+      Number(startSeconds),
+      Number(endSeconds)
+    );
+  }
+
   root.PMT_NATIVE = {
     initialize,
     probe,
-    inspectMedia
+    inspectMedia,
+    trackMedia
   };
 }(window));

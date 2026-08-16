@@ -6,7 +6,7 @@ La première version visera un flux simple : sélectionner le clip à analyser, 
 
 ## État du projet
 
-Le projet est actuellement un prototype technique. Le panneau sait déjà capturer le clip source depuis la timeline, lire la plage In/Out, afficher l’image de séquence au point In, placer un point de tracking et lancer un test d’écriture de keyframes Transform sur les clips sélectionnés au moment de l’application. Le module Hybrid Windows charge le cœur C++, exécute un autotest et expose l’inspection des métadonnées vidéo avec OpenCV et Media Foundation. Le tracking image par image et son interface restent le prochain jalon ; les binaires Windows et macOS seront inclus dans le produit final.
+Le projet est actuellement un prototype technique. Le panneau sait déjà capturer le clip source depuis la timeline, lire la plage In/Out, afficher l’image de séquence au point In et placer un point de tracking. Le module Hybrid Windows charge le cœur C++, exécute un autotest, lit les métadonnées vidéo avec OpenCV et Media Foundation, puis suit le point image par image avec Lucas-Kanade et un contrôle aller-retour. La correction visuelle des dérives et l’écriture de la vraie trajectoire dans Premiere restent les prochains jalons ; les binaires Windows et macOS seront inclus dans le produit final.
 
 ## Tester le prototype
 
@@ -22,9 +22,10 @@ Pour tester la capture :
 
 1. Sélectionnez un clip vidéo dans la timeline et cliquez sur `Capturer` pour la source.
 2. Placez les In/Out de la séquence puis cliquez sur `Lire les In/Out` pour charger l’image du point In.
-3. Cliquez dans l’image pour placer le point de tracking.
-4. Sélectionnez ensuite un ou plusieurs clips de destination dans la timeline.
-5. Cliquez sur `Tester Transform sur la sélection` pour ajouter un effet de test avec deux keyframes Position à chaque clip sélectionné.
+3. Cliquez dans l’image pour placer le point de tracking, puis sur `Analyser` pour calculer la trajectoire sur la plage visible du clip.
+4. Consultez le nombre d’images incertaines signalé dans le diagnostic.
+5. Sélectionnez ensuite un ou plusieurs clips de destination dans la timeline.
+6. Cliquez sur `Tester Transform sur la sélection` pour ajouter un effet de test avec deux keyframes Position à chaque clip sélectionné.
 
 Le choix des destinations se fait volontairement après l’analyse : une même trajectoire pourra ainsi être appliquée à plusieurs clips. Le test Transform modifie le projet Premiere. Dans ce prototype, utilisez Annuler jusqu’à la disparition des keyframes et de l’effet de test. Le bouton d’analyse reste volontairement désactivé jusqu’à l’intégration du moteur natif.
 

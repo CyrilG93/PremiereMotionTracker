@@ -184,10 +184,16 @@ input {
   cursor: crosshair;
 }
 
-.pmt-preview-image {
+.pmt-preview-image,
+.pmt-preview-video {
   display: block;
   width: 100%;
   height: auto;
+}
+
+.pmt-preview-video {
+  max-height: 360px;
+  background: #000000;
 }
 
 .pmt-tracking-point {
@@ -203,7 +209,7 @@ input {
   transform: translate(-50%, -50%);
 }
 
-/* Keep the tracking review frame number readable without relying on animated UXP controls. */
+/* Keep the tracking review time readable without relying on animated UXP controls. */
 .pmt-preview-status {
   position: absolute;
   right: 8px;
@@ -241,6 +247,29 @@ input {
 
 .pmt-actions .pmt-button {
   flex: 1 1 0;
+}
+
+.pmt-preview-timeline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.pmt-preview-time {
+  flex: 0 0 auto;
+  color: var(--pmt-muted);
+  font-family: Consolas, Monaco, monospace;
+  font-size: 10px;
+}
+
+.pmt-preview-scrubber {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.pmt-preview-scrubber sp-slider {
+  width: 100%;
 }
 
 .pmt-button-full {

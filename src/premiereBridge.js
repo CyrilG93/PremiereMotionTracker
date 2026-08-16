@@ -241,17 +241,6 @@
     };
   }
 
-  // Use a smaller sequence render for animated tracking review so long previews remain memory-safe.
-  function getTrackingPreviewDimensions(frameSize) {
-    const sourceWidth = Number(frameSize && frameSize.width) || 1920;
-    const sourceHeight = Number(frameSize && frameSize.height) || 1080;
-    const scale = Math.min(1, 640 / sourceWidth, 360 / sourceHeight);
-    return {
-      width: Math.max(1, Math.round(sourceWidth * scale)),
-      height: Math.max(1, Math.round(sourceHeight * scale))
-    };
-  }
-
   // Extract a filename from either a native Windows path or a UXP directory entry name.
   function getPathName(value) {
     const parts = String(value || "").split(/[\\/]/);
@@ -456,58 +445,15 @@
     };
   }
 
-  // Convert one tracked source-media time back into its matching sequence time for the preview render.
-  function getSequenceSecondsForMediaSample(mediaSeconds) {
-    if (!handles.source || !handles.source.descriptor) {
-      throw new Error("Capturez d’abord le clip source.");
+  // Build the file URL UXP's video element needs to play the captured source without re-encoding it.
+  function getPlayableMediaUrl(mediaPath) {
+    const normalizedPath = String(mediaPath || "").replace(/\\/g, "/");
+    if (!normalizedPath) {
+      throw new Error("Le média source ne fournit pas de chemin lisible pour l’aperçu vidéo.");
     }
-    const descriptor = handles.source.descriptor;
-    const speed = Number(descriptor.speed) === 100 ? 1 : Number(descriptor.speed);
-    if (descriptor.reversed || !Number.isFinite(speed) || speed <= 0) {
-      throw new Error("L’aperçu vidéo ne prend pas encore en charge le remappage temporel de cette source.");
-    }
-    return Number(descriptor.start.seconds) + (Number(mediaSeconds) - Number(descriptor.inPoint.seconds)) / speed;
-  }
-
-  // Export one sequence image at the time of a tracked sample so the panel can animate the verified point.
-  async function exportTrackingPreviewFrame(mediaSeconds, frameIndex) {
-    if (!handles.source || !handles.source.sequence) {
-      throw new Error("Capturez d’abord le clip source.");
-    }
-    const app = handles.source.app;
-    if (!app || !app.Exporter || typeof app.Exporter.exportSequenceFrame !== "function") {
-      throw new Error("Cette version de Premiere n’expose pas l’export d’image de séquence.");
-    }
-    if (!app.TickTime || typeof app.TickTime.createWithSeconds !== "function") {
-      throw new Error("Premiere n’expose pas TickTime.createWithSeconds(), nécessaire à l’aperçu vidéo.");
-    }
-    const storage = require("uxp").storage.localFileSystem;
-    const temporaryFolder = await storage.getTemporaryFolder();
-    const frameSize = await handles.source.sequence.getFrameSize();
-    const dimensions = getTrackingPreviewDimensions(frameSize);
-    const sequenceSeconds = getSequenceSecondsForMediaSample(mediaSeconds);
-    const frameTime = app.TickTime.createWithSeconds(sequenceSeconds);
-    const fileStem = "pmt-track-preview-" + Date.now() + "-" + Number(frameIndex);
-    const fileName = fileStem + ".png";
-    const exported = await app.Exporter.exportSequenceFrame(
-      handles.source.sequence,
-      frameTime,
-      fileName,
-      temporaryFolder.nativePath,
-      dimensions.width,
-      dimensions.height
-    );
-    if (!exported) {
-      throw new Error("Premiere a refusé l’export d’une image pour l’aperçu du tracking.");
-    }
-    const imageEntry = await resolveExportedPreview(temporaryFolder, fileStem);
-    return {
-      url: imageEntry.url,
-      fileName: imageEntry.name,
-      width: dimensions.width,
-      height: dimensions.height,
-      sequenceSeconds
-    };
+    // file:/C:/... is UXP's documented Windows form; a leading double slash preserves UNC hosts.
+    const prefix = normalizedPath.startsWith("//") ? "file:" : "file:/";
+    return encodeURI(prefix + normalizedPath);
   }
 
   // Expose whether the fragile source proxy is still available for the current panel session.
@@ -652,7 +598,7 @@
     captureSelectedClip,
     getActiveRange,
     exportPreviewFrame,
-    exportTrackingPreviewFrame,
+    getPlayableMediaUrl,
     getHandleStatus,
     applyTracking
   };

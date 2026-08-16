@@ -97,14 +97,21 @@ input {
 }
 
 .pmt-slot {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: flex;
+  flex-direction: row;
   gap: 8px;
   align-items: center;
+  width: 100%;
 }
 
 .pmt-slot-copy {
+  flex: 1 1 auto;
   min-width: 0;
+}
+
+.pmt-slot .pmt-button {
+  flex: 0 0 auto;
+  min-width: 78px;
 }
 
 .pmt-label {
@@ -174,9 +181,14 @@ input {
 }
 
 .pmt-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: flex;
+  flex-direction: row;
   gap: 8px;
+  width: 100%;
+}
+
+.pmt-actions .pmt-button {
+  flex: 1 1 0;
 }
 
 .pmt-log {
@@ -191,4 +203,3 @@ input {
   font-size: 11px;
   white-space: pre-wrap;
 }
-

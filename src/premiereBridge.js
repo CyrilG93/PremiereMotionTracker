@@ -241,6 +241,17 @@
     };
   }
 
+  // Use compact sequence renders for the image-based tracking preview so cached frames remain lightweight.
+  function getTrackingPreviewDimensions(frameSize) {
+    const sourceWidth = Number(frameSize && frameSize.width) || 1920;
+    const sourceHeight = Number(frameSize && frameSize.height) || 1080;
+    const scale = Math.min(1, 640 / sourceWidth, 360 / sourceHeight);
+    return {
+      width: Math.max(1, Math.round(sourceWidth * scale)),
+      height: Math.max(1, Math.round(sourceHeight * scale))
+    };
+  }
+
   // Extract a filename from either a native Windows path or a UXP directory entry name.
   function getPathName(value) {
     const parts = String(value || "").split(/[\\/]/);
@@ -472,6 +483,47 @@
     };
   }
 
+  // Convert a tracked source-media time into its matching sequence time for a rendered review image.
+  function getSequenceSecondsForMediaSample(mediaSeconds) {
+    if (!handles.source || !handles.source.descriptor) {
+      throw new Error("Capturez d’abord le clip source.");
+    }
+    const descriptor = handles.source.descriptor;
+    const speed = Number(descriptor.speed) === 100 ? 1 : Number(descriptor.speed);
+    if (descriptor.reversed || !Number.isFinite(speed) || speed <= 0) {
+      throw new Error("L’aperçu animé ne prend pas encore en charge le remappage temporel de cette source.");
+    }
+    return Number(descriptor.start.seconds) + (Number(mediaSeconds) - Number(descriptor.inPoint.seconds)) / speed;
+  }
+
+  // Export one PNG at a tracked sample so the panel can replay Premiere-rendered images without HTML video.
+  async function exportTrackingPreviewFrame(mediaSeconds, frameIndex) {
+    if (!handles.source || !handles.source.sequence) {
+      throw new Error("Capturez d’abord le clip source.");
+    }
+    const app = handles.source.app;
+    if (!app || !app.Exporter || typeof app.Exporter.exportSequenceFrame !== "function" || !app.TickTime || typeof app.TickTime.createWithSeconds !== "function") {
+      throw new Error("Cette version de Premiere n’expose pas l’export d’image requis pour l’aperçu animé.");
+    }
+    const storage = require("uxp").storage.localFileSystem;
+    const temporaryFolder = await storage.getTemporaryFolder();
+    const dimensions = getTrackingPreviewDimensions(await handles.source.sequence.getFrameSize());
+    const fileStem = "pmt-track-preview-" + Date.now() + "-" + Number(frameIndex);
+    const exported = await app.Exporter.exportSequenceFrame(
+      handles.source.sequence,
+      app.TickTime.createWithSeconds(getSequenceSecondsForMediaSample(mediaSeconds)),
+      fileStem + ".png",
+      temporaryFolder.nativePath,
+      dimensions.width,
+      dimensions.height
+    );
+    if (!exported) {
+      throw new Error("Premiere a refusé l’export d’une image pour l’aperçu animé.");
+    }
+    const imageEntry = await resolveExportedPreview(temporaryFolder, fileStem);
+    return { url: imageEntry.url, fileName: imageEntry.name, width: dimensions.width, height: dimensions.height };
+  }
+
   // Render the active sequence range directly in Premiere, avoiding an Adobe Media Encoder queue.
   async function exportPreviewVideo() {
     if (!handles.source || !handles.source.sequence) {
@@ -651,6 +703,7 @@
     captureSelectedClip,
     getActiveRange,
     exportPreviewFrame,
+    exportTrackingPreviewFrame,
     exportPreviewVideo,
     getHandleStatus,
     applyTracking

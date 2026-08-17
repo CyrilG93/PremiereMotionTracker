@@ -75,4 +75,5 @@ Critère de validation : la trajectoire détectée dans le média déplace réel
 - Implémenté au jalon 0.3.3 : le rendu direct reçoit un preset H.264 muet embarqué, car Premiere refuse un `presetFile` vide même avec le mode `IMMEDIATELY`.
 - Implémenté au jalon 0.3.4 : le proxy temporaire H.264 est transmis au lecteur UXP comme URL locale `file:/` plutôt que comme URL de stockage `plugin-temp:/`, qui était lisible par l’image fixe mais n’a pas été validée pour la vidéo.
 - Implémenté au jalon 0.3.5 : après décodage, la prévisualisation se place après l’image zéro et démarre automatiquement en boucle afin de forcer le rafraîchissement vidéo dans Premiere UXP.
+- Implémenté au jalon 0.3.6 : la prévisualisation vidéo est mise de côté. Après l’analyse, jusqu’à 120 PNG de la séquence sont rendus en 640×360 et relus par double buffer à cadence limitée. Seul le bandeau est actualisé pendant l’export afin de préserver le panneau de diagnostic.
 - Étapes suivantes : ajouter correction manuelle, zone de recherche, lissage et campagnes de tests 4K/cadences/durées longues avant le port macOS.

@@ -6,9 +6,9 @@ La première version visera un flux simple : sélectionner le clip à analyser, 
 
 ## État du projet
 
-Le projet est actuellement au jalon 0.3.5. Le panneau sait capturer le clip source depuis la timeline, lire la plage In/Out et afficher par défaut une image fixe fiable pour placer un point de tracking. Une case facultative permet de demander à Premiere un pré-rendu vidéo muet de la plage active, directement dans Premiere et sans mettre de tâche dans Adobe Media Encoder. Le plugin embarque le preset H.264 requis pour ce rendu direct et fournit ce proxy au lecteur UXP sous son URL locale `file:/`. Le lecteur démarre automatiquement après la première image et boucle le proxy. Le module Hybrid charge le cœur C++, exécute un autotest, lit les métadonnées vidéo avec OpenCV, puis suit le point image par image avec Lucas-Kanade et un contrôle aller-retour. Pendant l’analyse, le moteur publie ses positions par lots et le point superposé évolue sur la vidéo sans remplacer ses images. La trajectoire validée peut être appliquée à un ou plusieurs clips de destination : le plugin ajoute un effet Transform et crée une clé Position par image valide, avec compensation des dimensions, de l’échelle Motion et des Graphics Layers.
+Le projet est actuellement au jalon 0.3.6. Le panneau sait capturer le clip source depuis la timeline, lire la plage In/Out et afficher une image fixe fiable pour placer un point de tracking. Après l’analyse, Premiere exporte une suite bornée d’images de la séquence ; le panneau les relit pour montrer le point de tracking en mouvement. Le module Hybrid charge le cœur C++, exécute un autotest, lit les métadonnées vidéo avec OpenCV, puis suit le point image par image avec Lucas-Kanade et un contrôle aller-retour. Pendant l’analyse, le moteur publie ses positions par lots. La trajectoire validée peut être appliquée à un ou plusieurs clips de destination : le plugin ajoute un effet Transform et crée une clé Position par image valide, avec compensation des dimensions, de l’échelle Motion et des Graphics Layers.
 
-La prévisualisation vidéo optionnelle est lue par un unique élément vidéo UXP et le panneau ne déplace que son point superposé. Si ce rendu est désactivé ou échoue, le plugin reste sur l’image fixe au point In. Le tracking continue d’analyser le média source d’origine.
+La prévisualisation animée reste fondée sur des images PNG rendues par Premiere, pas sur le lecteur vidéo UXP. Pendant la préparation, seul le bandeau d’avancement est actualisé afin que le diagnostic reste visible. Le tracking continue d’analyser le média source d’origine.
 
 ## Tester le prototype
 
@@ -24,9 +24,9 @@ L’aperçu est généré dans l’espace temporaire privé du plugin : aucune a
 
 Pour tester la capture :
 
-1. Placez les In/Out de la séquence, sélectionnez le clip vidéo dans la timeline, cochez `Pré-rendre la prévisualisation vidéo` seulement si vous voulez un aperçu animé, puis cliquez sur `Capturer et préparer`.
-2. Cliquez dans l’image fixe ou dans la vidéo muette pour poser le point, puis sur `Analyze` pour calculer la trajectoire sur la plage visible du clip.
-3. Pendant l’analyse, le point superposé se met à jour avec les résultats déjà calculés. Si le pré-rendu est activé, les contrôles vidéo restent utilisables pour revoir le proxy temporaire.
+1. Placez les In/Out de la séquence, sélectionnez le clip vidéo dans la timeline puis cliquez sur `Capturer et préparer`.
+2. Cliquez dans l’image fixe pour poser le point, puis sur `Analyze` pour calculer la trajectoire sur la plage visible du clip.
+3. Après l’analyse, attendez l’export des images de prévisualisation. Utilisez `Play`, `Start` et `− / + image` pour revoir le point ; `Skip preview` conserve le tracking sans attendre tous les exports.
 4. Consultez le nombre d’images incertaines signalé dans le diagnostic.
 5. Sélectionnez ensuite un ou plusieurs clips de destination dans la timeline.
 6. Cliquez sur `Appliquer la trajectoire` pour ajouter un effet Transform et une clé Position par image valide à chaque clip sélectionné.

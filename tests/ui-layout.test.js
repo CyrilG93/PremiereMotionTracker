@@ -54,31 +54,20 @@ test("the In point frame is exported and accepts a normalized tracking point", (
   assert.doesNotMatch(styles, /\.pmt-preview\[data-ready="true"\]\s*\{[^}]*min-height:\s*0;/s);
 });
 
-test("optional Premiere-rendered video preview updates only its overlay while analysis runs", () => {
-  assert.match(uiSource, /<video class="pmt-preview-video"/);
-  assert.match(uiSource, /muted controls playsinline autoplay loop preload="auto"/);
-  assert.match(uiSource, /pmt-render-video/);
-  assert.match(uiSource, /renderVideoPreview: false/);
-  assert.match(uiSource, /exportPreviewVideo\(\)/);
-  assert.match(uiSource, /state\.previewVideo\.url/);
-  assert.doesNotMatch(uiSource, /getVideoPreviewUrl/);
-  assert.match(uiSource, /getSampleAtVideoTime/);
-  assert.match(uiSource, /updateVideoPreview/);
+test("tracking preview replays Premiere-rendered image frames without replacing diagnostics", () => {
+  assert.match(uiSource, /buildTrackingPreview/);
+  assert.match(uiSource, /selectPreviewSamples\(state\.tracking, 120\)/);
+  assert.match(uiSource, /pmt-tracking-image-a/);
+  assert.match(uiSource, /pmt-tracking-image-b/);
+  assert.match(uiSource, /updatePreviewBuildStatus/);
+  assert.match(uiSource, /scheduleTrackingPreviewFrame/);
+  assert.match(uiSource, /pmt-skip-preview/);
   assert.match(uiSource, /startTracking/);
   assert.match(uiSource, /pollTracking/);
   assert.match(uiSource, /waitForTrackingProgress/);
-  assert.doesNotMatch(uiSource, /buildTrackingPreview/);
-  assert.doesNotMatch(premiereSource, /exportTrackingPreviewFrame/);
-  assert.match(premiereSource, /EncoderManager\.getManager\(\)/);
-  assert.match(premiereSource, /ExportType\.IMMEDIATELY/);
-  assert.match(premiereSource, /encoderManager\.exportSequence/);
-  assert.match(premiereSource, /assets\/presets\/pmt-preview-h264\.epr/);
-  assert.match(premiereSource, /createUxpFileUrl/);
-  assert.match(premiereSource, /"file:" \+ encodeURI/);
-  assert.match(uiSource, /Preview video decoded/);
-  assert.match(uiSource, /video\.load\(\)/);
-  assert.match(styles, /\.pmt-preview-video\s*\{[^}]*width:\s*100%;/s);
-  assert.match(styles, /\.pmt-checkbox\s*\{[^}]*display:\s*flex;/s);
+  assert.match(premiereSource, /exportTrackingPreviewFrame/);
+  assert.match(premiereSource, /getSequenceSecondsForMediaSample/);
+  assert.match(styles, /\.pmt-preview-buffer\s*\{[^}]*opacity:\s*0;/s);
   assert.doesNotMatch(styles, /@keyframes/);
 });
 
@@ -111,7 +100,7 @@ test("manifest v6 loads the platform Hybrid addon and exposes its startup diagno
   assert.equal(manifest.requiredPermissions.enableAddon, true);
   assert.equal(manifest.requiredPermissions.localFileSystem, "fullAccess");
   assert.equal(manifest.addon.name, "premiere-motion-tracker-" + manifest.version + ".uxpaddon");
-  assert.match(nativeSource, /await require\("premiere-motion-tracker-0\.3\.5\.uxpaddon"\)/);
+  assert.match(nativeSource, /await require\("premiere-motion-tracker-0\.3\.6\.uxpaddon"\)/);
   assert.match(nativeSource, /loadedAddon\.runSelfTest\(\)/);
   assert.match(nativeSource, /addon\.inspectMedia/);
   assert.match(nativeSource, /addon\.trackMedia/);

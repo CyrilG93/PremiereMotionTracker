@@ -15,6 +15,7 @@
     previewBuildCount: 0,
     previewBuildTotal: 0,
     previewSkipRequested: false,
+    correction: null,
     referencePoint: null,
     tracking: null,
     liveSamples: [],
@@ -51,6 +52,10 @@
       skippingPreview: "Skipping preview…",
       trackingPreview: "Tracking preview · frame {current} / {total}",
       trackingPreviewAlt: "Tracking preview",
+      previewNavigation: "Browse the analyzed frames",
+      correctionHelp: "Click the image to correct the point, then re-track from this frame.",
+      retrackFromHere: "Re-track from this frame",
+      retracking: "Re-tracking from the corrected frame…",
       inImageAlt: "Sequence image at the In point",
       emptyPreview: "The sequence image at the In point will appear here after preparation.",
       sourceTitle: "1. Tracking source",
@@ -90,6 +95,10 @@
       skippingPreview: "Aperçu ignoré…",
       trackingPreview: "Aperçu tracking · image {current} / {total}",
       trackingPreviewAlt: "Aperçu du tracking",
+      previewNavigation: "Parcourir les images analysées",
+      correctionHelp: "Cliquez dans l’image pour corriger le point, puis relancer le tracking depuis cette image.",
+      retrackFromHere: "Relancer depuis cette image",
+      retracking: "Reprise du tracking depuis l’image corrigée…",
       inImageAlt: "Image de la séquence au point In",
       emptyPreview: "L’image de la séquence au point In apparaîtra ici après préparation.",
       sourceTitle: "1. Source du tracking",
@@ -146,6 +155,7 @@
     state.previewBuildCount = 0;
     state.previewBuildTotal = 0;
     state.previewSkipRequested = false;
+    state.correction = null;
     state.liveSamples = [];
     state.analysisTaskId = "";
     state.analysisSampleIndex = 0;
@@ -261,8 +271,11 @@
     const canPlayPreview = Boolean(!state.busy && state.trackingPreview && state.trackingPreview.frames.length > 1);
     const analyzeLabel = state.operation === "analysis" ? t("analyzing") : t("analyze");
     const playbackFrame = state.trackingPreview && state.trackingPreview.frames[state.previewFrameIndex];
+    const hasCorrection = Boolean(state.correction && playbackFrame && state.correction.frameIndex === state.previewFrameIndex);
+    const displayedPoint = hasCorrection ? state.correction.point : playbackFrame;
+    const canRetrack = Boolean(!state.busy && hasCorrection && state.tracking && state.tracking.length > 1 && Number(playbackFrame.seconds) < Number(state.tracking[state.tracking.length - 1].seconds));
     const previewContent = playbackFrame
-      ? '<div class="pmt-preview-stage"><img class="pmt-preview-buffer pmt-preview-buffer-active" id="pmt-tracking-image-a" src="' + escapeHtml(playbackFrame.url) + '" alt="' + escapeHtml(t("trackingPreviewAlt")) + '"><img class="pmt-preview-buffer" id="pmt-tracking-image-b" alt=""></div><div class="pmt-tracking-point" id="pmt-preview-point" style="left:' + (Number(playbackFrame.x) * 100).toFixed(3) + '%;top:' + (Number(playbackFrame.y) * 100).toFixed(3) + '%"></div><div class="pmt-preview-status" id="pmt-preview-status">' + escapeHtml(t("trackingPreview", { current: state.previewFrameIndex + 1, total: state.trackingPreview.frames.length })) + '</div>'
+      ? '<div class="pmt-preview-stage"><img class="pmt-preview-buffer pmt-preview-buffer-active" id="pmt-tracking-image-a" src="' + escapeHtml(playbackFrame.url) + '" alt="' + escapeHtml(t("trackingPreviewAlt")) + '"><img class="pmt-preview-buffer" id="pmt-tracking-image-b" alt=""></div><div class="pmt-tracking-point" id="pmt-preview-point" style="left:' + (Number(displayedPoint.x) * 100).toFixed(3) + '%;top:' + (Number(displayedPoint.y) * 100).toFixed(3) + '%"></div><div class="pmt-preview-status" id="pmt-preview-status">' + escapeHtml(t("trackingPreview", { current: state.previewFrameIndex + 1, total: state.trackingPreview.frames.length })) + '</div>'
       : state.preview
       ? '<img class="pmt-preview-image" src="' + escapeHtml(state.preview.url) + '" alt="' + escapeHtml(t("inImageAlt")) + '">' + (state.referencePoint
         ? '<div class="pmt-tracking-point" style="left:' + (state.referencePoint.x * 100).toFixed(3) + '%;top:' + (state.referencePoint.y * 100).toFixed(3) + '%"></div>'
@@ -286,14 +299,15 @@
       '  <div class="pmt-card">',
       '    <h2 class="pmt-card-title">' + escapeHtml(t("previewTitle")) + '</h2>',
       '    <div class="pmt-preview" id="pmt-preview" data-ready="' + String(Boolean(state.preview || playbackFrame)) + '">' + previewContent + '</div>',
+      playbackFrame ? '    <div class="pmt-preview-navigation"><div class="pmt-label">' + escapeHtml(t("previewNavigation")) + '</div><sp-slider class="pmt-preview-slider" id="pmt-preview-slider" min="0" max="' + String(Math.max(0, state.trackingPreview.frames.length - 1)) + '" step="1" value="' + String(state.previewFrameIndex) + '"' + (canPlayPreview ? '' : ' disabled') + ' aria-label="' + escapeHtml(t("previewNavigation")) + '"></sp-slider></div>' : '',
+      playbackFrame ? '    <div class="pmt-label">' + escapeHtml(t("correctionHelp")) + '</div>' : '',
       '    <div class="pmt-actions">',
       '      ' + buttonMarkup("pmt-analyze", analyzeLabel, ["pmt-button-primary"], !canAnalyze),
       '      ' + buttonMarkup("pmt-play-preview", state.previewPlaying ? t("pause") : t("play"), [], !canPlayPreview),
       state.operation === "preview" ? '      ' + buttonMarkup("pmt-skip-preview", t("skipPreview"), [], state.previewSkipRequested) : '',
       playbackFrame ? '      ' + buttonMarkup("pmt-preview-reset", t("start"), [], !canPlayPreview) : '',
-      playbackFrame ? '      ' + buttonMarkup("pmt-preview-previous", t("previousFrame"), [], !canPlayPreview) : '',
-      playbackFrame ? '      ' + buttonMarkup("pmt-preview-next", t("nextFrame"), [], !canPlayPreview) : '',
       '    </div>',
+      playbackFrame ? '    ' + buttonMarkup("pmt-retrack-from-here", t("retrackFromHere"), ["pmt-button-full", "pmt-button-primary"], !canRetrack) : '',
       '  </div>',
       '  <div class="pmt-card">',
       '    <h2 class="pmt-card-title">' + escapeHtml(t("applyTitle")) + '</h2>',
@@ -364,9 +378,20 @@
         activeImage.classList.remove("pmt-preview-buffer-active");
         state.previewActiveBuffer = nextBuffer;
         state.previewFrameIndex = requestedIndex;
-        rootNode.querySelector("#pmt-preview-point").style.left = (Number(frame.x) * 100).toFixed(3) + "%";
-        rootNode.querySelector("#pmt-preview-point").style.top = (Number(frame.y) * 100).toFixed(3) + "%";
-        rootNode.querySelector("#pmt-preview-status").textContent = t("trackingPreview", { current: requestedIndex + 1, total: frames.length });
+        const correction = state.correction && state.correction.frameIndex === requestedIndex ? state.correction.point : frame;
+        const point = rootNode.querySelector("#pmt-preview-point");
+        const status = rootNode.querySelector("#pmt-preview-status");
+        const slider = rootNode.querySelector("#pmt-preview-slider");
+        if (point) {
+          point.style.left = (Number(correction.x) * 100).toFixed(3) + "%";
+          point.style.top = (Number(correction.y) * 100).toFixed(3) + "%";
+        }
+        if (status) {
+          status.textContent = t("trackingPreview", { current: requestedIndex + 1, total: frames.length });
+        }
+        if (slider) {
+          slider.value = String(requestedIndex);
+        }
         resolve(true);
       };
       nextImage.onload = swapWhenReady;
@@ -403,7 +428,7 @@
       }
       const sample = samples[index];
       const exported = await root.PMT_PREMIERE.exportTrackingPreviewFrame(Number(sample.seconds), index);
-      frames.push({ url: exported.url, width: exported.width, height: exported.height, x: Number(sample.x), y: Number(sample.y) });
+      frames.push({ url: exported.url, width: exported.width, height: exported.height, frame: Number(sample.frame), seconds: Number(sample.seconds), x: Number(sample.x), y: Number(sample.y) });
       state.previewBuildCount = index + 1;
       updatePreviewBuildStatus(rootNode);
     }
@@ -520,6 +545,35 @@
     state.liveSamples = [];
     clearTrackingPreview();
     addLog("Tracking point: " + (state.referencePoint.x * 100).toFixed(1) + "%, " + (state.referencePoint.y * 100).toFixed(1) + "%.");
+    render(rootNode);
+  }
+
+  // Save a corrected point on the displayed review image without invalidating its already approved prefix.
+  function chooseCorrectionPoint(rootNode, event) {
+    const preview = rootNode.querySelector("#pmt-preview");
+    const frame = state.trackingPreview && state.trackingPreview.frames[state.previewFrameIndex];
+    if (!preview || !frame || typeof preview.getBoundingClientRect !== "function") {
+      return;
+    }
+    const bounds = preview.getBoundingClientRect();
+    if (!bounds.width || !bounds.height) {
+      return;
+    }
+    if (previewPlaybackTimer) {
+      clearTimeout(previewPlaybackTimer);
+      previewPlaybackTimer = null;
+    }
+    state.previewPlaying = false;
+    state.correction = {
+      frameIndex: state.previewFrameIndex,
+      frame: Number(frame.frame),
+      seconds: Number(frame.seconds),
+      point: root.PMT_SESSION.normalizePoint({
+        x: (Number(event.clientX) - bounds.left) / bounds.width,
+        y: (Number(event.clientY) - bounds.top) / bounds.height
+      })
+    };
+    addLog("Tracking correction: source frame " + state.correction.frame + " · " + (state.correction.point.x * 100).toFixed(1) + "%, " + (state.correction.point.y * 100).toFixed(1) + "%." );
     render(rootNode);
   }
 
@@ -653,6 +707,49 @@
     }
   }
 
+  // Re-run only the unapproved tail of the trajectory from a manually corrected preview image.
+  async function retrackFromCorrection(rootNode) {
+    const correction = state.correction;
+    const previousTracking = state.tracking ? state.tracking.slice() : [];
+    if (!correction || !previousTracking.length) {
+      return;
+    }
+    state.busy = true;
+    state.operation = "analysis";
+    state.liveSamples = [];
+    state.analysisSampleIndex = 0;
+    clearTrackingPreview();
+    addLog("Re-tracking from source frame " + correction.frame + ".");
+    render(rootNode);
+    try {
+      await waitForPanelPaint();
+      const mediaRange = getTrackingMediaRange();
+      if (Number(correction.seconds) >= Number(mediaRange.endSeconds)) {
+        throw new Error("The correction must be before the end of the tracking range.");
+      }
+      state.analysisTaskId = await root.PMT_NATIVE.startTracking(state.source.mediaPath, correction.point, correction.seconds, mediaRange.endSeconds);
+      const replacement = await collectLiveTracking(rootNode, state.analysisTaskId);
+      state.analysisTaskId = "";
+      state.tracking = root.PMT_TRAJECTORY.replaceTrackingTail(previousTracking, replacement);
+      const invalidCount = state.tracking.filter((sample) => !sample.valid).length;
+      addLog("Correction merged: " + replacement.length + " re-tracked frames from source frame " + correction.frame + ".");
+      addLog("Uncertain frames: " + invalidCount + ".");
+      try {
+        await buildTrackingPreview(rootNode);
+      } catch (previewError) {
+        clearTrackingPreview();
+        addLog("Preview unavailable: " + (previewError && previewError.message ? previewError.message : String(previewError)));
+      }
+    } catch (error) {
+      state.analysisTaskId = "";
+      addLog("Correction error: " + (error && error.message ? error.message : String(error)));
+    } finally {
+      state.busy = false;
+      state.operation = "";
+      refreshAfterHostWork(rootNode, false);
+    }
+  }
+
   // Convert native frame samples into offsets, then apply every valid sample to selected destinations.
   async function applyTracking(rootNode) {
     state.busy = true;
@@ -761,15 +858,23 @@
     bindButton(rootNode, "pmt-play-preview", () => toggleTrackingPreview(rootNode));
     bindButton(rootNode, "pmt-skip-preview", () => skipTrackingPreview(rootNode));
     bindButton(rootNode, "pmt-preview-reset", () => showTrackingPreviewFrame(rootNode, 0));
-    bindButton(rootNode, "pmt-preview-previous", () => showTrackingPreviewFrame(rootNode, state.previewFrameIndex - 1));
-    bindButton(rootNode, "pmt-preview-next", () => showTrackingPreviewFrame(rootNode, state.previewFrameIndex + 1));
+    bindButton(rootNode, "pmt-retrack-from-here", () => retrackFromCorrection(rootNode));
     bindButton(rootNode, "pmt-apply-tracking", () => applyTracking(rootNode));
     bindButton(rootNode, "pmt-copy-log", () => copyDiagnostics(rootNode));
     const preview = rootNode.querySelector("#pmt-preview");
-    if (preview && (state.preview || rootNode.querySelector("#pmt-preview-video")) && !state.busy) {
+    const previewSlider = rootNode.querySelector("#pmt-preview-slider");
+    if (previewSlider && state.trackingPreview && !state.busy) {
+      // Spectrum's native UXP slider gives direct scrubbing without the unreliable HTML range control.
+      const scrubPreview = (event) => showTrackingPreviewFrame(rootNode, Number(event.target.value));
+      previewSlider.addEventListener("input", scrubPreview);
+      previewSlider.addEventListener("change", scrubPreview);
+    }
+    if (preview && state.trackingPreview && !state.busy) {
+      preview.addEventListener("click", (event) => chooseCorrectionPoint(rootNode, event));
+    } else if (preview && state.preview && !state.busy) {
       preview.addEventListener("click", (event) => {
-        // Keep video transport controls usable; a point is chosen only by clicking the video image itself.
-        if (!event.target || event.target.id === "pmt-preview-video" || event.target.className === "pmt-preview-image") {
+        // The initial still image remains the only place where a new full-range reference point is chosen.
+        if (!event.target || event.target.className === "pmt-preview-image") {
           chooseReferencePoint(rootNode, event);
         }
       });

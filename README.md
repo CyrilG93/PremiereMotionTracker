@@ -6,7 +6,7 @@ La première version visera un flux simple : sélectionner le clip à analyser, 
 
 ## État du projet
 
-Le projet est actuellement au jalon 0.3.6. Le panneau sait capturer le clip source depuis la timeline, lire la plage In/Out et afficher une image fixe fiable pour placer un point de tracking. Après l’analyse, Premiere exporte une suite bornée d’images de la séquence ; le panneau les relit pour montrer le point de tracking en mouvement. Le module Hybrid charge le cœur C++, exécute un autotest, lit les métadonnées vidéo avec OpenCV, puis suit le point image par image avec Lucas-Kanade et un contrôle aller-retour. Pendant l’analyse, le moteur publie ses positions par lots. La trajectoire validée peut être appliquée à un ou plusieurs clips de destination : le plugin ajoute un effet Transform et crée une clé Position par image valide, avec compensation des dimensions, de l’échelle Motion et des Graphics Layers.
+Le projet est actuellement au jalon 0.3.7. Le panneau sait capturer le clip source depuis la timeline, lire la plage In/Out et afficher une image fixe fiable pour placer un point de tracking. Après l’analyse, Premiere exporte une suite bornée d’images de la séquence ; le panneau les relit pour montrer le point de tracking en mouvement. Une réglette permet d’aller directement à une image : un clic dans l’aperçu corrige le point, puis le plugin recalcule seulement la suite de la trajectoire depuis cette image. Le module Hybrid charge le cœur C++, exécute un autotest, lit les métadonnées vidéo avec OpenCV, puis suit le point image par image avec Lucas-Kanade et un contrôle aller-retour. Pendant l’analyse, le moteur publie ses positions par lots. La trajectoire validée peut être appliquée à un ou plusieurs clips de destination : le plugin ajoute un effet Transform et crée une clé Position par image valide, avec compensation des dimensions, de l’échelle Motion et des Graphics Layers.
 
 La prévisualisation animée reste fondée sur des images PNG rendues par Premiere, pas sur le lecteur vidéo UXP. Pendant la préparation, seul le bandeau d’avancement est actualisé afin que le diagnostic reste visible. Le tracking continue d’analyser le média source d’origine.
 
@@ -26,10 +26,11 @@ Pour tester la capture :
 
 1. Placez les In/Out de la séquence, sélectionnez le clip vidéo dans la timeline puis cliquez sur `Capturer et préparer`.
 2. Cliquez dans l’image fixe pour poser le point, puis sur `Analyze` pour calculer la trajectoire sur la plage visible du clip.
-3. Après l’analyse, attendez l’export des images de prévisualisation. Utilisez `Play`, `Start` et `− / + image` pour revoir le point ; `Skip preview` conserve le tracking sans attendre tous les exports.
-4. Consultez le nombre d’images incertaines signalé dans le diagnostic.
-5. Sélectionnez ensuite un ou plusieurs clips de destination dans la timeline.
-6. Cliquez sur `Appliquer la trajectoire` pour ajouter un effet Transform et une clé Position par image valide à chaque clip sélectionné.
+3. Après l’analyse, attendez l’export des images de prévisualisation. Utilisez `Play`, `Start` ou la réglette pour revoir le point ; `Skip preview` conserve le tracking sans attendre tous les exports.
+4. Pour corriger un décalage, placez la réglette sur l’image concernée, cliquez le bon emplacement du point, puis choisissez `Relancer depuis cette image`. Les images antérieures restent conservées et seule la suite est recalculée.
+5. Consultez le nombre d’images incertaines signalé dans le diagnostic.
+6. Sélectionnez ensuite un ou plusieurs clips de destination dans la timeline.
+7. Cliquez sur `Appliquer la trajectoire` pour ajouter un effet Transform et une clé Position par image valide à chaque clip sélectionné.
 
 Le manifeste demande l’autorisation d’accéder aux fichiers locaux afin que le moteur natif puisse analyser le média sélectionné et que Premiere puisse déposer les aperçus temporaires. Cette autorisation ne sert pas à téléverser des fichiers.
 

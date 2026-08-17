@@ -19,7 +19,7 @@ Critère de validation : la trajectoire détectée dans le média déplace réel
 ## Phase 2 — Sessions et prévisualisation
 
 - Stocker une session sérialisable sans conserver les proxies UXP fragiles.
-- Garder l’image fixe au point In comme aperçu par défaut. Sur demande, exporter directement depuis Premiere un proxy vidéo temporaire de la plage active, puis déplacer seulement le point superposé dans cet unique élément vidéo UXP. Publier les échantillons natifs par lots pendant l’analyse afin que la vidéo reste jouable sans remplacer une séquence d’images fragiles.
+- Garder l’image fixe au point In comme aperçu par défaut. Après l’analyse, exporter une suite bornée d’images de la séquence depuis Premiere et y superposer le point de tracking. Publier les échantillons natifs par lots pendant l’analyse sans dépendre du lecteur vidéo UXP.
 - Permettre de poser le point de référence et choisir la zone de recherche.
 - Conserver les résultats, réglages et corrections manuelles.
 
@@ -76,4 +76,5 @@ Critère de validation : la trajectoire détectée dans le média déplace réel
 - Implémenté au jalon 0.3.4 : le proxy temporaire H.264 est transmis au lecteur UXP comme URL locale `file:/` plutôt que comme URL de stockage `plugin-temp:/`, qui était lisible par l’image fixe mais n’a pas été validée pour la vidéo.
 - Implémenté au jalon 0.3.5 : après décodage, la prévisualisation se place après l’image zéro et démarre automatiquement en boucle afin de forcer le rafraîchissement vidéo dans Premiere UXP.
 - Implémenté au jalon 0.3.6 : la prévisualisation vidéo est mise de côté. Après l’analyse, jusqu’à 120 PNG de la séquence sont rendus en 640×360 et relus par double buffer à cadence limitée. Seul le bandeau est actualisé pendant l’export afin de préserver le panneau de diagnostic.
-- Étapes suivantes : ajouter correction manuelle, zone de recherche, lissage et campagnes de tests 4K/cadences/durées longues avant le port macOS.
+- Implémenté au jalon 0.3.7 : une réglette Spectrum permet d’aller directement à une image de contrôle. Après un clic de correction, le tracker relance seulement la portion qui suit cette image et fusionne la nouvelle trajectoire avec le préfixe validé.
+- Étapes suivantes : ajouter la zone de recherche, lissage et campagnes de tests 4K/cadences/durées longues avant le port macOS.

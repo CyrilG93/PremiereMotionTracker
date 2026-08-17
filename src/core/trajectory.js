@@ -109,11 +109,27 @@
     return selected;
   }
 
+  // Keep the approved prefix and replace every later sample after a manual correction.
+  function replaceTrackingTail(samples, replacement) {
+    const original = Array.isArray(samples) ? samples : [];
+    const corrected = (Array.isArray(replacement) ? replacement : []).filter((sample) => {
+      return sample && Number.isFinite(Number(sample.seconds));
+    });
+    if (!corrected.length) {
+      throw new Error("La reprise du tracking n’a renvoyé aucune image exploitable.");
+    }
+    const restartSeconds = Number(corrected[0].seconds);
+    // The native tracker returns its correction frame first, so it must replace—not duplicate—the prior sample.
+    const prefix = original.filter((sample) => Number(sample && sample.seconds) < restartSeconds - 0.000001);
+    return prefix.concat(corrected);
+  }
+
   return {
     computeRelativeOffsets,
     findUncertainSamples,
     buildPositionKeyframes,
     computeTargetPositionScale,
-    selectPreviewSamples
+    selectPreviewSamples,
+    replaceTrackingTail
   };
 }));

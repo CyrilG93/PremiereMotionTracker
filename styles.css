@@ -309,6 +309,20 @@ input {
   flex: 1 1 0;
 }
 
+/* Use Spectrum's host-provided slider for direct review scrubbing instead of a fragile HTML range control. */
+.pmt-preview-navigation {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
+.pmt-preview-slider {
+  display: block;
+  width: 100%;
+  min-width: 0;
+}
+
 .pmt-button-full {
   width: 100%;
 }

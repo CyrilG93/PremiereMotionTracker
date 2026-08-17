@@ -97,3 +97,17 @@ test("selectPreviewSamples bounds a long cached review while preserving both end
   assert.equal(preview[0].frame, 0);
   assert.equal(preview[preview.length - 1].frame, 9);
 });
+
+test("replaceTrackingTail retains the approved prefix and replaces the corrected frame onward", () => {
+  const merged = trajectoryApi.replaceTrackingTail([
+    { frame: 100, seconds: 4, x: 0.2, y: 0.2 },
+    { frame: 101, seconds: 4.04, x: 0.3, y: 0.3 },
+    { frame: 102, seconds: 4.08, x: 0.4, y: 0.4 }
+  ], [
+    { frame: 101, seconds: 4.04, x: 0.31, y: 0.29 },
+    { frame: 102, seconds: 4.08, x: 0.35, y: 0.25 }
+  ]);
+  assert.deepEqual(merged.map((sample) => sample.frame), [100, 101, 102]);
+  assert.equal(merged[1].x, 0.31);
+  assert.throws(() => trajectoryApi.replaceTrackingTail([], []), /aucune image exploitable/);
+});

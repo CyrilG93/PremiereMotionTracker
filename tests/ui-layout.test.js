@@ -71,6 +71,16 @@ test("tracking preview replays Premiere-rendered image frames without replacing 
   assert.doesNotMatch(styles, /@keyframes/);
 });
 
+test("tracking review scrubs through Spectrum and can replace only the corrected tail", () => {
+  assert.match(uiSource, /<sp-slider class="pmt-preview-slider"/);
+  assert.match(uiSource, /pmt-retrack-from-here/);
+  assert.match(uiSource, /chooseCorrectionPoint/);
+  assert.match(uiSource, /replaceTrackingTail\(previousTracking, replacement\)/);
+  assert.match(uiSource, /previewSlider\.addEventListener\("input", scrubPreview\)/);
+  assert.match(styles, /\.pmt-preview-slider\s*\{[^}]*width:\s*100%;/s);
+  assert.doesNotMatch(uiSource, /type="range"/);
+});
+
 test("the direct Premiere preview uses its bundled muted H.264 preset", () => {
   assert.match(previewPreset, /<PresetName>Premiere Motion Tracker Preview H\.264<\/PresetName>/);
   assert.match(previewPreset, /<DoAudio>false<\/DoAudio>/);
@@ -100,7 +110,7 @@ test("manifest v6 loads the platform Hybrid addon and exposes its startup diagno
   assert.equal(manifest.requiredPermissions.enableAddon, true);
   assert.equal(manifest.requiredPermissions.localFileSystem, "fullAccess");
   assert.equal(manifest.addon.name, "premiere-motion-tracker-" + manifest.version + ".uxpaddon");
-  assert.match(nativeSource, /await require\("premiere-motion-tracker-0\.3\.6\.uxpaddon"\)/);
+  assert.match(nativeSource, /await require\("premiere-motion-tracker-0\.3\.7\.uxpaddon"\)/);
   assert.match(nativeSource, /loadedAddon\.runSelfTest\(\)/);
   assert.match(nativeSource, /addon\.inspectMedia/);
   assert.match(nativeSource, /addon\.trackMedia/);

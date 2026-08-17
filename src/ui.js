@@ -49,7 +49,7 @@
       trackingMode: "Tracking mode",
       pointMode: "Point",
       surfaceMode: "Surface (beta)",
-      surfaceHelp: "Click the four corners in order: top-left, top-right, bottom-right, bottom-left.",
+      surfaceHelp: "Click the four corners in order, then drag each blue handle independently to refine the surface.",
       resetSurface: "Reset corners",
       readyToAnalyze: "Ready to analyze the In/Out range.",
       loading: "loading…",
@@ -106,7 +106,7 @@
       trackingMode: "Mode de tracking",
       pointMode: "Point",
       surfaceMode: "Surface (bêta)",
-      surfaceHelp: "Cliquez les quatre coins dans l’ordre : haut gauche, haut droit, bas droit, bas gauche.",
+      surfaceHelp: "Cliquez les quatre coins dans l’ordre, puis déplacez chaque poignée bleue indépendamment pour ajuster la surface.",
       resetSurface: "Réinitialiser les coins",
       readyToAnalyze: "Prêt à analyser la plage In/Out.",
       loading: "chargement…",
@@ -300,14 +300,30 @@
     return '<div class="pmt-search-area" style="left:' + (Number(point.x) * 100).toFixed(3) + '%;top:' + (Number(point.y) * 100).toFixed(3) + '%;width:' + width.toFixed(3) + '%;height:' + height.toFixed(3) + '%"></div>';
   }
 
-  // Draw four simple HTML markers rather than SVG so the overlay remains reliable in Premiere UXP.
-  function surfaceCornersMarkup(corners) {
+  // Convert normalized corners into the stable 0–100 viewBox coordinates used by the non-interactive shape overlay.
+  function surfacePolygonPoints(corners) {
+    return (Array.isArray(corners) ? corners : []).map((corner) => {
+      return (Number(corner.x) * 100).toFixed(3) + "," + (Number(corner.y) * 100).toFixed(3);
+    }).join(" ");
+  }
+
+  // Keep draggable handles as HTML controls while SVG draws only the lightweight surface fill and dotted outline.
+  function surfaceCornersMarkup(corners, editable) {
     if (!Array.isArray(corners) || !corners.length) {
       return "";
     }
-    return corners.map((corner, index) => {
-      return '<div class="pmt-surface-corner" data-surface-corner="' + String(index) + '" style="left:' + (Number(corner.x) * 100).toFixed(3) + '%;top:' + (Number(corner.y) * 100).toFixed(3) + '%">' + String(index + 1) + '</div>';
+    const points = surfacePolygonPoints(corners);
+    const shape = corners.length >= 3
+      ? '<svg class="pmt-surface-shape" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><polygon id="pmt-surface-polygon" points="' + points + '"></polygon></svg>'
+      : '<svg class="pmt-surface-shape" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><polyline id="pmt-surface-polygon" points="' + points + '"></polyline></svg>';
+    const handles = corners.map((corner, index) => {
+      const className = editable ? "pmt-surface-corner pmt-surface-corner-editable" : "pmt-surface-corner";
+      const attributes = editable
+        ? ' role="button" tabindex="0" aria-label="Surface corner ' + String(index + 1) + '"'
+        : ' aria-hidden="true"';
+      return '<div class="' + className + '" data-surface-corner="' + String(index) + '"' + attributes + ' style="left:' + (Number(corner.x) * 100).toFixed(3) + '%;top:' + (Number(corner.y) * 100).toFixed(3) + '%">' + String(index + 1) + '</div>';
     }).join("");
+    return shape + handles;
   }
 
   // Render attention markers below the host-provided slider without replacing its validated transport control.
@@ -379,10 +395,10 @@
     const uncertainIndexes = getPreviewUncertainIndexes();
     const currentConfidence = confidencePercent(playbackFrame);
     const previewContent = playbackFrame
-      ? '<div class="pmt-preview-stage"><img class="pmt-preview-buffer pmt-preview-buffer-active" id="pmt-tracking-image-a" src="' + escapeHtml(playbackFrame.url) + '" alt="' + escapeHtml(t("trackingPreviewAlt")) + '"><img class="pmt-preview-buffer" id="pmt-tracking-image-b" alt=""></div>' + (surfaceMode ? surfaceCornersMarkup(playbackFrame.corners) : searchAreaMarkup(displayedPoint) + '<div class="pmt-tracking-point" id="pmt-preview-point" style="left:' + (Number(displayedPoint.x) * 100).toFixed(3) + '%;top:' + (Number(displayedPoint.y) * 100).toFixed(3) + '%"></div>') + '<div class="pmt-preview-status" id="pmt-preview-status">' + escapeHtml(t("trackingPreview", { current: state.previewFrameIndex + 1, total: state.trackingPreview.frames.length, confidence: currentConfidence })) + '</div>'
+      ? '<div class="pmt-preview-stage"><img class="pmt-preview-buffer pmt-preview-buffer-active" id="pmt-tracking-image-a" src="' + escapeHtml(playbackFrame.url) + '" alt="' + escapeHtml(t("trackingPreviewAlt")) + '"><img class="pmt-preview-buffer" id="pmt-tracking-image-b" alt=""></div>' + (surfaceMode ? surfaceCornersMarkup(playbackFrame.corners, false) : searchAreaMarkup(displayedPoint) + '<div class="pmt-tracking-point" id="pmt-preview-point" style="left:' + (Number(displayedPoint.x) * 100).toFixed(3) + '%;top:' + (Number(displayedPoint.y) * 100).toFixed(3) + '%"></div>') + '<div class="pmt-preview-status" id="pmt-preview-status">' + escapeHtml(t("trackingPreview", { current: state.previewFrameIndex + 1, total: state.trackingPreview.frames.length, confidence: currentConfidence })) + '</div>'
       : state.preview
       ? '<img class="pmt-preview-image" src="' + escapeHtml(state.preview.url) + '" alt="' + escapeHtml(t("inImageAlt")) + '">' + (surfaceMode
-        ? surfaceCornersMarkup(state.referenceCorners)
+        ? surfaceCornersMarkup(state.referenceCorners, true)
         : state.referencePoint ? searchAreaMarkup(state.referencePoint) + '<div class="pmt-tracking-point" style="left:' + (state.referencePoint.x * 100).toFixed(3) + '%;top:' + (state.referencePoint.y * 100).toFixed(3) + '%"></div>' : "")
       : '<div class="pmt-preview-grid"></div><div class="pmt-preview-copy">' + escapeHtml(t("emptyPreview")) + '</div>';
     rootNode.innerHTML = [
@@ -666,20 +682,28 @@
     }
   }
 
-  // Store either one point or the next ordered corner from a click inside the exported preview frame.
-  function chooseReferencePoint(rootNode, event) {
+  // Convert a mouse or keyboard pointer event into a normalized point inside the visible preview frame.
+  function getPreviewSelectionPoint(rootNode, event) {
     const preview = rootNode.querySelector("#pmt-preview");
     if (!preview || !state.source || !state.range || typeof preview.getBoundingClientRect !== "function") {
-      return;
+      return null;
     }
     const bounds = preview.getBoundingClientRect();
     if (!bounds.width || !bounds.height) {
-      return;
+      return null;
     }
-    const selectedPoint = root.PMT_SESSION.normalizePoint({
+    return root.PMT_SESSION.normalizePoint({
       x: (Number(event.clientX) - bounds.left) / bounds.width,
       y: (Number(event.clientY) - bounds.top) / bounds.height
     });
+  }
+
+  // Store either one point or the next ordered corner from a click inside the exported preview frame.
+  function chooseReferencePoint(rootNode, event) {
+    const selectedPoint = getPreviewSelectionPoint(rootNode, event);
+    if (!selectedPoint) {
+      return;
+    }
     if (isSurfaceMode()) {
       if (state.referenceCorners.length >= 4) {
         return;
@@ -694,6 +718,77 @@
     state.liveSamples = [];
     clearTrackingPreview();
     render(rootNode);
+  }
+
+  // Update one surface corner without changing the other three selected corners.
+  function setSurfaceCorner(rootNode, cornerIndex, point) {
+    if (!Number.isInteger(cornerIndex) || cornerIndex < 0 || cornerIndex >= state.referenceCorners.length || !point) {
+      return false;
+    }
+    state.referenceCorners = state.referenceCorners.map((corner, index) => index === cornerIndex ? point : corner);
+    state.tracking = null;
+    state.liveSamples = [];
+    return true;
+  }
+
+  // Update only the overlay during a drag so Premiere does not lose the current mouse interaction to a full render.
+  function updateSurfaceSelectionOverlay(rootNode) {
+    const points = surfacePolygonPoints(state.referenceCorners);
+    const polygon = rootNode.querySelector("#pmt-surface-polygon");
+    if (polygon) {
+      polygon.setAttribute("points", points);
+    }
+    Array.prototype.forEach.call(rootNode.querySelectorAll(".pmt-surface-corner"), (cornerElement) => {
+      const cornerIndex = Number(cornerElement.getAttribute("data-surface-corner"));
+      const corner = state.referenceCorners[cornerIndex];
+      if (corner) {
+        cornerElement.style.left = (Number(corner.x) * 100).toFixed(3) + "%";
+        cornerElement.style.top = (Number(corner.y) * 100).toFixed(3) + "%";
+      }
+    });
+  }
+
+  // Drag an existing blue handle with plain mouse events, which remain reliable in Premiere UXP panels.
+  function beginSurfaceCornerDrag(rootNode, cornerIndex, event) {
+    if (state.busy || !isSurfaceMode() || state.trackingPreview || !state.preview || !state.referenceCorners[cornerIndex]) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    const move = (moveEvent) => {
+      const point = getPreviewSelectionPoint(rootNode, moveEvent);
+      if (point && setSurfaceCorner(rootNode, cornerIndex, point)) {
+        updateSurfaceSelectionOverlay(rootNode);
+      }
+    };
+    const finish = () => {
+      document.removeEventListener("mousemove", move);
+      document.removeEventListener("mouseup", finish);
+      const corner = state.referenceCorners[cornerIndex];
+      if (corner) {
+        addLog("Surface corner " + (cornerIndex + 1) + " adjusted: " + (corner.x * 100).toFixed(1) + "%, " + (corner.y * 100).toFixed(1) + "%." );
+      }
+      render(rootNode);
+    };
+    document.addEventListener("mousemove", move);
+    document.addEventListener("mouseup", finish);
+  }
+
+  // Let keyboard users nudge one selected corner without resetting the complete surface.
+  function nudgeSurfaceCorner(rootNode, cornerIndex, event) {
+    const changes = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+    const change = changes[event.key];
+    if (!change || state.busy || !state.referenceCorners[cornerIndex]) {
+      return;
+    }
+    event.preventDefault();
+    const step = event.shiftKey ? 0.05 : 0.01;
+    const current = state.referenceCorners[cornerIndex];
+    const point = root.PMT_SESSION.normalizePoint({ x: current.x + change[0] * step, y: current.y + change[1] * step });
+    if (setSurfaceCorner(rootNode, cornerIndex, point)) {
+      addLog("Surface corner " + (cornerIndex + 1) + " adjusted: " + (point.x * 100).toFixed(1) + "%, " + (point.y * 100).toFixed(1) + "%." );
+      render(rootNode);
+    }
   }
 
   // Save a corrected point on the displayed review image without invalidating its already approved prefix.
@@ -1090,6 +1185,11 @@
           showMarker();
         }
       });
+    });
+    Array.prototype.forEach.call(rootNode.querySelectorAll(".pmt-surface-corner-editable"), (cornerElement) => {
+      const cornerIndex = Number(cornerElement.getAttribute("data-surface-corner"));
+      cornerElement.addEventListener("mousedown", (event) => beginSurfaceCornerDrag(rootNode, cornerIndex, event));
+      cornerElement.addEventListener("keydown", (event) => nudgeSurfaceCorner(rootNode, cornerIndex, event));
     });
     if (preview && state.trackingPreview && !state.busy && !isSurfaceMode()) {
       preview.addEventListener("click", (event) => chooseCorrectionPoint(rootNode, event));

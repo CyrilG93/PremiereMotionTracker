@@ -269,7 +269,34 @@ input {
   transform: translate(-50%, -50%);
 }
 
-/* Keep four numbered HTML corner markers visible above the source frame without relying on SVG support. */
+/* Let a passive SVG show the complete selected quadrilateral without intercepting preview clicks. */
+.pmt-surface-shape {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.pmt-surface-shape polygon {
+  fill: rgba(224, 98, 66, 0.42);
+  stroke: #ffffff;
+  stroke-width: 0.75;
+  stroke-dasharray: 1.5 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.pmt-surface-shape polyline {
+  fill: none;
+  stroke: #ffffff;
+  stroke-width: 0.75;
+  stroke-dasharray: 1.5 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+/* Keep four numbered HTML handles directly draggable above the surface visual. */
 .pmt-surface-corner {
   position: absolute;
   z-index: 2;
@@ -286,6 +313,24 @@ input {
   font-weight: 700;
   pointer-events: none;
   transform: translate(-50%, -50%);
+}
+
+.pmt-surface-corner-editable {
+  border-color: #ffffff;
+  background: var(--pmt-accent);
+  color: #ffffff;
+  cursor: grab;
+  pointer-events: auto;
+}
+
+.pmt-surface-corner-editable:focus,
+.pmt-surface-corner-editable:hover {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
+}
+
+.pmt-surface-corner-editable:active {
+  cursor: grabbing;
 }
 
 /* Show the real Lucas-Kanade search window without intercepting correction clicks on the preview. */

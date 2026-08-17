@@ -77,4 +77,5 @@ Critère de validation : la trajectoire détectée dans le média déplace réel
 - Implémenté au jalon 0.3.5 : après décodage, la prévisualisation se place après l’image zéro et démarre automatiquement en boucle afin de forcer le rafraîchissement vidéo dans Premiere UXP.
 - Implémenté au jalon 0.3.6 : la prévisualisation vidéo est mise de côté. Après l’analyse, jusqu’à 120 PNG de la séquence sont rendus en 640×360 et relus par double buffer à cadence limitée. Seul le bandeau est actualisé pendant l’export afin de préserver le panneau de diagnostic.
 - Implémenté au jalon 0.3.7 : une réglette Spectrum permet d’aller directement à une image de contrôle. Après un clic de correction, le tracker relance seulement la portion qui suit cette image et fusionne la nouvelle trajectoire avec le préfixe validé.
+- Implémenté au jalon 0.3.8 : l’application utilise la première position réellement trackée comme ancre. Le clip de destination conserve donc sa position d’origine sur la première image, même si le point a été corrigé avant l’application.
 - Étapes suivantes : ajouter la zone de recherche, lissage et campagnes de tests 4K/cadences/durées longues avant le port macOS.

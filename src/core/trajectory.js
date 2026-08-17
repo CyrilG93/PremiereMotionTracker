@@ -35,11 +35,6 @@
 
   // Convert valid native frame samples into relative Position offsets and clip-relative timing.
   function buildPositionKeyframes(samples, referencePoint) {
-    const referenceX = Number(referencePoint && referencePoint.x);
-    const referenceY = Number(referencePoint && referencePoint.y);
-    if (!Number.isFinite(referenceX) || !Number.isFinite(referenceY)) {
-      throw new Error("Le point de référence du tracking est invalide.");
-    }
     const validSamples = (Array.isArray(samples) ? samples : []).filter((sample) => {
       return sample && sample.valid !== false
         && Number.isFinite(Number(sample.seconds))
@@ -49,6 +44,11 @@
     if (validSamples.length < 2) {
       throw new Error("Le tracking doit contenir au moins deux images valides.");
     }
+    const requestedReferenceX = Number(referencePoint && referencePoint.x);
+    const requestedReferenceY = Number(referencePoint && referencePoint.y);
+    // Default to the real first tracked sample so the destination stays at its original position on image one.
+    const referenceX = Number.isFinite(requestedReferenceX) ? requestedReferenceX : Number(validSamples[0].x);
+    const referenceY = Number.isFinite(requestedReferenceY) ? requestedReferenceY : Number(validSamples[0].y);
     const firstSeconds = Number(validSamples[0].seconds);
     const lastSeconds = Number(validSamples[validSamples.length - 1].seconds);
     const duration = lastSeconds - firstSeconds;

@@ -755,7 +755,8 @@
     state.busy = true;
     render(rootNode);
     try {
-      const keyframes = root.PMT_TRAJECTORY.buildPositionKeyframes(state.tracking, state.referencePoint);
+      // Anchor to the first actual tracking result so a corrected first image cannot move the destination clip at its start.
+      const keyframes = root.PMT_TRAJECTORY.buildPositionKeyframes(state.tracking);
       const results = await root.PMT_PREMIERE.applyTracking(keyframes);
       addLog("Trajectory applied to " + results.length + " selected clip(s). " + keyframes.length + " keyframes per clip.");
       results.forEach((result) => {

@@ -72,6 +72,17 @@ test("buildPositionKeyframes retains one Position keyframe for every valid frame
   assert.ok(Math.abs(keyframes[1].dy + 0.05) < 0.000001);
 });
 
+test("buildPositionKeyframes keeps the destination anchored to the first actual tracking sample by default", () => {
+  const keyframes = trajectoryApi.buildPositionKeyframes([
+    { frame: 200, seconds: 8, x: 0.59, y: 0.148, confidence: 1, valid: true },
+    { frame: 201, seconds: 8.04, x: 0.62, y: 0.2, confidence: 0.9, valid: true }
+  ]);
+  assert.equal(keyframes[0].dx, 0);
+  assert.equal(keyframes[0].dy, 0);
+  assert.ok(Math.abs(keyframes[1].dx - 0.03) < 0.000001);
+  assert.ok(Math.abs(keyframes[1].dy - 0.052) < 0.000001);
+});
+
 test("computeTargetPositionScale compensates a smaller target media and its Motion scale", () => {
   const scale = trajectoryApi.computeTargetPositionScale(
     { width: 1920, height: 1080 },

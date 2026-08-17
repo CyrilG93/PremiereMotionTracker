@@ -149,6 +149,42 @@
     };
   }
 
+  // Convert a tracked sequence corner into Corner Pin's normalized local media coordinates.
+  function computeCornerPinPoint(sequenceFrame, targetFrame, motion, corner) {
+    const sequenceWidth = Number(sequenceFrame && sequenceFrame.width);
+    const sequenceHeight = Number(sequenceFrame && sequenceFrame.height);
+    const targetWidth = Number(targetFrame && targetFrame.width);
+    const targetHeight = Number(targetFrame && targetFrame.height);
+    const positionX = Number(motion && motion.position && motion.position.x);
+    const positionY = Number(motion && motion.position && motion.position.y);
+    const anchorX = Number(motion && motion.anchor && motion.anchor.x);
+    const anchorY = Number(motion && motion.anchor && motion.anchor.y);
+    const scaleX = Number(motion && motion.scale && motion.scale.x);
+    const scaleY = Number(motion && motion.scale && motion.scale.y);
+    const cornerX = Number(corner && corner.x);
+    const cornerY = Number(corner && corner.y);
+    if (!Number.isFinite(sequenceWidth) || sequenceWidth <= 0 || !Number.isFinite(sequenceHeight) || sequenceHeight <= 0) {
+      throw new Error("La taille de la séquence est invalide.");
+    }
+    if (!Number.isFinite(targetWidth) || targetWidth <= 0 || !Number.isFinite(targetHeight) || targetHeight <= 0) {
+      throw new Error("La taille du média cible est invalide.");
+    }
+    if (!Number.isFinite(positionX) || !Number.isFinite(positionY) || !Number.isFinite(anchorX) || !Number.isFinite(anchorY)) {
+      throw new Error("La géométrie Motion du clip cible est invalide.");
+    }
+    if (!Number.isFinite(scaleX) || scaleX <= 0 || !Number.isFinite(scaleY) || scaleY <= 0) {
+      throw new Error("L’échelle Motion du clip cible est invalide.");
+    }
+    if (!Number.isFinite(cornerX) || !Number.isFinite(cornerY)) {
+      throw new Error("Un coin de surface est invalide.");
+    }
+    // Undo intrinsic Motion, then normalize by the target frame because Corner Pin PointF uses local normalized units.
+    return {
+      x: (((cornerX * sequenceWidth - positionX) / (scaleX / 100)) + anchorX) / targetWidth,
+      y: (((cornerY * sequenceHeight - positionY) / (scaleY / 100)) + anchorY) / targetHeight
+    };
+  }
+
   // Keep the review bounded on unusually long ranges while retaining its first and last tracked frames.
   function selectPreviewSamples(samples, maximumFrames) {
     const source = Array.isArray(samples) ? samples.slice() : [];
@@ -186,6 +222,7 @@
     buildPositionKeyframes,
     buildSurfaceKeyframes,
     computeTargetPositionScale,
+    computeCornerPinPoint,
     selectPreviewSamples,
     replaceTrackingTail
   };

@@ -55,7 +55,7 @@ Critère de validation : la trajectoire détectée dans le média déplace réel
 ## Phase 7 — Tracking de surface
 
 - Implémenté au jalon 0.4.1 : poser manuellement quatre coins avec estimation d’homographie OpenCV à partir des détails contenus dans la surface.
-- Implémenté au jalon 0.4.1 : appliquer le résultat à Corner Pin avec quatre paramètres PointF animés à chaque image valide.
+- Implémenté au jalon 0.4.2 : appliquer le résultat à Corner Pin avec quatre paramètres PointF animés à chaque image valide, convertis dans le repère du média cible après inversion de Motion.
 - À faire : autoriser la correction indépendante de chaque coin pendant la revue, reprendre le tracking à cette image, et valider les noms/coordonnées Corner Pin dans Premiere sur macOS et Windows.
 
 ## État au 16 août 2026 — jalon 0.3.0
@@ -79,5 +79,5 @@ Critère de validation : la trajectoire détectée dans le média déplace réel
 - Implémenté au jalon 0.3.7 : une réglette Spectrum permet d’aller directement à une image de contrôle. Après un clic de correction, le tracker relance seulement la portion qui suit cette image et fusionne la nouvelle trajectoire avec le préfixe validé.
 - Implémenté au jalon 0.3.8 : l’application utilise la première position réellement trackée comme ancre. Le clip de destination conserve donc sa position d’origine sur la première image, même si le point a été corrigé avant l’application.
 - Implémenté au jalon 0.3.9 : le panneau expose le seuil de confiance, les marqueurs de contrôle et un saut vers l’image douteuse suivante. La zone de recherche est transmise au moteur Lucas-Kanade (±5 à ±40 px). Un lissage centré léger est activé uniquement à l’application et peut être désactivé.
-- Implémenté au jalon 0.4.1 : mode Surface bêta avec sélection manuelle des quatre coins avant l’analyse, homographie RANSAC sur les features OpenCV de la zone, aperçu PNG des coins et application Corner Pin. La validation dans Premiere du composant Corner Pin et de ses coordonnées reste requise.
+- Implémenté au jalon 0.4.2 : mode Surface bêta avec sélection manuelle des quatre coins avant l’analyse, homographie RANSAC sur les features OpenCV de la zone, aperçu PNG des coins et application Corner Pin. Les coordonnées sont converties de la séquence vers le repère local Corner Pin du média cible.
 - Étapes suivantes : campagnes de tests 4K/cadences/durées longues, améliorer le score de confiance avec une mesure de texture, puis porter et valider sur Windows/macOS.

@@ -128,6 +128,8 @@ test("surface mode collects four corners and applies the tracked plane through C
   assert.match(nativeSource, /addon\.trackSurface/);
   assert.match(premiereSource, /createCornerPinComponent/);
   assert.match(premiereSource, /applySurfaceTracking/);
+  assert.match(premiereSource, /getTargetMotionGeometry/);
+  assert.match(premiereSource, /computeCornerPinPoint/);
   assert.match(styles, /\.pmt-surface-corner\s*\{[^}]*position:\s*absolute;/s);
 });
 
@@ -136,7 +138,7 @@ test("manifest v6 loads the platform Hybrid addon and exposes its startup diagno
   assert.equal(manifest.requiredPermissions.enableAddon, true);
   assert.equal(manifest.requiredPermissions.localFileSystem, "fullAccess");
   assert.equal(manifest.addon.name, "premiere-motion-tracker-" + manifest.version + ".uxpaddon");
-  assert.match(nativeSource, /await require\("premiere-motion-tracker-0\.4\.1\.uxpaddon"\)/);
+  assert.match(nativeSource, /await require\("premiere-motion-tracker-0\.4\.2\.uxpaddon"\)/);
   assert.match(nativeSource, /loadedAddon\.runSelfTest\(\)/);
   assert.match(nativeSource, /addon\.inspectMedia/);
   assert.match(nativeSource, /addon\.trackMedia/);
@@ -145,6 +147,12 @@ test("manifest v6 loads the platform Hybrid addon and exposes its startup diagno
   assert.match(nativeSource, /addon\.pollTracking/);
   assert.match(uiSource, /PMT_NATIVE\.initialize\(\)/);
   assert.match(uiSource, /Native engine loaded/);
+});
+
+test("panel assets use the current version cache key", () => {
+  const index = fs.readFileSync(path.join(projectRoot, "index.html"), "utf8");
+  assert.match(index, /premiereBridge\.js\?v=0\.4\.2/);
+  assert.match(index, /trajectory\.js\?v=0\.4\.2/);
 });
 
 test("native analysis visibly enters an in-progress state before tracking begins", () => {

@@ -230,6 +230,95 @@
     return { x: 100, y: 100 };
   }
 
+  // Convert Premiere PointF values, which may be normalized by UXP, into the pixels of their owning frame.
+  function getHostPointPixels(point, frame) {
+    const width = Number(frame && frame.width);
+    const height = Number(frame && frame.height);
+    if (!point || !Number.isFinite(Number(point.x)) || !Number.isFinite(Number(point.y)) || !Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) {
+      throw new Error("Premiere n’a pas renvoyé un point Motion exploitable.");
+    }
+    const x = Number(point.x);
+    const y = Number(point.y);
+    // UXP exposes intrinsic Motion PointF values as 0..1 while Effect Controls displays their pixel equivalent.
+    if (Math.abs(x) <= 1.5 && Math.abs(y) <= 1.5) {
+      return { x: x * width, y: y * height };
+    }
+    return { x, y };
+  }
+
+  // Read a Motion parameter at the current keyframe time, with its start value as a host-compatible fallback.
+  async function readMotionParamValue(param, time) {
+    try {
+      if (param && typeof param.getValueAtTime === "function") {
+        const atTime = await param.getValueAtTime(time);
+        if (atTime !== undefined && atTime !== null) {
+          return atTime;
+        }
+      }
+    } catch (error) {
+      // Some intrinsic Motion proxies only expose their start value on the current host build.
+    }
+    try {
+      return param && typeof param.getStartValue === "function" ? await param.getStartValue() : null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  // Read the target's intrinsic Motion so a Corner Pin value can be converted back from sequence space.
+  async function getTargetMotionGeometry(context, item, time, targetFrame) {
+    const sequenceFrame = context.frameSize;
+    const sequenceWidth = Number(sequenceFrame && sequenceFrame.width);
+    const sequenceHeight = Number(sequenceFrame && sequenceFrame.height);
+    const targetWidth = Number(targetFrame && targetFrame.width);
+    const targetHeight = Number(targetFrame && targetFrame.height);
+    if (!Number.isFinite(sequenceWidth) || sequenceWidth <= 0 || !Number.isFinite(sequenceHeight) || sequenceHeight <= 0
+      || !Number.isFinite(targetWidth) || targetWidth <= 0 || !Number.isFinite(targetHeight) || targetHeight <= 0) {
+      throw new Error("Les tailles de séquence et de média cible sont nécessaires à Corner Pin.");
+    }
+    const geometry = {
+      // Defaults reproduce Premiere's unmodified intrinsic Motion values.
+      position: { x: sequenceWidth / 2, y: sequenceHeight / 2 },
+      anchor: { x: targetWidth / 2, y: targetHeight / 2 },
+      scale: { x: 100, y: 100 }
+    };
+    const chain = await item.getComponentChain();
+    const componentCount = chain && typeof chain.getComponentCount === "function" ? chain.getComponentCount() : 0;
+    for (let componentIndex = 0; componentIndex < componentCount; componentIndex += 1) {
+      const component = chain.getComponentAtIndex(componentIndex);
+      const matchName = component && typeof component.getMatchName === "function" ? await component.getMatchName() : "";
+      const displayName = component && typeof component.getDisplayName === "function" ? await component.getDisplayName() : "";
+      const componentLabel = normalizeLabel(matchName) + " " + normalizeLabel(displayName);
+      if (!componentLabel.includes("motion") && !componentLabel.includes("mouvement")) {
+        continue;
+      }
+      const paramCount = component && typeof component.getParamCount === "function" ? component.getParamCount() : 0;
+      for (let paramIndex = 0; paramIndex < paramCount; paramIndex += 1) {
+        const param = component.getParam(paramIndex);
+        const paramName = normalizeLabel(param && param.displayName);
+        const value = await readMotionParamValue(param, time);
+        if (paramName.includes("position")) {
+          const point = readPointValue(value);
+          if (point) {
+            geometry.position = getHostPointPixels(point, sequenceFrame);
+          }
+        } else if (paramName.includes("anchorpoint") || paramName.includes("pointdancrage")) {
+          const point = readPointValue(value);
+          if (point) {
+            geometry.anchor = getHostPointPixels(point, targetFrame);
+          }
+        } else if (paramName === "scale" || paramName === "chelle") {
+          const scale = readScaleValue(value);
+          if (scale && scale.x > 0 && scale.y > 0) {
+            geometry.scale = scale;
+          }
+        }
+      }
+      break;
+    }
+    return geometry;
+  }
+
   // Convert Premiere's RectF frame size into safe export dimensions.
   function getPreviewDimensions(frameSize) {
     const sourceWidth = Number(frameSize && frameSize.width) || 1920;
@@ -680,17 +769,12 @@
     return { params: [matches.topLeft, matches.topRight, matches.bottomRight, matches.bottomLeft], names };
   }
 
-  // Convert a normalized tracked corner to the coordinate convention exposed by this Corner Pin instance.
-  function getCornerPinValue(context, corner, normalized) {
-    if (normalized) {
-      return { x: Number(corner.x), y: Number(corner.y) };
+  // Map one tracked sequence corner through the inverse target Motion transform expected by Corner Pin.
+  function getCornerPinValue(context, targetFrame, motion, corner) {
+    if (!root.PMT_TRAJECTORY || typeof root.PMT_TRAJECTORY.computeCornerPinPoint !== "function") {
+      throw new Error("Le convertisseur de coordonnées Corner Pin est indisponible.");
     }
-    const width = Number(context.frameSize && context.frameSize.width);
-    const height = Number(context.frameSize && context.frameSize.height);
-    if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) {
-      throw new Error("Premiere n’a pas renvoyé la taille de séquence nécessaire à Corner Pin.");
-    }
-    return { x: Number(corner.x) * width, y: Number(corner.y) * height };
+    return root.PMT_TRAJECTORY.computeCornerPinPoint(context.frameSize, targetFrame, motion, corner);
   }
 
   // Add a Transform effect and write every valid native sample to one destination clip.
@@ -794,23 +878,28 @@
       }
       initialCorners.push(point);
     }
-    const normalized = initialCorners.every((corner) => Math.abs(corner.x) <= 1.5 && Math.abs(corner.y) <= 1.5);
+    const targetFrame = await getTargetMediaFrame(context, item);
+    const timedSamples = [];
+    for (const sample of keyframes) {
+      const time = createTimeAtProgress(context.app, inPoint, outPoint, sample.progress);
+      timedSamples.push({ sample, time, motion: await getTargetMotionGeometry(context, item, time, targetFrame) });
+    }
     executeActions(context.project, params.map((param) => () => param.createSetTimeVaryingAction(true)), "Motion Tracker : activer Corner Pin");
     await waitForHostPaint();
     const actions = [];
-    keyframes.forEach((sample) => {
+    timedSamples.forEach(({ sample, time, motion }) => {
       sample.corners.forEach((corner, index) => {
         actions.push(() => {
-          const value = getCornerPinValue(context, corner, normalized);
+          const value = getCornerPinValue(context, targetFrame, motion, corner);
           const keyframe = params[index].createKeyframe(createPoint(context.app, value.x, value.y));
-          keyframe.position = createTimeAtProgress(context.app, inPoint, outPoint, sample.progress);
+          keyframe.position = time;
           return params[index].createAddKeyframeAction(keyframe);
         });
       });
     });
     executeActions(context.project, actions, "Motion Tracker : appliquer Surface Corner Pin");
     const clipName = await readMethod(item, "getName", "Clip cible");
-    return { clipName: String(clipName), matchName: cornerPin.matchName, keyframeCount: keyframes.length, normalized, initialCorners };
+    return { clipName: String(clipName), matchName: cornerPin.matchName, keyframeCount: keyframes.length, coordinateSpace: "target-local-normalized", initialCorners };
   }
 
   // Apply the analysed frame-by-frame trajectory to every selected destination clip.

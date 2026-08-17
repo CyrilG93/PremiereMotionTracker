@@ -127,6 +127,28 @@ test("computeTargetPositionScale preserves Graphics Layers using the sequence ca
   assert.deepEqual(scale, { x: 1, y: 1 });
 });
 
+test("computeCornerPinPoint reverses target Motion before writing local Corner Pin coordinates", () => {
+  const point = trajectoryApi.computeCornerPinPoint(
+    { width: 1920, height: 1080 },
+    { width: 372, height: 201 },
+    { position: { x: 890.9, y: 942.8 }, anchor: { x: 186, y: 100.5 }, scale: { x: 100, y: 100 } },
+    { x: 0.416, y: 0.778 }
+  );
+  // The resulting 94 px, -2 px local point maps back to the tracked 799 px, 840 px sequence corner.
+  assert.ok(Math.abs(point.x - (93.82 / 372)) < 0.000001);
+  assert.ok(Math.abs(point.y - (-2.06 / 201)) < 0.000001);
+});
+
+test("computeCornerPinPoint accounts for a resized target clip", () => {
+  const point = trajectoryApi.computeCornerPinPoint(
+    { width: 1920, height: 1080 },
+    { width: 200, height: 100 },
+    { position: { x: 960, y: 540 }, anchor: { x: 100, y: 50 }, scale: { x: 50, y: 200 } },
+    { x: 0.75, y: 0.25 }
+  );
+  assert.deepEqual(point, { x: 5.3, y: -0.85 });
+});
+
 test("selectPreviewSamples bounds a long cached review while preserving both ends", () => {
   const samples = Array.from({ length: 10 }, (_, index) => ({ frame: index }));
   const preview = trajectoryApi.selectPreviewSamples(samples, 4);

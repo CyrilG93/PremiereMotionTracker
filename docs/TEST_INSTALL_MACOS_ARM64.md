@@ -1,6 +1,6 @@
 # Test macOS — Apple Silicon
 
-Ce paquet de test fonctionne sur les Mac Apple Silicon (M1, M2, M3 ou M4) avec Premiere Pro 26.2 ou plus récent. Il inclut le moteur OpenCV et ses bibliothèques : il ne faut pas installer Homebrew, Node, OpenCV ni UXP Developer Tool.
+Ce paquet de test fonctionne sur les Mac Apple Silicon (M1, M2, M3 ou M4) avec Premiere Pro 26.2 ou plus récent. Il inclut le moteur OpenCV et toutes ses bibliothèques indirectes : il ne faut pas installer Homebrew, Node, OpenCV ni UXP Developer Tool.
 
 ## Installation
 

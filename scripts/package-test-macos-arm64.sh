@@ -35,54 +35,126 @@ done
 /bin/mkdir -p "$plugin_dir/mac/arm64"
 /bin/cp -L "$source_addon" "$plugin_dir/mac/arm64/$addon_name"
 
-# Follow only Homebrew dependencies recursively; macOS system libraries are supplied by the operating system.
-declare -a dependency_queue=("$plugin_dir/mac/arm64/$addon_name")
+# Resolve an indirect Mach-O dependency from its original Homebrew binary before staging it.
+resolve_dependency() {
+  local dependency="$1"
+  local source_file="$2"
+  local source_directory
+  local candidate
+  local rpath
+  local library_name
+
+  source_directory="$(cd "$(dirname "$source_file")" && pwd)"
+  case "$dependency" in
+    /opt/homebrew/*|/usr/local/*)
+      [ -f "$dependency" ] && printf '%s\n' "$dependency"
+      return
+      ;;
+    @loader_path/*)
+      candidate="${dependency/@loader_path/$source_directory}"
+      [ -f "$candidate" ] && printf '%s\n' "$candidate"
+      return
+      ;;
+    @rpath/*)
+      library_name="${dependency#@rpath/}"
+      while IFS= read -r rpath; do
+        candidate="${rpath/@loader_path/$source_directory}/$library_name"
+        if [ -f "$candidate" ]; then
+          printf '%s\n' "$candidate"
+          return
+        fi
+      done < <(/usr/bin/otool -l "$source_file" | /usr/bin/awk '$1 == "cmd" && $2 == "LC_RPATH" { found = 1; next } found && $1 == "path" { print $2; found = 0 }')
+
+      # Homebrew libraries commonly use @rpath for siblings in the same formula.
+      candidate="$source_directory/$library_name"
+      if [ -f "$candidate" ]; then
+        printf '%s\n' "$candidate"
+        return
+      fi
+      candidate="$(/usr/bin/find -L /opt/homebrew/opt /opt/homebrew/lib /usr/local/opt /usr/local/lib -type f -name "$library_name" -path '*/lib/*' -print 2>/dev/null | /usr/bin/head -n 1 || true)"
+      [ -n "$candidate" ] && printf '%s\n' "$candidate"
+      return
+      ;;
+  esac
+}
+
+# Follow Homebrew paths and @rpath references recursively; macOS system libraries are supplied by the operating system.
+declare -a source_queue=("$source_addon")
+declare -a staged_queue=("$plugin_dir/mac/arm64/$addon_name")
 queue_index=0
-while [ "$queue_index" -lt "${#dependency_queue[@]}" ]; do
-  current_file="${dependency_queue[$queue_index]}"
+while [ "$queue_index" -lt "${#source_queue[@]}" ]; do
+  current_source="${source_queue[$queue_index]}"
   queue_index=$((queue_index + 1))
   while IFS= read -r dependency; do
+    resolved_dependency="$(resolve_dependency "$dependency" "$current_source")"
     case "$dependency" in
-      /opt/homebrew/*|/usr/local/*)
-        dependency_name="$(basename "$dependency")"
+      /opt/homebrew/*|/usr/local/*|@loader_path/*|@rpath/*)
+        if [ -z "$resolved_dependency" ]; then
+          echo "Unable to resolve native dependency $dependency from $current_source" >&2
+          exit 1
+        fi
+        dependency_name="$(basename "$resolved_dependency")"
         staged_dependency="$library_dir/$dependency_name"
         if [ ! -f "$staged_dependency" ]; then
-          /bin/cp -L "$dependency" "$staged_dependency"
-          dependency_queue+=("$staged_dependency")
+          /bin/cp -L "$resolved_dependency" "$staged_dependency"
+          source_queue+=("$resolved_dependency")
+          staged_queue+=("$staged_dependency")
         fi
         ;;
     esac
-  done < <(/usr/bin/otool -L "$current_file" | /usr/bin/awk 'NR > 1 { print $1 }')
+  # The first Mach-O entry is the binary's own install name, not a dependency to copy.
+  done < <(/usr/bin/otool -L "$current_source" | /usr/bin/awk 'NR > 2 { print $1 }')
 done
 
-# Rebase copied dylibs to the addon's local lib folder so the test machine never needs Homebrew.
+# Rebase copied dylibs to the addon's local lib folder so the test machine never needs Homebrew or unresolved @rpath paths.
 while IFS= read -r current_file; do
   current_name="$(basename "$current_file")"
+  change_args=()
   /usr/bin/install_name_tool -id "@loader_path/$current_name" "$current_file"
   while IFS= read -r dependency; do
     case "$dependency" in
-      /opt/homebrew/*|/usr/local/*)
-        /usr/bin/install_name_tool -change "$dependency" "@loader_path/$(basename "$dependency")" "$current_file"
+      /opt/homebrew/*|/usr/local/*|@loader_path/*|@rpath/*)
+        dependency_name="$(basename "$dependency")"
+        if [ -f "$library_dir/$dependency_name" ]; then
+          # Apply every rewritten dependency in one process to keep the package build fast.
+          change_args+=( -change "$dependency" "@loader_path/$dependency_name" )
+        fi
         ;;
     esac
-  done < <(/usr/bin/otool -L "$current_file" | /usr/bin/awk 'NR > 1 { print $1 }')
+  done < <(/usr/bin/otool -L "$current_file" | /usr/bin/awk 'NR > 2 { print $1 }')
+  if [ "${#change_args[@]}" -gt 0 ]; then
+    /usr/bin/install_name_tool "${change_args[@]}" "$current_file"
+  fi
   /usr/bin/codesign --force --sign - --timestamp=none "$current_file"
 done < <(/usr/bin/find "$library_dir" -type f -name '*.dylib' -print)
 
 # The addon lives one directory above lib, so its dependencies use an explicit lib prefix.
 staged_addon="$plugin_dir/mac/arm64/$addon_name"
+addon_change_args=()
 while IFS= read -r dependency; do
   case "$dependency" in
-    /opt/homebrew/*|/usr/local/*)
-      /usr/bin/install_name_tool -change "$dependency" "@loader_path/lib/$(basename "$dependency")" "$staged_addon"
+    /opt/homebrew/*|/usr/local/*|@loader_path/*|@rpath/*)
+      dependency_name="$(basename "$dependency")"
+      if [ -f "$library_dir/$dependency_name" ]; then
+        addon_change_args+=( -change "$dependency" "@loader_path/lib/$dependency_name" )
+      fi
       ;;
   esac
-done < <(/usr/bin/otool -L "$staged_addon" | /usr/bin/awk 'NR > 1 { print $1 }')
+done < <(/usr/bin/otool -L "$staged_addon" | /usr/bin/awk 'NR > 2 { print $1 }')
+if [ "${#addon_change_args[@]}" -gt 0 ]; then
+  /usr/bin/install_name_tool "${addon_change_args[@]}" "$staged_addon"
+fi
 /usr/bin/codesign --force --sign - --timestamp=none "$staged_addon"
 
 # Refuse to emit a package that still relies on a developer-machine Homebrew path.
-if /usr/bin/otool -L "$staged_addon" "$library_dir"/*.dylib | /usr/bin/grep -qE '(/opt/homebrew|/usr/local)'; then
-  echo "Unbundled Homebrew dependency remains in the staged addon." >&2
+# Skip each first otool entry because it is the binary's own install name, not a load dependency.
+if {
+  /usr/bin/otool -L "$staged_addon" | /usr/bin/awk 'NR > 2 { print $1 }'
+  while IFS= read -r current_file; do
+    /usr/bin/otool -L "$current_file" | /usr/bin/awk 'NR > 2 { print $1 }'
+  done < <(/usr/bin/find "$library_dir" -type f -name '*.dylib' -print)
+} | /usr/bin/grep -qE '(/opt/homebrew|/usr/local|@rpath/)'; then
+  echo "Unbundled Homebrew or @rpath dependency remains in the staged addon." >&2
   exit 1
 fi
 /usr/bin/codesign --verify --strict --verbose=2 "$staged_addon"

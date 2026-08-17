@@ -30,7 +30,31 @@
   // Identify frames whose confidence is below the user-selected validation threshold.
   function findUncertainSamples(samples, threshold) {
     const minimum = Number.isFinite(Number(threshold)) ? Number(threshold) : 0.65;
-    return (Array.isArray(samples) ? samples : []).filter((sample) => Number(sample.confidence) < minimum);
+    return (Array.isArray(samples) ? samples : []).filter((sample) => sample && (sample.valid === false || Number(sample.confidence) < minimum));
+  }
+
+  // Apply one small centred filter while preserving endpoints and every sample's timing and confidence.
+  function smoothTrackingSamples(samples) {
+    const source = Array.isArray(samples) ? samples : [];
+    return source.map((sample, index) => {
+      const previous = source[index - 1];
+      const next = source[index + 1];
+      const canSmooth = index > 0 && index < source.length - 1
+        && sample && sample.valid !== false
+        && previous && previous.valid !== false
+        && next && next.valid !== false
+        && Number.isFinite(Number(previous.x)) && Number.isFinite(Number(previous.y))
+        && Number.isFinite(Number(sample.x)) && Number.isFinite(Number(sample.y))
+        && Number.isFinite(Number(next.x)) && Number.isFinite(Number(next.y));
+      if (!canSmooth) {
+        return Object.assign({}, sample);
+      }
+      // Weight the current measurement twice as much to reduce jitter without hiding a genuine change of direction.
+      return Object.assign({}, sample, {
+        x: (Number(previous.x) + Number(sample.x) * 2 + Number(next.x)) / 4,
+        y: (Number(previous.y) + Number(sample.y) * 2 + Number(next.y)) / 4
+      });
+    });
   }
 
   // Convert valid native frame samples into relative Position offsets and clip-relative timing.
@@ -127,6 +151,7 @@
   return {
     computeRelativeOffsets,
     findUncertainSamples,
+    smoothTrackingSamples,
     buildPositionKeyframes,
     computeTargetPositionScale,
     selectPreviewSamples,

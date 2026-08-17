@@ -16,6 +16,9 @@
     previewBuildTotal: 0,
     previewSkipRequested: false,
     correction: null,
+    confidenceThreshold: 0.65,
+    searchRadius: 10,
+    smoothingEnabled: true,
     referencePoint: null,
     tracking: null,
     liveSamples: [],
@@ -38,7 +41,7 @@
       selectCapture: "Select and capture the clip to analyze.",
       analysisRunning: "OpenCV analysis in progress… Do not close the panel.",
       liveProgress: "Analyzing {count} frames…",
-      analysisReady: "{count} frames analyzed. Review uncertain frames before applying.",
+      analysisReady: "{count} frames analyzed · {uncertain} uncertain. Review them before applying.",
       inImageLoaded: "In-point image loaded. Click the image to place the tracking point.",
       sourceReady: "Selection confirmed. The OpenCV engine is the next milestone.",
       readyToAnalyze: "Ready to analyze the In/Out range.",
@@ -50,12 +53,19 @@
       pause: "Pause",
       preparingPreview: "Preparing preview {count} / {total}…",
       skippingPreview: "Skipping preview…",
-      trackingPreview: "Tracking preview · frame {current} / {total}",
+      trackingPreview: "Tracking preview · frame {current} / {total} · confidence {confidence}%",
       trackingPreviewAlt: "Tracking preview",
       previewNavigation: "Browse the analyzed frames",
       correctionHelp: "Click the image to correct the point, then re-track from this frame.",
       retrackFromHere: "Re-track from this frame",
       retracking: "Re-tracking from the corrected frame…",
+      confidenceThreshold: "Confidence alert threshold: {value}%",
+      searchArea: "Search area: ±{value} px",
+      smoothing: "Light smoothing when applying",
+      rawTrajectory: "Raw trajectory",
+      uncertainFrames: "{count} uncertain image(s)",
+      nextUncertain: "Next uncertain",
+      uncertainMarker: "Uncertain image {current}",
       inImageAlt: "Sequence image at the In point",
       emptyPreview: "The sequence image at the In point will appear here after preparation.",
       sourceTitle: "1. Tracking source",
@@ -81,7 +91,7 @@
       selectCapture: "Sélectionnez puis capturez le clip à analyser.",
       analysisRunning: "Analyse OpenCV en cours… Ne fermez pas le panneau.",
       liveProgress: "Analyse de {count} images…",
-      analysisReady: "{count} images analysées. Vérifiez les images incertaines avant l’application.",
+      analysisReady: "{count} images analysées · {uncertain} incertaines. Vérifiez-les avant l’application.",
       inImageLoaded: "Image du point In chargée. Cliquez dans l’image pour placer le point de tracking.",
       sourceReady: "Sélection validée. Le moteur OpenCV constitue le prochain jalon.",
       readyToAnalyze: "Prêt à analyser la plage In/Out.",
@@ -93,12 +103,19 @@
       pause: "Pause",
       preparingPreview: "Préparation de l’aperçu {count} / {total}…",
       skippingPreview: "Aperçu ignoré…",
-      trackingPreview: "Aperçu tracking · image {current} / {total}",
+      trackingPreview: "Aperçu tracking · image {current} / {total} · confiance {confidence}%",
       trackingPreviewAlt: "Aperçu du tracking",
       previewNavigation: "Parcourir les images analysées",
       correctionHelp: "Cliquez dans l’image pour corriger le point, puis relancer le tracking depuis cette image.",
       retrackFromHere: "Relancer depuis cette image",
       retracking: "Reprise du tracking depuis l’image corrigée…",
+      confidenceThreshold: "Seuil d’alerte confiance : {value}%",
+      searchArea: "Zone de recherche : ±{value} px",
+      smoothing: "Lissage léger à l’application",
+      rawTrajectory: "Trajectoire brute",
+      uncertainFrames: "{count} image(s) incertaine(s)",
+      nextUncertain: "Suivante incertaine",
+      uncertainMarker: "Image incertaine {current}",
       inImageAlt: "Image de la séquence au point In",
       emptyPreview: "L’image de la séquence au point In apparaîtra ici après préparation.",
       sourceTitle: "1. Source du tracking",
@@ -222,6 +239,53 @@
     return selected;
   }
 
+  // Format one native confidence score for both the current frame label and the review markers.
+  function confidencePercent(sample) {
+    return Math.round(Math.max(0, Math.min(1, Number(sample && sample.confidence) || 0)) * 100);
+  }
+
+  // Keep only preview images that need attention at the current user-selected confidence threshold.
+  function getPreviewUncertainIndexes() {
+    const frames = state.trackingPreview && state.trackingPreview.frames ? state.trackingPreview.frames : [];
+    return frames.reduce((indexes, frame, index) => {
+      if (!frame.valid || Number(frame.confidence) < Number(state.confidenceThreshold)) {
+        indexes.push(index);
+      }
+      return indexes;
+    }, []);
+  }
+
+  // Bound visible marker count while preserving the first and last doubtful areas on long analyses.
+  function selectUncertainMarkerIndexes(indexes) {
+    const limit = 40;
+    if (indexes.length <= limit) {
+      return indexes;
+    }
+    return Array.from({ length: limit }, (_, index) => indexes[Math.round(index * (indexes.length - 1) / (limit - 1))]);
+  }
+
+  // Draw the configured optical-flow search window at the actual normalized tracking point.
+  function searchAreaMarkup(point) {
+    if (!point || !state.media || !Number(state.media.width) || !Number(state.media.height)) {
+      return "";
+    }
+    const width = Math.min(100, Math.max(1, Number(state.searchRadius) * 2 / Number(state.media.width) * 100));
+    const height = Math.min(100, Math.max(1, Number(state.searchRadius) * 2 / Number(state.media.height) * 100));
+    return '<div class="pmt-search-area" style="left:' + (Number(point.x) * 100).toFixed(3) + '%;top:' + (Number(point.y) * 100).toFixed(3) + '%;width:' + width.toFixed(3) + '%;height:' + height.toFixed(3) + '%"></div>';
+  }
+
+  // Render attention markers below the host-provided slider without replacing its validated transport control.
+  function uncertainMarkersMarkup(indexes, frameCount) {
+    if (!indexes.length || frameCount < 2) {
+      return '<div class="pmt-label">' + escapeHtml(t("uncertainFrames", { count: 0 })) + '</div>';
+    }
+    const markers = selectUncertainMarkerIndexes(indexes).map((index) => {
+      const left = index / (frameCount - 1) * 100;
+      return '<div class="pmt-uncertain-marker" role="button" tabindex="0" data-preview-index="' + String(index) + '" style="left:' + left.toFixed(3) + '%" aria-label="' + escapeHtml(t("uncertainMarker", { current: index + 1 })) + '"></div>';
+    }).join("");
+    return '<div class="pmt-uncertain-summary">' + escapeHtml(t("uncertainFrames", { count: indexes.length })) + '</div><div class="pmt-uncertain-markers" aria-label="' + escapeHtml(t("uncertainFrames", { count: indexes.length })) + '">' + markers + '</div>';
+  }
+
   // Render a skin-free accessible control because Premiere adds an inner box to native buttons.
   function buttonMarkup(id, label, classNames, disabled) {
     const classes = ["pmt-button"].concat(classNames || []).join(" ");
@@ -248,7 +312,8 @@
     }
     if (state.preview) {
       if (state.tracking) {
-        return { tone: "success", text: t("analysisReady", { count: state.tracking.length }) };
+        const uncertain = root.PMT_TRAJECTORY.findUncertainSamples(state.tracking, state.confidenceThreshold).length;
+        return { tone: "success", text: t("analysisReady", { count: state.tracking.length, uncertain }) };
       }
       return { tone: "success", text: t("inImageLoaded") };
     }
@@ -274,11 +339,13 @@
     const hasCorrection = Boolean(state.correction && playbackFrame && state.correction.frameIndex === state.previewFrameIndex);
     const displayedPoint = hasCorrection ? state.correction.point : playbackFrame;
     const canRetrack = Boolean(!state.busy && hasCorrection && state.tracking && state.tracking.length > 1 && Number(playbackFrame.seconds) < Number(state.tracking[state.tracking.length - 1].seconds));
+    const uncertainIndexes = getPreviewUncertainIndexes();
+    const currentConfidence = confidencePercent(playbackFrame);
     const previewContent = playbackFrame
-      ? '<div class="pmt-preview-stage"><img class="pmt-preview-buffer pmt-preview-buffer-active" id="pmt-tracking-image-a" src="' + escapeHtml(playbackFrame.url) + '" alt="' + escapeHtml(t("trackingPreviewAlt")) + '"><img class="pmt-preview-buffer" id="pmt-tracking-image-b" alt=""></div><div class="pmt-tracking-point" id="pmt-preview-point" style="left:' + (Number(displayedPoint.x) * 100).toFixed(3) + '%;top:' + (Number(displayedPoint.y) * 100).toFixed(3) + '%"></div><div class="pmt-preview-status" id="pmt-preview-status">' + escapeHtml(t("trackingPreview", { current: state.previewFrameIndex + 1, total: state.trackingPreview.frames.length })) + '</div>'
+      ? '<div class="pmt-preview-stage"><img class="pmt-preview-buffer pmt-preview-buffer-active" id="pmt-tracking-image-a" src="' + escapeHtml(playbackFrame.url) + '" alt="' + escapeHtml(t("trackingPreviewAlt")) + '"><img class="pmt-preview-buffer" id="pmt-tracking-image-b" alt=""></div>' + searchAreaMarkup(displayedPoint) + '<div class="pmt-tracking-point" id="pmt-preview-point" style="left:' + (Number(displayedPoint.x) * 100).toFixed(3) + '%;top:' + (Number(displayedPoint.y) * 100).toFixed(3) + '%"></div><div class="pmt-preview-status" id="pmt-preview-status">' + escapeHtml(t("trackingPreview", { current: state.previewFrameIndex + 1, total: state.trackingPreview.frames.length, confidence: currentConfidence })) + '</div>'
       : state.preview
       ? '<img class="pmt-preview-image" src="' + escapeHtml(state.preview.url) + '" alt="' + escapeHtml(t("inImageAlt")) + '">' + (state.referencePoint
-        ? '<div class="pmt-tracking-point" style="left:' + (state.referencePoint.x * 100).toFixed(3) + '%;top:' + (state.referencePoint.y * 100).toFixed(3) + '%"></div>'
+        ? searchAreaMarkup(state.referencePoint) + '<div class="pmt-tracking-point" style="left:' + (state.referencePoint.x * 100).toFixed(3) + '%;top:' + (state.referencePoint.y * 100).toFixed(3) + '%"></div>'
         : "")
       : '<div class="pmt-preview-grid"></div><div class="pmt-preview-copy">' + escapeHtml(t("emptyPreview")) + '</div>';
     rootNode.innerHTML = [
@@ -295,23 +362,28 @@
       '      ' + buttonMarkup("pmt-capture-source", t("capturePrepare"), [], state.busy),
       '    </div>',
       state.source ? '    <div class="pmt-label">' + escapeHtml(t("video")) + ': ' + escapeHtml(mediaLabel(state.media)) + '</div>' : '',
+      state.source ? '    <div class="pmt-settings"><div class="pmt-label">' + escapeHtml(t("searchArea", { value: state.searchRadius })) + '</div><sp-slider class="pmt-setting-slider" id="pmt-search-radius" min="5" max="40" step="1" value="' + String(state.searchRadius) + '"' + (canPrepare ? '' : ' disabled') + ' aria-label="' + escapeHtml(t("searchArea", { value: state.searchRadius })) + '"></sp-slider></div>' : '',
+      state.source ? '    <div class="pmt-settings"><div class="pmt-label">' + escapeHtml(t("confidenceThreshold", { value: Math.round(state.confidenceThreshold * 100) })) + '</div><sp-slider class="pmt-setting-slider" id="pmt-confidence-threshold" min="0.1" max="1" step="0.05" value="' + String(state.confidenceThreshold) + '"' + (canPrepare ? '' : ' disabled') + ' aria-label="' + escapeHtml(t("confidenceThreshold", { value: Math.round(state.confidenceThreshold * 100) })) + '"></sp-slider></div>' : '',
       '  </div>',
       '  <div class="pmt-card">',
       '    <h2 class="pmt-card-title">' + escapeHtml(t("previewTitle")) + '</h2>',
       '    <div class="pmt-preview" id="pmt-preview" data-ready="' + String(Boolean(state.preview || playbackFrame)) + '">' + previewContent + '</div>',
       playbackFrame ? '    <div class="pmt-preview-navigation"><div class="pmt-label">' + escapeHtml(t("previewNavigation")) + '</div><sp-slider class="pmt-preview-slider" id="pmt-preview-slider" min="0" max="' + String(Math.max(0, state.trackingPreview.frames.length - 1)) + '" step="1" value="' + String(state.previewFrameIndex) + '"' + (canPlayPreview ? '' : ' disabled') + ' aria-label="' + escapeHtml(t("previewNavigation")) + '"></sp-slider></div>' : '',
+      playbackFrame ? '    <div class="pmt-uncertain-review">' + uncertainMarkersMarkup(uncertainIndexes, state.trackingPreview.frames.length) + '</div>' : '',
       playbackFrame ? '    <div class="pmt-label">' + escapeHtml(t("correctionHelp")) + '</div>' : '',
       '    <div class="pmt-actions">',
       '      ' + buttonMarkup("pmt-analyze", analyzeLabel, ["pmt-button-primary"], !canAnalyze),
       '      ' + buttonMarkup("pmt-play-preview", state.previewPlaying ? t("pause") : t("play"), [], !canPlayPreview),
       state.operation === "preview" ? '      ' + buttonMarkup("pmt-skip-preview", t("skipPreview"), [], state.previewSkipRequested) : '',
       playbackFrame ? '      ' + buttonMarkup("pmt-preview-reset", t("start"), [], !canPlayPreview) : '',
+      playbackFrame ? '      ' + buttonMarkup("pmt-next-uncertain", t("nextUncertain"), [], !uncertainIndexes.length || state.busy) : '',
       '    </div>',
       playbackFrame ? '    ' + buttonMarkup("pmt-retrack-from-here", t("retrackFromHere"), ["pmt-button-full", "pmt-button-primary"], !canRetrack) : '',
       '  </div>',
       '  <div class="pmt-card">',
       '    <h2 class="pmt-card-title">' + escapeHtml(t("applyTitle")) + '</h2>',
       '    <div class="pmt-label">' + escapeHtml(t("applyHelp")) + '</div>',
+      '    ' + checkboxMarkup("pmt-toggle-smoothing", state.smoothingEnabled ? t("smoothing") : t("rawTrajectory"), state.smoothingEnabled, !canPrepare),
       '    ' + buttonMarkup("pmt-apply-tracking", t("applyTrajectory"), ["pmt-button-full"], !canApplyTracking),
       '  </div>',
       '  <div class="pmt-card">',
@@ -380,14 +452,19 @@
         state.previewFrameIndex = requestedIndex;
         const correction = state.correction && state.correction.frameIndex === requestedIndex ? state.correction.point : frame;
         const point = rootNode.querySelector("#pmt-preview-point");
+        const searchArea = rootNode.querySelector(".pmt-search-area");
         const status = rootNode.querySelector("#pmt-preview-status");
         const slider = rootNode.querySelector("#pmt-preview-slider");
         if (point) {
           point.style.left = (Number(correction.x) * 100).toFixed(3) + "%";
           point.style.top = (Number(correction.y) * 100).toFixed(3) + "%";
         }
+        if (searchArea) {
+          searchArea.style.left = (Number(correction.x) * 100).toFixed(3) + "%";
+          searchArea.style.top = (Number(correction.y) * 100).toFixed(3) + "%";
+        }
         if (status) {
-          status.textContent = t("trackingPreview", { current: requestedIndex + 1, total: frames.length });
+          status.textContent = t("trackingPreview", { current: requestedIndex + 1, total: frames.length, confidence: confidencePercent(frame) });
         }
         if (slider) {
           slider.value = String(requestedIndex);
@@ -428,7 +505,7 @@
       }
       const sample = samples[index];
       const exported = await root.PMT_PREMIERE.exportTrackingPreviewFrame(Number(sample.seconds), index);
-      frames.push({ url: exported.url, width: exported.width, height: exported.height, frame: Number(sample.frame), seconds: Number(sample.seconds), x: Number(sample.x), y: Number(sample.y) });
+      frames.push({ url: exported.url, width: exported.width, height: exported.height, frame: Number(sample.frame), seconds: Number(sample.seconds), x: Number(sample.x), y: Number(sample.y), confidence: Number(sample.confidence), valid: sample.valid !== false });
       state.previewBuildCount = index + 1;
       updatePreviewBuildStatus(rootNode);
     }
@@ -457,6 +534,16 @@
     if (button) {
       button.textContent = state.previewPlaying ? t("pause") : t("play");
     }
+  }
+
+  // Jump to the next flagged review image and wrap to the first marker after the end of the preview.
+  function showNextUncertainPreview(rootNode) {
+    const indexes = getPreviewUncertainIndexes();
+    if (!indexes.length) {
+      return;
+    }
+    const nextIndex = indexes.find((index) => index > state.previewFrameIndex);
+    showTrackingPreviewFrame(rootNode, nextIndex === undefined ? indexes[0] : nextIndex);
   }
 
   // Read the sequence range and its In image before an optional image-sequence preview is generated after analysis.
@@ -602,7 +689,7 @@
     if (state.operation === "analysis") {
       status.textContent = t("liveProgress", { count: state.liveSamples.length });
     } else if (sample) {
-      status.textContent = t("trackingPreview", { current: Math.max(1, state.tracking.indexOf(sample) + 1), total: state.tracking.length });
+      status.textContent = t("trackingPreview", { current: Math.max(1, state.tracking.indexOf(sample) + 1), total: state.tracking.length, confidence: confidencePercent(sample) });
     } else {
       status.textContent = t("readyToAnalyze");
     }
@@ -683,12 +770,13 @@
       }
       await waitForPanelPaint();
       const mediaRange = getTrackingMediaRange();
-      state.analysisTaskId = await root.PMT_NATIVE.startTracking(state.source.mediaPath, state.referencePoint, mediaRange.startSeconds, mediaRange.endSeconds);
+      state.analysisTaskId = await root.PMT_NATIVE.startTracking(state.source.mediaPath, state.referencePoint, mediaRange.startSeconds, mediaRange.endSeconds, state.searchRadius);
       const samples = await collectLiveTracking(rootNode, state.analysisTaskId);
       state.analysisTaskId = "";
       state.tracking = samples;
-      const invalidCount = state.tracking.filter((sample) => !sample.valid).length;
+      const invalidCount = root.PMT_TRAJECTORY.findUncertainSamples(state.tracking, state.confidenceThreshold).length;
       addLog("OpenCV tracking: " + state.tracking.length + " frames from " + mediaRange.startSeconds.toFixed(3) + " s to " + mediaRange.endSeconds.toFixed(3) + " s.");
+      addLog("Tracking settings: search ±" + state.searchRadius + " px · confidence alert below " + Math.round(state.confidenceThreshold * 100) + "%.");
       addLog("Uncertain frames: " + invalidCount + ".");
       try {
         await buildTrackingPreview(rootNode);
@@ -727,11 +815,11 @@
       if (Number(correction.seconds) >= Number(mediaRange.endSeconds)) {
         throw new Error("The correction must be before the end of the tracking range.");
       }
-      state.analysisTaskId = await root.PMT_NATIVE.startTracking(state.source.mediaPath, correction.point, correction.seconds, mediaRange.endSeconds);
+      state.analysisTaskId = await root.PMT_NATIVE.startTracking(state.source.mediaPath, correction.point, correction.seconds, mediaRange.endSeconds, state.searchRadius);
       const replacement = await collectLiveTracking(rootNode, state.analysisTaskId);
       state.analysisTaskId = "";
       state.tracking = root.PMT_TRAJECTORY.replaceTrackingTail(previousTracking, replacement);
-      const invalidCount = state.tracking.filter((sample) => !sample.valid).length;
+      const invalidCount = root.PMT_TRAJECTORY.findUncertainSamples(state.tracking, state.confidenceThreshold).length;
       addLog("Correction merged: " + replacement.length + " re-tracked frames from source frame " + correction.frame + ".");
       addLog("Uncertain frames: " + invalidCount + ".");
       try {
@@ -756,9 +844,11 @@
     render(rootNode);
     try {
       // Anchor to the first actual tracking result so a corrected first image cannot move the destination clip at its start.
-      const keyframes = root.PMT_TRAJECTORY.buildPositionKeyframes(state.tracking);
+      const trajectoryForApply = state.smoothingEnabled ? root.PMT_TRAJECTORY.smoothTrackingSamples(state.tracking) : state.tracking;
+      const keyframes = root.PMT_TRAJECTORY.buildPositionKeyframes(trajectoryForApply);
       const results = await root.PMT_PREMIERE.applyTracking(keyframes);
       addLog("Trajectory applied to " + results.length + " selected clip(s). " + keyframes.length + " keyframes per clip.");
+      addLog("Applied trajectory: " + (state.smoothingEnabled ? "light smoothing." : "raw tracking."));
       results.forEach((result) => {
         const scale = result.positionScale || { x: 1, y: 1 };
         const coordinateSpace = result.targetCoordinateSpace === "sequence" ? "Graphics Layer" : "media";
@@ -859,7 +949,12 @@
     bindButton(rootNode, "pmt-play-preview", () => toggleTrackingPreview(rootNode));
     bindButton(rootNode, "pmt-skip-preview", () => skipTrackingPreview(rootNode));
     bindButton(rootNode, "pmt-preview-reset", () => showTrackingPreviewFrame(rootNode, 0));
+    bindButton(rootNode, "pmt-next-uncertain", () => showNextUncertainPreview(rootNode));
     bindButton(rootNode, "pmt-retrack-from-here", () => retrackFromCorrection(rootNode));
+    bindButton(rootNode, "pmt-toggle-smoothing", () => {
+      state.smoothingEnabled = !state.smoothingEnabled;
+      render(rootNode);
+    });
     bindButton(rootNode, "pmt-apply-tracking", () => applyTracking(rootNode));
     bindButton(rootNode, "pmt-copy-log", () => copyDiagnostics(rootNode));
     const preview = rootNode.querySelector("#pmt-preview");
@@ -870,6 +965,36 @@
       previewSlider.addEventListener("input", scrubPreview);
       previewSlider.addEventListener("change", scrubPreview);
     }
+    const searchRadiusSlider = rootNode.querySelector("#pmt-search-radius");
+    if (searchRadiusSlider && !state.busy) {
+      // Keep the search radius within the range independently validated by the native OpenCV addon.
+      const updateSearchRadius = (event) => {
+        state.searchRadius = Math.min(40, Math.max(5, Math.round(Number(event.target.value) || 10)));
+        render(rootNode);
+      };
+      searchRadiusSlider.addEventListener("input", updateSearchRadius);
+      searchRadiusSlider.addEventListener("change", updateSearchRadius);
+    }
+    const confidenceSlider = rootNode.querySelector("#pmt-confidence-threshold");
+    if (confidenceSlider && !state.busy) {
+      // Recompute only the review classification; native tracking samples remain unchanged.
+      const updateConfidenceThreshold = (event) => {
+        state.confidenceThreshold = Math.min(1, Math.max(0.1, Number(event.target.value) || 0.65));
+        render(rootNode);
+      };
+      confidenceSlider.addEventListener("input", updateConfidenceThreshold);
+      confidenceSlider.addEventListener("change", updateConfidenceThreshold);
+    }
+    Array.prototype.forEach.call(rootNode.querySelectorAll(".pmt-uncertain-marker"), (marker) => {
+      const showMarker = () => showTrackingPreviewFrame(rootNode, Number(marker.getAttribute("data-preview-index")));
+      marker.addEventListener("click", showMarker);
+      marker.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          showMarker();
+        }
+      });
+    });
     if (preview && state.trackingPreview && !state.busy) {
       preview.addEventListener("click", (event) => chooseCorrectionPoint(rootNode, event));
     } else if (preview && state.preview && !state.busy) {

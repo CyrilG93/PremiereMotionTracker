@@ -41,7 +41,8 @@ std::vector<MediaTrackingSample> trackMedia(
     double normalizedY,
     double startSeconds,
     double endSeconds,
-    const TrackingProgressCallback& progressCallback = {}
+    const TrackingProgressCallback& progressCallback = {},
+    int searchRadius = 10
 );
 
 } // namespace pmt

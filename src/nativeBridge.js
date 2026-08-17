@@ -41,7 +41,7 @@
     if (!loadPromise) {
       loadPromise = (async () => {
         try {
-      const loadedAddon = await require("premiere-motion-tracker-0.3.8.uxpaddon");
+      const loadedAddon = await require("premiere-motion-tracker-0.3.9.uxpaddon");
           exportNames = collectExportNames(loadedAddon);
           if (!loadedAddon || typeof loadedAddon.getVersion !== "function") {
             throw new Error("L’addon ne fournit pas getVersion() (" + describeExports(loadedAddon) + ").");
@@ -82,7 +82,7 @@
   }
 
   // Delegate bounded Lucas-Kanade tracking to the addon without retaining native frame objects in UXP.
-  async function trackMedia(mediaPath, normalizedPoint, startSeconds, endSeconds) {
+  async function trackMedia(mediaPath, normalizedPoint, startSeconds, endSeconds, searchRadius) {
     if (!addon || typeof addon.trackMedia !== "function") {
       throw new Error(loadError || "L’addon natif ne fournit pas trackMedia().");
     }
@@ -92,12 +92,13 @@
       Number(point.x),
       Number(point.y),
       Number(startSeconds),
-      Number(endSeconds)
+      Number(endSeconds),
+      Number(searchRadius) || 10
     );
   }
 
   // Start a native worker and return immediately so UXP can keep the video preview responsive.
-  async function startTracking(mediaPath, normalizedPoint, startSeconds, endSeconds) {
+  async function startTracking(mediaPath, normalizedPoint, startSeconds, endSeconds, searchRadius) {
     if (!addon || typeof addon.startTracking !== "function") {
       throw new Error(loadError || "L’addon natif ne fournit pas startTracking().");
     }
@@ -107,7 +108,8 @@
       Number(point.x),
       Number(point.y),
       Number(startSeconds),
-      Number(endSeconds)
+      Number(endSeconds),
+      Number(searchRadius) || 10
     ));
   }
 

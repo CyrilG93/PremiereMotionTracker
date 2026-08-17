@@ -3,6 +3,7 @@
 #include "tracker_core.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <atomic>
 #include <memory>
@@ -42,7 +43,7 @@ std::string readFirstStringArgument(addon_env env, addon_callback_info info) {
     return {};
 }
 
-// Read five tracking arguments from JavaScript: path, point X/Y, and media start/end seconds.
+// Read tracking arguments from JavaScript: path, point X/Y, media start/end seconds, and optional search radius.
 void readTrackingArguments(
     addon_env env,
     addon_callback_info info,
@@ -50,12 +51,13 @@ void readTrackingArguments(
     double& normalizedX,
     double& normalizedY,
     double& startSeconds,
-    double& endSeconds
+    double& endSeconds,
+    int& searchRadius
 ) {
-    addon_value arguments[5] = { nullptr, nullptr, nullptr, nullptr, nullptr };
-    std::size_t argumentCount = 5;
+    addon_value arguments[6] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
+    std::size_t argumentCount = 6;
     Check(UxpAddonApis.uxp_addon_get_cb_info(env, info, &argumentCount, arguments, nullptr, nullptr));
-    if (argumentCount != 5) {
+    if (argumentCount != 5 && argumentCount != 6) {
         throw std::invalid_argument("Le tracking requiert un média, un point et une plage.");
     }
     std::size_t byteCount = 0;
@@ -70,6 +72,12 @@ void readTrackingArguments(
     Check(UxpAddonApis.uxp_addon_get_value_double(env, arguments[2], &normalizedY));
     Check(UxpAddonApis.uxp_addon_get_value_double(env, arguments[3], &startSeconds));
     Check(UxpAddonApis.uxp_addon_get_value_double(env, arguments[4], &endSeconds));
+    searchRadius = 10;
+    if (argumentCount == 6) {
+        double requestedSearchRadius = 10.0;
+        Check(UxpAddonApis.uxp_addon_get_value_double(env, arguments[5], &requestedSearchRadius));
+        searchRadius = static_cast<int>(std::lround(requestedSearchRadius));
+    }
 }
 
 // Store a native number as one property of the object returned to JavaScript.
@@ -217,8 +225,9 @@ addon_value trackMedia(addon_env env, addon_callback_info info) {
         double normalizedY = 0.0;
         double startSeconds = 0.0;
         double endSeconds = 0.0;
-        readTrackingArguments(env, info, mediaPath, normalizedX, normalizedY, startSeconds, endSeconds);
-        const std::vector<pmt::MediaTrackingSample> samples = pmt::trackMedia(mediaPath, normalizedX, normalizedY, startSeconds, endSeconds);
+        int searchRadius = 10;
+        readTrackingArguments(env, info, mediaPath, normalizedX, normalizedY, startSeconds, endSeconds, searchRadius);
+        const std::vector<pmt::MediaTrackingSample> samples = pmt::trackMedia(mediaPath, normalizedX, normalizedY, startSeconds, endSeconds, {}, searchRadius);
         addon_value result = nullptr;
         Check(UxpAddonApis.uxp_addon_create_array_with_length(env, samples.size(), &result));
         for (std::size_t index = 0; index < samples.size(); index += 1) {
@@ -244,14 +253,15 @@ addon_value startTracking(addon_env env, addon_callback_info info) {
         double normalizedY = 0.0;
         double startSeconds = 0.0;
         double endSeconds = 0.0;
-        readTrackingArguments(env, info, mediaPath, normalizedX, normalizedY, startSeconds, endSeconds);
+        int searchRadius = 10;
+        readTrackingArguments(env, info, mediaPath, normalizedX, normalizedY, startSeconds, endSeconds, searchRadius);
         const std::string taskId = "tracking-" + std::to_string(nextTrackingTaskId.fetch_add(1));
         const auto task = std::make_shared<TrackingTask>();
         {
             std::lock_guard<std::mutex> lock(trackingTasksMutex);
             trackingTasks.emplace(taskId, task);
         }
-        task->worker = std::thread([task, mediaPath, normalizedX, normalizedY, startSeconds, endSeconds]() {
+        task->worker = std::thread([task, mediaPath, normalizedX, normalizedY, startSeconds, endSeconds, searchRadius]() {
             try {
                 pmt::trackMedia(mediaPath, normalizedX, normalizedY, startSeconds, endSeconds, [task](const pmt::MediaTrackingSample& sample) {
                     if (task->cancelRequested.load()) {
@@ -261,7 +271,7 @@ addon_value startTracking(addon_env env, addon_callback_info info) {
                     std::lock_guard<std::mutex> lock(task->mutex);
                     task->samples.push_back(sample);
                     return true;
-                });
+                }, searchRadius);
             } catch (const std::exception& error) {
                 std::lock_guard<std::mutex> lock(task->mutex);
                 if (task->cancelRequested.load()) {

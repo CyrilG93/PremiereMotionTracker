@@ -78,13 +78,17 @@ std::vector<MediaTrackingSample> trackMedia(
     double normalizedY,
     double startSeconds,
     double endSeconds,
-    const TrackingProgressCallback& progressCallback
+    const TrackingProgressCallback& progressCallback,
+    int searchRadius
 ) {
     if (!std::isfinite(normalizedX) || !std::isfinite(normalizedY) || normalizedX < 0.0 || normalizedX > 1.0 || normalizedY < 0.0 || normalizedY > 1.0) {
         throw std::invalid_argument("Le point de tracking doit être normalisé entre 0 et 1.");
     }
     if (!std::isfinite(startSeconds) || !std::isfinite(endSeconds) || startSeconds < 0.0 || endSeconds <= startSeconds) {
-        throw std::invalid_argument("La plage média de tracking est invalide.");
+      throw std::invalid_argument("La plage média de tracking est invalide.");
+    }
+    if (searchRadius < 5 || searchRadius > 40) {
+        throw std::invalid_argument("La zone de recherche doit être comprise entre 5 et 40 pixels.");
     }
 
     // Open the same platform decoder used by media inspection so the session stays consistent.
@@ -127,15 +131,16 @@ std::vector<MediaTrackingSample> trackMedia(
         std::vector<cv::Point2f> forwardPoint;
         std::vector<unsigned char> forwardStatus;
         std::vector<float> forwardError;
-        // Track one point forward with a moderate pyramid suited to a first interactive implementation.
-        cv::calcOpticalFlowPyrLK(previousGray, currentGray, sourcePoint, forwardPoint, forwardStatus, forwardError, cv::Size(21, 21), 3);
+        // Use the user-selected local search window while keeping the proven three-level optical-flow pyramid.
+        const cv::Size searchWindow(searchRadius * 2 + 1, searchRadius * 2 + 1);
+        cv::calcOpticalFlowPyrLK(previousGray, currentGray, sourcePoint, forwardPoint, forwardStatus, forwardError, searchWindow, 3);
 
         std::vector<cv::Point2f> backwardPoint;
         std::vector<unsigned char> backwardStatus;
         std::vector<float> backwardError;
         if (!forwardPoint.empty() && !forwardStatus.empty() && forwardStatus[0]) {
             // Track back to reject points that cannot reproduce their source coordinate.
-            cv::calcOpticalFlowPyrLK(currentGray, previousGray, forwardPoint, backwardPoint, backwardStatus, backwardError, cv::Size(21, 21), 3);
+            cv::calcOpticalFlowPyrLK(currentGray, previousGray, forwardPoint, backwardPoint, backwardStatus, backwardError, searchWindow, 3);
         }
 
         double confidence = 0.0;

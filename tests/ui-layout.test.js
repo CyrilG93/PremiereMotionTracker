@@ -81,6 +81,18 @@ test("tracking review scrubs through Spectrum and can replace only the corrected
   assert.doesNotMatch(uiSource, /type="range"/);
 });
 
+test("validation exposes confidence markers, OpenCV search-area tuning, and optional smoothing", () => {
+  assert.match(uiSource, /pmt-confidence-threshold/);
+  assert.match(uiSource, /pmt-search-radius/);
+  assert.match(uiSource, /pmt-next-uncertain/);
+  assert.match(uiSource, /pmt-uncertain-marker/);
+  assert.match(uiSource, /smoothTrackingSamples/);
+  assert.match(uiSource, /state\.searchRadius/);
+  assert.match(nativeSource, /Number\(searchRadius\) \|\| 10/);
+  assert.match(styles, /\.pmt-search-area\s*\{[^}]*pointer-events:\s*none;/s);
+  assert.match(styles, /\.pmt-uncertain-markers\s*\{[^}]*position:\s*relative;/s);
+});
+
 test("the direct Premiere preview uses its bundled muted H.264 preset", () => {
   assert.match(previewPreset, /<PresetName>Premiere Motion Tracker Preview H\.264<\/PresetName>/);
   assert.match(previewPreset, /<DoAudio>false<\/DoAudio>/);
@@ -110,7 +122,7 @@ test("manifest v6 loads the platform Hybrid addon and exposes its startup diagno
   assert.equal(manifest.requiredPermissions.enableAddon, true);
   assert.equal(manifest.requiredPermissions.localFileSystem, "fullAccess");
   assert.equal(manifest.addon.name, "premiere-motion-tracker-" + manifest.version + ".uxpaddon");
-  assert.match(nativeSource, /await require\("premiere-motion-tracker-0\.3\.8\.uxpaddon"\)/);
+  assert.match(nativeSource, /await require\("premiere-motion-tracker-0\.3\.9\.uxpaddon"\)/);
   assert.match(nativeSource, /loadedAddon\.runSelfTest\(\)/);
   assert.match(nativeSource, /addon\.inspectMedia/);
   assert.match(nativeSource, /addon\.trackMedia/);

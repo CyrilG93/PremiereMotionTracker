@@ -269,6 +269,16 @@ input {
   transform: translate(-50%, -50%);
 }
 
+/* Show the real Lucas-Kanade search window without intercepting correction clicks on the preview. */
+.pmt-search-area {
+  position: absolute;
+  z-index: 1;
+  border: 1px solid rgba(228, 173, 75, 0.9);
+  background: rgba(228, 173, 75, 0.08);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
 /* Keep the tracking review time readable without relying on animated UXP controls. */
 .pmt-preview-status {
   position: absolute;
@@ -321,6 +331,56 @@ input {
   display: block;
   width: 100%;
   min-width: 0;
+}
+
+/* Keep tuning controls compact while using only UXP's Spectrum slider implementation. */
+.pmt-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
+.pmt-setting-slider {
+  display: block;
+  width: 100%;
+  min-width: 0;
+}
+
+/* Render only confidence markers below the Spectrum slider; the slider itself remains host-provided. */
+.pmt-uncertain-review {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+}
+
+.pmt-uncertain-summary {
+  color: var(--pmt-warning);
+  font-size: 11px;
+}
+
+.pmt-uncertain-markers {
+  position: relative;
+  width: 100%;
+  height: 10px;
+}
+
+.pmt-uncertain-marker {
+  position: absolute;
+  top: 1px;
+  width: 8px;
+  height: 8px;
+  border: 1px solid #111111;
+  border-radius: 999px;
+  background: var(--pmt-warning);
+  cursor: pointer;
+  transform: translateX(-50%);
+}
+
+.pmt-uncertain-marker:focus,
+.pmt-uncertain-marker:hover {
+  outline: 1px solid #ffffff;
 }
 
 .pmt-button-full {

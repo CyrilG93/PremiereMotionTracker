@@ -50,10 +50,24 @@ test("findUncertainSamples returns only samples below the threshold", () => {
   const uncertain = trajectoryApi.findUncertainSamples([
     { confidence: 0.9 },
     { confidence: 0.4 },
-    { confidence: 0.65 }
+    { confidence: 0.65 },
+    { confidence: 1, valid: false }
   ], 0.65);
-  assert.equal(uncertain.length, 1);
+  assert.equal(uncertain.length, 2);
   assert.equal(uncertain[0].confidence, 0.4);
+  assert.equal(uncertain[1].valid, false);
+});
+
+test("smoothTrackingSamples reduces one-frame jitter without moving either endpoint", () => {
+  const smoothed = trajectoryApi.smoothTrackingSamples([
+    { frame: 0, x: 0.2, y: 0.2, valid: true },
+    { frame: 1, x: 0.8, y: 0.8, valid: true },
+    { frame: 2, x: 0.3, y: 0.3, valid: true }
+  ]);
+  assert.equal(smoothed[0].x, 0.2);
+  assert.equal(smoothed[2].x, 0.3);
+  assert.ok(Math.abs(smoothed[1].x - 0.525) < 0.000001);
+  assert.ok(Math.abs(smoothed[1].y - 0.525) < 0.000001);
 });
 
 test("buildPositionKeyframes retains one Position keyframe for every valid frame", () => {

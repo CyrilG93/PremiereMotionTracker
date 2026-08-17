@@ -5,6 +5,7 @@
 #include <opencv2/videoio.hpp>
 
 #include <cmath>
+#include <array>
 #include <filesystem>
 #include <iostream>
 #include <stdexcept>
@@ -53,12 +54,13 @@ int main() {
             cv::Mat frame(64, 96, CV_8UC3, cv::Scalar(15, 15, 15));
             const int originX = 30 + frameIndex * 2;
             const int originY = 25 + frameIndex;
-            for (int y = 0; y < 12; y += 1) {
-                for (int x = 0; x < 12; x += 1) {
+            for (int y = 0; y < 24; y += 1) {
+                for (int x = 0; x < 24; x += 1) {
+                    const unsigned char checker = static_cast<unsigned char>(((x / 2 + y / 2) % 2) * 90);
                     frame.at<cv::Vec3b>(originY + y, originX + x) = cv::Vec3b(
-                        static_cast<unsigned char>(30 + x * 16),
-                        static_cast<unsigned char>(50 + y * 14),
-                        static_cast<unsigned char>(180 - (x + y) * 5)
+                        static_cast<unsigned char>(30 + x * 12 + checker),
+                        static_cast<unsigned char>(50 + y * 10 + checker),
+                        static_cast<unsigned char>(180 - (x + y) * 5 - checker / 3)
                     );
                 }
             }
@@ -90,6 +92,18 @@ int main() {
                 }
             );
             passed &= expect(publishedSamples == streamedSamples.size(), "progress callback should publish every tracked sample");
+            // Track the whole textured patch as a plane and verify its four corners receive the generated translation.
+            const std::array<std::array<double, 2>, 4> surfaceCorners {{
+                {{ 29.0 / 95.0, 24.0 / 63.0 }},
+                {{ 55.0 / 95.0, 24.0 / 63.0 }},
+                {{ 55.0 / 95.0, 50.0 / 63.0 }},
+                {{ 29.0 / 95.0, 50.0 / 63.0 }}
+            }};
+            const std::vector<pmt::SurfaceTrackingSample> surfaceSamples = pmt::trackSurface(samplePath.string(), surfaceCorners, 0.0, 0.3);
+            passed &= expect(surfaceSamples.size() >= 4, "surface tracker should return each frame in the requested range");
+            const pmt::SurfaceTrackingSample& finalSurfaceSample = surfaceSamples.back();
+            passed &= expect(finalSurfaceSample.valid, "surface tracker should validate the generated textured plane");
+            passed &= expect(std::abs(finalSurfaceSample.corners[0][0] - 35.0 / 95.0) < 0.08 && std::abs(finalSurfaceSample.corners[0][1] - 27.0 / 63.0) < 0.08, "surface tracker should recover the generated plane motion");
         } catch (const std::exception& error) {
             passed &= expect(false, std::string("decoder should open the generated sample: ") + error.what());
         }

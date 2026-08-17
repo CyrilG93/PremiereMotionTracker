@@ -97,6 +97,18 @@ test("buildPositionKeyframes keeps the destination anchored to the first actual 
   assert.ok(Math.abs(keyframes[1].dy - 0.052) < 0.000001);
 });
 
+test("buildSurfaceKeyframes retains four ordered corners and skips invalid surface frames", () => {
+  const keyframes = trajectoryApi.buildSurfaceKeyframes([
+    { frame: 10, seconds: 1, confidence: 1, valid: true, corners: [{ x: 0.1, y: 0.2 }, { x: 0.4, y: 0.2 }, { x: 0.4, y: 0.5 }, { x: 0.1, y: 0.5 }] },
+    { frame: 11, seconds: 1.04, confidence: 0.2, valid: false, corners: [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }] },
+    { frame: 12, seconds: 1.08, confidence: 0.8, valid: true, corners: [{ x: 0.2, y: 0.3 }, { x: 0.5, y: 0.3 }, { x: 0.5, y: 0.6 }, { x: 0.2, y: 0.6 }] }
+  ]);
+  assert.equal(keyframes.length, 2);
+  assert.equal(keyframes[0].progress, 0);
+  assert.equal(keyframes[1].progress, 1);
+  assert.deepEqual(keyframes[1].corners[2], { x: 0.5, y: 0.6 });
+});
+
 test("computeTargetPositionScale compensates a smaller target media and its Motion scale", () => {
   const scale = trajectoryApi.computeTargetPositionScale(
     { width: 1920, height: 1080 },

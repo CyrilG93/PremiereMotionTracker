@@ -94,6 +94,37 @@
     });
   }
 
+  // Preserve each valid four-corner measurement with clip-relative timing for Premiere's Corner Pin effect.
+  function buildSurfaceKeyframes(samples) {
+    const validSamples = (Array.isArray(samples) ? samples : []).filter((sample) => {
+      return sample && sample.valid !== false
+        && Number.isFinite(Number(sample.seconds))
+        && Array.isArray(sample.corners) && sample.corners.length === 4
+        && sample.corners.every((corner) => Number.isFinite(Number(corner && corner.x)) && Number.isFinite(Number(corner && corner.y)));
+    });
+    if (validSamples.length < 2) {
+      throw new Error("Le surface tracking doit contenir au moins deux images valides.");
+    }
+    const firstSeconds = Number(validSamples[0].seconds);
+    const lastSeconds = Number(validSamples[validSamples.length - 1].seconds);
+    const duration = lastSeconds - firstSeconds;
+    let previousProgress = 0;
+    return validSamples.map((sample, index) => {
+      const indexedProgress = index / (validSamples.length - 1);
+      const timedProgress = duration > 0 ? (Number(sample.seconds) - firstSeconds) / duration : indexedProgress;
+      const progress = Math.max(previousProgress, Math.min(1, Math.max(0, timedProgress)));
+      previousProgress = progress;
+      return {
+        frame: Number(sample.frame),
+        seconds: Number(sample.seconds),
+        progress,
+        confidence: Number(sample.confidence),
+        // Copy primitives so later preview adjustments cannot mutate the trajectory being applied.
+        corners: sample.corners.map((corner) => ({ x: Number(corner.x), y: Number(corner.y) }))
+      };
+    });
+  }
+
   // Convert sequence-normalized motion into a target clip's normalized Transform coordinate space.
   function computeTargetPositionScale(sequenceFrame, targetFrame, motionScale) {
     const sequenceWidth = Number(sequenceFrame && sequenceFrame.width);
@@ -153,6 +184,7 @@
     findUncertainSamples,
     smoothTrackingSamples,
     buildPositionKeyframes,
+    buildSurfaceKeyframes,
     computeTargetPositionScale,
     selectPreviewSamples,
     replaceTrackingTail

@@ -3,6 +3,7 @@
 #include "tracker_core.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <atomic>
@@ -80,6 +81,57 @@ void readTrackingArguments(
     }
 }
 
+// Read a four-corner array from UXP without retaining JavaScript values beyond this callback.
+void readSurfaceTrackingArguments(
+    addon_env env,
+    addon_callback_info info,
+    std::string& mediaPath,
+    std::array<std::array<double, 2>, 4>& corners,
+    double& startSeconds,
+    double& endSeconds,
+    int& searchRadius
+) {
+    addon_value arguments[5] = { nullptr, nullptr, nullptr, nullptr, nullptr };
+    std::size_t argumentCount = 5;
+    Check(UxpAddonApis.uxp_addon_get_cb_info(env, info, &argumentCount, arguments, nullptr, nullptr));
+    if (argumentCount != 4 && argumentCount != 5) {
+        throw std::invalid_argument("Le surface tracking requiert un média, quatre coins et une plage.");
+    }
+    std::size_t byteCount = 0;
+    Check(UxpAddonApis.uxp_addon_get_value_string_utf8(env, arguments[0], nullptr, 0, &byteCount));
+    std::vector<char> pathBuffer(byteCount + 1, '\0');
+    if (byteCount > 0) {
+        std::size_t copiedByteCount = 0;
+        Check(UxpAddonApis.uxp_addon_get_value_string_utf8(env, arguments[0], pathBuffer.data(), pathBuffer.size(), &copiedByteCount));
+        mediaPath.assign(pathBuffer.data(), copiedByteCount);
+    }
+    bool isArray = false;
+    Check(UxpAddonApis.uxp_addon_is_array(env, arguments[1], &isArray));
+    std::uint32_t length = 0;
+    Check(UxpAddonApis.uxp_addon_get_array_length(env, arguments[1], &length));
+    if (!isArray || length != corners.size()) {
+        throw std::invalid_argument("La surface doit contenir exactement quatre coins.");
+    }
+    for (std::uint32_t index = 0; index < length; index += 1) {
+        addon_value corner = nullptr;
+        addon_value x = nullptr;
+        addon_value y = nullptr;
+        Check(UxpAddonApis.uxp_addon_get_element(env, arguments[1], index, &corner));
+        Check(UxpAddonApis.uxp_addon_get_named_property(env, corner, "x", &x));
+        Check(UxpAddonApis.uxp_addon_get_named_property(env, corner, "y", &y));
+        Check(UxpAddonApis.uxp_addon_get_value_double(env, x, &corners[index][0]));
+        Check(UxpAddonApis.uxp_addon_get_value_double(env, y, &corners[index][1]));
+    }
+    Check(UxpAddonApis.uxp_addon_get_value_double(env, arguments[2], &startSeconds));
+    Check(UxpAddonApis.uxp_addon_get_value_double(env, arguments[3], &endSeconds));
+    searchRadius = 10;
+    if (argumentCount == 5) {
+        double requestedSearchRadius = 10.0;
+        Check(UxpAddonApis.uxp_addon_get_value_double(env, arguments[4], &requestedSearchRadius));
+        searchRadius = static_cast<int>(std::lround(requestedSearchRadius));
+    }
+}
+
 // Store a native number as one property of the object returned to JavaScript.
 void setNumberProperty(addon_env env, addon_value object, const char* name, double value) {
     addon_value number = nullptr;
@@ -109,6 +161,27 @@ addon_value createTrackingSample(addon_env env, const pmt::MediaTrackingSample& 
     setNumberProperty(env, item, "y", sample.y);
     setNumberProperty(env, item, "confidence", sample.confidence);
     setBooleanProperty(env, item, "valid", sample.valid);
+    return item;
+}
+
+// Convert one native four-corner sample into primitive UXP values for the panel.
+addon_value createSurfaceTrackingSample(addon_env env, const pmt::SurfaceTrackingSample& sample) {
+    addon_value item = nullptr;
+    Check(UxpAddonApis.uxp_addon_create_object(env, &item));
+    setNumberProperty(env, item, "frame", static_cast<double>(sample.frame));
+    setNumberProperty(env, item, "seconds", sample.seconds);
+    setNumberProperty(env, item, "confidence", sample.confidence);
+    setBooleanProperty(env, item, "valid", sample.valid);
+    addon_value corners = nullptr;
+    Check(UxpAddonApis.uxp_addon_create_array_with_length(env, sample.corners.size(), &corners));
+    for (std::size_t index = 0; index < sample.corners.size(); index += 1) {
+        addon_value corner = nullptr;
+        Check(UxpAddonApis.uxp_addon_create_object(env, &corner));
+        setNumberProperty(env, corner, "x", sample.corners[index][0]);
+        setNumberProperty(env, corner, "y", sample.corners[index][1]);
+        Check(UxpAddonApis.uxp_addon_set_element(env, corners, static_cast<std::uint32_t>(index), corner));
+    }
+    Check(UxpAddonApis.uxp_addon_set_named_property(env, item, "corners", corners));
     return item;
 }
 
@@ -233,6 +306,32 @@ addon_value trackMedia(addon_env env, addon_callback_info info) {
         for (std::size_t index = 0; index < samples.size(); index += 1) {
             const pmt::MediaTrackingSample& sample = samples[index];
             Check(UxpAddonApis.uxp_addon_set_element(env, result, static_cast<std::uint32_t>(index), createTrackingSample(env, sample)));
+        }
+        return result;
+#else
+        (void)info;
+        throw std::runtime_error("L’addon a été construit sans OpenCV.");
+#endif
+    } catch (...) {
+        return CreateErrorFromException(env);
+    }
+}
+
+// Return homography-based four-corner samples for the experimental planar tracking mode.
+addon_value trackSurface(addon_env env, addon_callback_info info) {
+    try {
+#if defined(PMT_WITH_OPENCV)
+        std::string mediaPath;
+        std::array<std::array<double, 2>, 4> corners {};
+        double startSeconds = 0.0;
+        double endSeconds = 0.0;
+        int searchRadius = 10;
+        readSurfaceTrackingArguments(env, info, mediaPath, corners, startSeconds, endSeconds, searchRadius);
+        const std::vector<pmt::SurfaceTrackingSample> samples = pmt::trackSurface(mediaPath, corners, startSeconds, endSeconds, {}, searchRadius);
+        addon_value result = nullptr;
+        Check(UxpAddonApis.uxp_addon_create_array_with_length(env, samples.size(), &result));
+        for (std::size_t index = 0; index < samples.size(); index += 1) {
+            Check(UxpAddonApis.uxp_addon_set_element(env, result, static_cast<std::uint32_t>(index), createSurfaceTrackingSample(env, samples[index])));
         }
         return result;
 #else
@@ -396,6 +495,7 @@ addon_value init(addon_env env, addon_value exports, const addon_apis& addonAPIs
     registerFunction(env, exports, "runSelfTest", runSelfTest, addonAPIs);
     registerFunction(env, exports, "inspectMedia", inspectMedia, addonAPIs);
     registerFunction(env, exports, "trackMedia", trackMedia, addonAPIs);
+    registerFunction(env, exports, "trackSurface", trackSurface, addonAPIs);
     registerFunction(env, exports, "startTracking", startTracking, addonAPIs);
     registerFunction(env, exports, "pollTracking", pollTracking, addonAPIs);
     registerFunction(env, exports, "cancelTracking", cancelTracking, addonAPIs);

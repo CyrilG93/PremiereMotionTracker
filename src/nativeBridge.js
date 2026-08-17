@@ -13,7 +13,7 @@
     if (!candidate) {
       return names;
     }
-    ["getVersion", "runSelfTest", "inspectMedia", "trackMedia", "startTracking", "pollTracking", "cancelTracking"].forEach((name) => {
+    ["getVersion", "runSelfTest", "inspectMedia", "trackMedia", "trackSurface", "startTracking", "pollTracking", "cancelTracking"].forEach((name) => {
       if (typeof candidate[name] === "function") {
         names.push(name);
       }
@@ -41,7 +41,7 @@
     if (!loadPromise) {
       loadPromise = (async () => {
         try {
-      const loadedAddon = await require("premiere-motion-tracker-0.4.0.uxpaddon");
+      const loadedAddon = await require("premiere-motion-tracker-0.4.1.uxpaddon");
           exportNames = collectExportNames(loadedAddon);
           if (!loadedAddon || typeof loadedAddon.getVersion !== "function") {
             throw new Error("L’addon ne fournit pas getVersion() (" + describeExports(loadedAddon) + ").");
@@ -97,6 +97,24 @@
     );
   }
 
+  // Delegate the four selected corners to the homography tracker without exposing OpenCV matrices to UXP.
+  async function trackSurface(mediaPath, normalizedCorners, startSeconds, endSeconds, searchRadius) {
+    if (!addon || typeof addon.trackSurface !== "function") {
+      throw new Error(loadError || "L’addon natif ne fournit pas trackSurface().");
+    }
+    const corners = Array.isArray(normalizedCorners) ? normalizedCorners.map((corner) => ({
+      x: Number(corner && corner.x),
+      y: Number(corner && corner.y)
+    })) : [];
+    return addon.trackSurface(
+      String(mediaPath || ""),
+      corners,
+      Number(startSeconds),
+      Number(endSeconds),
+      Number(searchRadius) || 10
+    );
+  }
+
   // Start a native worker and return immediately so UXP can keep the video preview responsive.
   async function startTracking(mediaPath, normalizedPoint, startSeconds, endSeconds, searchRadius) {
     if (!addon || typeof addon.startTracking !== "function") {
@@ -134,6 +152,7 @@
     probe,
     inspectMedia,
     trackMedia,
+    trackSurface,
     startTracking,
     pollTracking,
     cancelTracking

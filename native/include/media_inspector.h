@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -28,8 +29,20 @@ struct MediaTrackingSample {
     bool valid = false;
 };
 
+// Preserve four normalized corners of a planar surface for one decoded frame.
+struct SurfaceTrackingSample {
+    std::int64_t frame = 0;
+    double seconds = 0.0;
+    std::array<std::array<double, 2>, 4> corners {};
+    double confidence = 0.0;
+    bool valid = false;
+};
+
 // Allow the native worker to publish a durable sample without exposing OpenCV frame objects to UXP.
 using TrackingProgressCallback = std::function<bool(const MediaTrackingSample&)>;
+
+// Publish only serializable four-corner samples while OpenCV owns the source frames.
+using SurfaceTrackingProgressCallback = std::function<bool(const SurfaceTrackingSample&)>;
 
 // Open a local video through OpenCV and return durable metadata for the tracking session.
 MediaInspection inspectMedia(const std::string& mediaPath);
@@ -42,6 +55,16 @@ std::vector<MediaTrackingSample> trackMedia(
     double startSeconds,
     double endSeconds,
     const TrackingProgressCallback& progressCallback = {},
+    int searchRadius = 10
+);
+
+// Track textured features inside a four-corner planar selection and estimate its homography per frame.
+std::vector<SurfaceTrackingSample> trackSurface(
+    const std::string& mediaPath,
+    const std::array<std::array<double, 2>, 4>& normalizedCorners,
+    double startSeconds,
+    double endSeconds,
+    const SurfaceTrackingProgressCallback& progressCallback = {},
     int searchRadius = 10
 );
 

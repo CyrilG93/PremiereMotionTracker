@@ -364,6 +364,33 @@
     throw new Error("Impossible de créer l’effet Transform : " + (lastError && lastError.message ? lastError.message : "effet introuvable"));
   }
 
+  // Resolve Corner Pin from Premiere's live effect catalog instead of relying on a locale-specific display name.
+  async function createCornerPinComponent(app) {
+    const candidates = ["AE.ADBE Corner Pin", "AE.ADBE Corner Pin2"];
+    try {
+      const matchNames = await app.VideoFilterFactory.getMatchNames();
+      const displayNames = await app.VideoFilterFactory.getDisplayNames();
+      const catalogIndex = (matchNames || []).findIndex((name, index) => {
+        const label = normalizeLabel(name) + normalizeLabel(displayNames && displayNames[index]);
+        return label.includes("cornerpin") || label.includes("epingledecoin");
+      });
+      if (catalogIndex >= 0 && matchNames[catalogIndex]) {
+        candidates.unshift(matchNames[catalogIndex]);
+      }
+    } catch (error) {
+      // The known match-name candidates below still allow hosts without a readable effect catalog.
+    }
+    let lastError = null;
+    for (const matchName of candidates.filter((value, index, list) => list.indexOf(value) === index)) {
+      try {
+        return { component: await app.VideoFilterFactory.createComponent(matchName), matchName };
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    throw new Error("Impossible de créer l’effet Corner Pin : " + (lastError && lastError.message ? lastError.message : "effet introuvable"));
+  }
+
   // Return the active project, sequence, and currently selected video items.
   async function getSelectionContext() {
     const app = getPremiere();
@@ -603,6 +630,69 @@
     return null;
   }
 
+  // Find the four-corner effect after attachment because VideoFilterFactory components expose no params beforehand.
+  async function resolveInsertedCornerPin(chain, preferredIndex, matchName) {
+    const count = chain && typeof chain.getComponentCount === "function" ? chain.getComponentCount() : 0;
+    const indexes = [];
+    if (preferredIndex >= 0 && preferredIndex < count) {
+      indexes.push(preferredIndex);
+    }
+    for (let index = 0; index < count; index += 1) {
+      if (!indexes.includes(index)) {
+        indexes.push(index);
+      }
+    }
+    for (const index of indexes) {
+      const component = chain.getComponentAtIndex(index);
+      const componentMatchName = component && typeof component.getMatchName === "function" ? await component.getMatchName() : "";
+      const displayName = component && typeof component.getDisplayName === "function" ? await component.getDisplayName() : "";
+      const label = normalizeLabel(componentMatchName) + normalizeLabel(displayName);
+      if ((index === preferredIndex || componentMatchName === matchName || label.includes("cornerpin") || label.includes("epingledecoin"))
+        && component && typeof component.getParamCount === "function" && component.getParamCount() > 0) {
+        return component;
+      }
+    }
+    return null;
+  }
+
+  // Match Corner Pin's four point controls in English or French while retaining the exposed labels for diagnostics.
+  function findCornerPinParams(component) {
+    const matches = { topLeft: null, topRight: null, bottomRight: null, bottomLeft: null };
+    const names = [];
+    const count = component && typeof component.getParamCount === "function" ? component.getParamCount() : 0;
+    const aliases = {
+      topLeft: ["upperleft", "topleft", "hautgauche", "coinsuperieurgauche"],
+      topRight: ["upperright", "topright", "hautdroit", "coinsuperieurdroit"],
+      bottomRight: ["lowerright", "bottomright", "basdroit", "coininferieurdroit"],
+      bottomLeft: ["lowerleft", "bottomleft", "basgauche", "coininferieurgauche"]
+    };
+    for (let index = 0; index < count; index += 1) {
+      const param = component.getParam(index);
+      const name = String(param && param.displayName ? param.displayName : "");
+      const normalized = normalizeLabel(name);
+      names.push(name || ("Param " + index));
+      Object.keys(aliases).forEach((key) => {
+        if (!matches[key] && aliases[key].some((alias) => normalized.includes(alias))) {
+          matches[key] = param;
+        }
+      });
+    }
+    return { params: [matches.topLeft, matches.topRight, matches.bottomRight, matches.bottomLeft], names };
+  }
+
+  // Convert a normalized tracked corner to the coordinate convention exposed by this Corner Pin instance.
+  function getCornerPinValue(context, corner, normalized) {
+    if (normalized) {
+      return { x: Number(corner.x), y: Number(corner.y) };
+    }
+    const width = Number(context.frameSize && context.frameSize.width);
+    const height = Number(context.frameSize && context.frameSize.height);
+    if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) {
+      throw new Error("Premiere n’a pas renvoyé la taille de séquence nécessaire à Corner Pin.");
+    }
+    return { x: Number(corner.x) * width, y: Number(corner.y) * height };
+  }
+
   // Add a Transform effect and write every valid native sample to one destination clip.
   async function applyTrackingToItem(context, item, keyframes) {
     const chain = await item.getComponentChain();
@@ -670,6 +760,59 @@
     };
   }
 
+  // Add Corner Pin and keyframe its four vertices so the selected target fills the tracked planar surface.
+  async function applySurfaceTrackingToItem(context, item, keyframes) {
+    const chain = await item.getComponentChain();
+    const previousCount = chain && typeof chain.getComponentCount === "function" ? chain.getComponentCount() : 0;
+    const cornerPin = await createCornerPinComponent(context.app);
+    const canInsert = chain && typeof chain.createInsertComponentAction === "function";
+    const preferredIndex = canInsert ? 0 : previousCount;
+    executeActions(context.project, [() => canInsert
+      ? chain.createInsertComponentAction(cornerPin.component, preferredIndex)
+      : chain.createAppendComponentAction(cornerPin.component)], "Motion Tracker : ajouter Corner Pin");
+    await waitForHostPaint();
+    const updatedChain = await item.getComponentChain();
+    const insertedComponent = await resolveInsertedCornerPin(updatedChain, preferredIndex, cornerPin.matchName);
+    if (!insertedComponent) {
+      throw new Error("L’effet Corner Pin a été ajouté mais son composant attaché reste introuvable.");
+    }
+    const parameterResult = findCornerPinParams(insertedComponent);
+    if (parameterResult.params.some((param) => !param)) {
+      throw new Error("Les quatre paramètres Corner Pin sont introuvables. Paramètres exposés : " + (parameterResult.names.join(", ") || "aucun"));
+    }
+    const params = parameterResult.params;
+    const inPoint = await item.getInPoint();
+    const outPoint = await item.getOutPoint();
+    const initialCorners = [];
+    for (const param of params) {
+      let point = readPointValue(await param.getStartValue());
+      if (!point && typeof param.getValueAtTime === "function") {
+        point = readPointValue(await param.getValueAtTime(inPoint));
+      }
+      if (!point) {
+        throw new Error("Premiere n’a pas renvoyé une valeur Corner Pin compatible.");
+      }
+      initialCorners.push(point);
+    }
+    const normalized = initialCorners.every((corner) => Math.abs(corner.x) <= 1.5 && Math.abs(corner.y) <= 1.5);
+    executeActions(context.project, params.map((param) => () => param.createSetTimeVaryingAction(true)), "Motion Tracker : activer Corner Pin");
+    await waitForHostPaint();
+    const actions = [];
+    keyframes.forEach((sample) => {
+      sample.corners.forEach((corner, index) => {
+        actions.push(() => {
+          const value = getCornerPinValue(context, corner, normalized);
+          const keyframe = params[index].createKeyframe(createPoint(context.app, value.x, value.y));
+          keyframe.position = createTimeAtProgress(context.app, inPoint, outPoint, sample.progress);
+          return params[index].createAddKeyframeAction(keyframe);
+        });
+      });
+    });
+    executeActions(context.project, actions, "Motion Tracker : appliquer Surface Corner Pin");
+    const clipName = await readMethod(item, "getName", "Clip cible");
+    return { clipName: String(clipName), matchName: cornerPin.matchName, keyframeCount: keyframes.length, normalized, initialCorners };
+  }
+
   // Apply the analysed frame-by-frame trajectory to every selected destination clip.
   async function applyTracking(keyframes) {
     if (!getHandleStatus().source) {
@@ -699,6 +842,34 @@
     return results;
   }
 
+  // Apply the completed planar trajectory only to destination items in the captured source sequence.
+  async function applySurfaceTracking(keyframes) {
+    if (!getHandleStatus().source) {
+      throw new Error("Capturez d’abord le clip source.");
+    }
+    if (!Array.isArray(keyframes) || keyframes.length < 2) {
+      throw new Error("Analysez au moins deux images de surface valides avant d’appliquer Corner Pin.");
+    }
+    const context = await getSelectionContext();
+    if (String(context.sequence.guid || context.sequence.name || "") !== handles.source.descriptor.sequenceId) {
+      throw new Error("Les clips de destination doivent appartenir à la séquence du tracking.");
+    }
+    const targets = [];
+    for (const item of context.videoItems) {
+      if (await getItemIdentity(context.sequence, item) !== handles.source.descriptor.id) {
+        targets.push(item);
+      }
+    }
+    if (!targets.length) {
+      throw new Error("Sélectionnez au moins un clip de destination différent du clip source.");
+    }
+    const results = [];
+    for (const item of targets) {
+      results.push(await applySurfaceTrackingToItem(context, item, keyframes));
+    }
+    return results;
+  }
+
   root.PMT_PREMIERE = {
     captureSelectedClip,
     getActiveRange,
@@ -706,6 +877,7 @@
     exportTrackingPreviewFrame,
     exportPreviewVideo,
     getHandleStatus,
-    applyTracking
+    applyTracking,
+    applySurfaceTracking
   };
 }(window));

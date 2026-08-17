@@ -117,15 +117,30 @@ test("destination clips are selected only when applying the finished tracking", 
   assert.match(premiereSource, /coordinateSpace: "sequence"/);
 });
 
+test("surface mode collects four corners and applies the tracked plane through Corner Pin", () => {
+  assert.match(uiSource, /trackingMode: "point"/);
+  assert.match(uiSource, /pmt-mode-surface/);
+  assert.match(uiSource, /referenceCorners\.length === 4/);
+  assert.match(uiSource, /surfaceCornersMarkup/);
+  assert.match(uiSource, /PMT_NATIVE\.trackSurface/);
+  assert.match(uiSource, /buildSurfaceKeyframes/);
+  assert.match(uiSource, /PMT_PREMIERE\.applySurfaceTracking/);
+  assert.match(nativeSource, /addon\.trackSurface/);
+  assert.match(premiereSource, /createCornerPinComponent/);
+  assert.match(premiereSource, /applySurfaceTracking/);
+  assert.match(styles, /\.pmt-surface-corner\s*\{[^}]*position:\s*absolute;/s);
+});
+
 test("manifest v6 loads the platform Hybrid addon and exposes its startup diagnostic", () => {
   assert.equal(manifest.manifestVersion, 6);
   assert.equal(manifest.requiredPermissions.enableAddon, true);
   assert.equal(manifest.requiredPermissions.localFileSystem, "fullAccess");
   assert.equal(manifest.addon.name, "premiere-motion-tracker-" + manifest.version + ".uxpaddon");
-  assert.match(nativeSource, /await require\("premiere-motion-tracker-0\.4\.0\.uxpaddon"\)/);
+  assert.match(nativeSource, /await require\("premiere-motion-tracker-0\.4\.1\.uxpaddon"\)/);
   assert.match(nativeSource, /loadedAddon\.runSelfTest\(\)/);
   assert.match(nativeSource, /addon\.inspectMedia/);
   assert.match(nativeSource, /addon\.trackMedia/);
+  assert.match(nativeSource, /addon\.trackSurface/);
   assert.match(nativeSource, /addon\.startTracking/);
   assert.match(nativeSource, /addon\.pollTracking/);
   assert.match(uiSource, /PMT_NATIVE\.initialize\(\)/);

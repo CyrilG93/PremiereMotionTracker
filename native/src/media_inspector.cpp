@@ -3,7 +3,9 @@
 #include <opencv2/videoio.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
+#include <opencv2/features.hpp>
 #include <opencv2/video/tracking.hpp>
+#include <opencv2/calib3d.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -28,6 +30,50 @@ cv::Mat toGray(const cv::Mat& frame) {
 
 // Limit the first synchronous addon iteration so an accidental long range cannot freeze the panel indefinitely.
 constexpr std::int64_t maximumTrackedFrames = 3600;
+
+// Turn the panel's normalized selection into a safe OpenCV polygon for feature detection.
+std::vector<cv::Point2f> makeSurfaceCorners(const std::array<std::array<double, 2>, 4>& normalizedCorners, int width, int height) {
+    std::vector<cv::Point2f> corners;
+    corners.reserve(normalizedCorners.size());
+    for (const auto& corner : normalizedCorners) {
+        if (!std::isfinite(corner[0]) || !std::isfinite(corner[1]) || corner[0] < 0.0 || corner[0] > 1.0 || corner[1] < 0.0 || corner[1] > 1.0) {
+            throw std::invalid_argument("Les quatre coins de surface doivent être normalisés entre 0 et 1.");
+        }
+        corners.emplace_back(static_cast<float>(corner[0] * static_cast<double>(width - 1)), static_cast<float>(corner[1] * static_cast<double>(height - 1)));
+    }
+    if (std::abs(cv::contourArea(corners)) < 100.0) {
+        throw std::invalid_argument("La surface sélectionnée est trop petite pour être suivie.");
+    }
+    if (!cv::isContourConvex(corners)) {
+        throw std::invalid_argument("Les quatre coins doivent former une surface convexe.");
+    }
+    return corners;
+}
+
+// Convert OpenCV's pixel-space corners back to durable coordinates used by the UXP panel.
+SurfaceTrackingSample makeSurfaceSample(
+    std::int64_t frame,
+    double framesPerSecond,
+    const std::vector<cv::Point2f>& corners,
+    int width,
+    int height,
+    double confidence,
+    bool valid
+) {
+    SurfaceTrackingSample sample;
+    sample.frame = frame;
+    sample.seconds = static_cast<double>(frame) / framesPerSecond;
+    sample.confidence = confidence;
+    sample.valid = valid;
+    for (std::size_t index = 0; index < sample.corners.size(); index += 1) {
+        const cv::Point2f point = corners.at(index);
+        sample.corners[index] = {
+            std::clamp(static_cast<double>(point.x) / static_cast<double>(width - 1), 0.0, 1.0),
+            std::clamp(static_cast<double>(point.y) / static_cast<double>(height - 1), 0.0, 1.0)
+        };
+    }
+    return sample;
+}
 
 } // namespace
 
@@ -161,6 +207,122 @@ std::vector<MediaTrackingSample> trackMedia(
         // Publish one plain-data sample at a time so the panel can update the overlay while tracking runs.
         if (progressCallback && !progressCallback(samples.back())) {
             throw std::runtime_error("Tracking cancelled.");
+        }
+        previousGray = std::move(currentGray);
+    }
+    return samples;
+}
+
+std::vector<SurfaceTrackingSample> trackSurface(
+    const std::string& mediaPath,
+    const std::array<std::array<double, 2>, 4>& normalizedCorners,
+    double startSeconds,
+    double endSeconds,
+    const SurfaceTrackingProgressCallback& progressCallback,
+    int searchRadius
+) {
+    if (!std::isfinite(startSeconds) || !std::isfinite(endSeconds) || startSeconds < 0.0 || endSeconds <= startSeconds) {
+        throw std::invalid_argument("La plage média de surface tracking est invalide.");
+    }
+    if (searchRadius < 5 || searchRadius > 40) {
+        throw std::invalid_argument("La zone de recherche doit être comprise entre 5 et 40 pixels.");
+    }
+    cv::VideoCapture capture(mediaPath, cv::CAP_ANY);
+    if (!capture.isOpened()) {
+        throw std::runtime_error("Impossible d’ouvrir le média avec OpenCV : " + mediaPath);
+    }
+    const double framesPerSecond = capture.get(cv::CAP_PROP_FPS);
+    if (!std::isfinite(framesPerSecond) || framesPerSecond <= 0.0) {
+        throw std::runtime_error("Le média ne fournit pas de cadence image exploitable.");
+    }
+    const std::int64_t firstFrame = std::max<std::int64_t>(0, static_cast<std::int64_t>(std::floor(startSeconds * framesPerSecond)));
+    const std::int64_t lastFrame = static_cast<std::int64_t>(std::ceil(endSeconds * framesPerSecond));
+    if (lastFrame - firstFrame + 1 > maximumTrackedFrames) {
+        throw std::runtime_error("La plage dépasse 3600 images ; réduisez les In/Out avant l’analyse.");
+    }
+    if (!capture.set(cv::CAP_PROP_POS_FRAMES, static_cast<double>(firstFrame))) {
+        throw std::runtime_error("OpenCV ne peut pas atteindre le début de la plage demandée.");
+    }
+    cv::Mat decodedFrame;
+    if (!capture.read(decodedFrame)) {
+        throw std::runtime_error("OpenCV ne peut pas lire la première image de la plage demandée.");
+    }
+    cv::Mat previousGray = toGray(decodedFrame);
+    std::vector<cv::Point2f> surfaceCorners = makeSurfaceCorners(normalizedCorners, previousGray.cols, previousGray.rows);
+    cv::Mat selectionMask(previousGray.size(), CV_8UC1, cv::Scalar(0));
+    std::vector<cv::Point> polygon;
+    polygon.reserve(surfaceCorners.size());
+    for (const cv::Point2f& corner : surfaceCorners) {
+        polygon.emplace_back(cvRound(corner.x), cvRound(corner.y));
+    }
+    cv::fillConvexPoly(selectionMask, polygon, cv::Scalar(255));
+    std::vector<cv::Point2f> trackedFeatures;
+    cv::goodFeaturesToTrack(previousGray, trackedFeatures, 160, 0.01, 5.0, selectionMask, 3, false, 0.04);
+    if (trackedFeatures.size() < 8) {
+        throw std::runtime_error("La surface ne contient pas assez de détails contrastés pour le tracking.");
+    }
+
+    std::vector<SurfaceTrackingSample> samples;
+    samples.push_back(makeSurfaceSample(firstFrame, framesPerSecond, surfaceCorners, previousGray.cols, previousGray.rows, 1.0, true));
+    if (progressCallback && !progressCallback(samples.back())) {
+        throw std::runtime_error("Tracking cancelled.");
+    }
+    const cv::Size searchWindow(searchRadius * 2 + 1, searchRadius * 2 + 1);
+    for (std::int64_t frame = firstFrame + 1; frame <= lastFrame && capture.read(decodedFrame); frame += 1) {
+        cv::Mat currentGray = toGray(decodedFrame);
+        std::vector<cv::Point2f> forwardFeatures;
+        std::vector<unsigned char> forwardStatus;
+        std::vector<float> forwardError;
+        cv::calcOpticalFlowPyrLK(previousGray, currentGray, trackedFeatures, forwardFeatures, forwardStatus, forwardError, searchWindow, 3);
+        std::vector<cv::Point2f> backwardFeatures;
+        std::vector<unsigned char> backwardStatus;
+        std::vector<float> backwardError;
+        cv::calcOpticalFlowPyrLK(currentGray, previousGray, forwardFeatures, backwardFeatures, backwardStatus, backwardError, searchWindow, 3);
+        std::vector<cv::Point2f> sourceInliers;
+        std::vector<cv::Point2f> destinationInliers;
+        double backwardDistanceSum = 0.0;
+        for (std::size_t index = 0; index < trackedFeatures.size(); index += 1) {
+            if (index >= forwardFeatures.size() || index >= backwardFeatures.size() || index >= forwardStatus.size() || index >= backwardStatus.size() || !forwardStatus[index] || !backwardStatus[index]) {
+                continue;
+            }
+            const double backwardDistance = cv::norm(backwardFeatures[index] - trackedFeatures[index]);
+            if (backwardDistance > 1.5) {
+                continue;
+            }
+            sourceInliers.push_back(trackedFeatures[index]);
+            destinationInliers.push_back(forwardFeatures[index]);
+            backwardDistanceSum += backwardDistance;
+        }
+        bool valid = sourceInliers.size() >= 8;
+        double confidence = 0.0;
+        if (valid) {
+            cv::Mat inlierMask;
+            const cv::Mat homography = cv::findHomography(sourceInliers, destinationInliers, cv::RANSAC, 3.0, inlierMask);
+            const int inlierCount = inlierMask.empty() ? 0 : cv::countNonZero(inlierMask);
+            valid = !homography.empty() && inlierCount >= 6;
+            if (valid) {
+                cv::perspectiveTransform(surfaceCorners, surfaceCorners, homography);
+                std::vector<cv::Point2f> retainedFeatures;
+                retainedFeatures.reserve(static_cast<std::size_t>(inlierCount));
+                for (int index = 0; index < inlierMask.rows; index += 1) {
+                    if (inlierMask.at<unsigned char>(index)) {
+                        retainedFeatures.push_back(destinationInliers.at(static_cast<std::size_t>(index)));
+                    }
+                }
+                trackedFeatures = std::move(retainedFeatures);
+                const double featureRatio = static_cast<double>(sourceInliers.size()) / static_cast<double>(std::max<std::size_t>(1, forwardFeatures.size()));
+                const double inlierRatio = static_cast<double>(inlierCount) / static_cast<double>(sourceInliers.size());
+                const double backwardConfidence = std::clamp(1.0 - (backwardDistanceSum / static_cast<double>(sourceInliers.size())) / 1.5, 0.0, 1.0);
+                confidence = std::clamp(featureRatio * inlierRatio * backwardConfidence, 0.0, 1.0);
+            }
+        }
+        samples.push_back(makeSurfaceSample(frame, framesPerSecond, surfaceCorners, currentGray.cols, currentGray.rows, confidence, valid));
+        if (progressCallback && !progressCallback(samples.back())) {
+            throw std::runtime_error("Tracking cancelled.");
+        }
+        if (!valid || trackedFeatures.size() < 8) {
+            // Preserve the last usable corners, but stop before an underconstrained homography drifts unpredictably.
+            break;
         }
         previousGray = std::move(currentGray);
     }

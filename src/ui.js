@@ -242,7 +242,7 @@
     const analyzeLabel = state.operation === "analysis" ? t("analyzing") : t("analyze");
     const initialPoint = getSampleAtVideoTime(state.range && state.range.inPoint ? Number(state.range.inPoint.seconds) : 0) || state.referencePoint;
     const previewContent = videoPreviewUrl
-      ? '<video class="pmt-preview-video" id="pmt-preview-video" src="' + escapeHtml(videoPreviewUrl) + '" muted controls playsinline preload="auto" aria-label="' + escapeHtml(t("videoPreviewAlt")) + '"></video><div class="pmt-tracking-point" id="pmt-preview-point" style="left:' + (Number(initialPoint && initialPoint.x || 0.5) * 100).toFixed(3) + '%;top:' + (Number(initialPoint && initialPoint.y || 0.5) * 100).toFixed(3) + '%"></div><div class="pmt-preview-status" id="pmt-preview-status">' + escapeHtml(state.operation === "analysis" ? t("liveProgress", { count: state.liveSamples.length }) : t("readyToAnalyze")) + '</div>'
+      ? '<video class="pmt-preview-video" id="pmt-preview-video" src="' + escapeHtml(videoPreviewUrl) + '" muted controls playsinline autoplay loop preload="auto" aria-label="' + escapeHtml(t("videoPreviewAlt")) + '"></video><div class="pmt-tracking-point" id="pmt-preview-point" style="left:' + (Number(initialPoint && initialPoint.x || 0.5) * 100).toFixed(3) + '%;top:' + (Number(initialPoint && initialPoint.y || 0.5) * 100).toFixed(3) + '%"></div><div class="pmt-preview-status" id="pmt-preview-status">' + escapeHtml(state.operation === "analysis" ? t("liveProgress", { count: state.liveSamples.length }) : t("readyToAnalyze")) + '</div>'
       : state.preview
       ? '<img class="pmt-preview-image" src="' + escapeHtml(state.preview.url) + '" alt="' + escapeHtml(t("inImageAlt")) + '">' + (state.referencePoint
         ? '<div class="pmt-tracking-point" style="left:' + (state.referencePoint.x * 100).toFixed(3) + '%;top:' + (state.referencePoint.y * 100).toFixed(3) + '%"></div>'
@@ -443,7 +443,7 @@
     }
   }
 
-  // Keep the Premiere-generated proxy inside its own duration and never output audio from the panel.
+  // Start the muted proxy just after its first frame so Premiere paints actual video instead of an empty zero-time surface.
   function bindVideoPreview(rootNode) {
     const video = rootNode.querySelector("#pmt-preview-video");
     if (!video) {
@@ -451,14 +451,12 @@
     }
     video.addEventListener("loadeddata", () => {
       addLog("Preview video decoded: " + Number(video.videoWidth) + " × " + Number(video.videoHeight) + " · " + Number(video.duration).toFixed(3) + " s.");
-      video.currentTime = 0;
+      video.currentTime = Number(video.duration) > 0.05 ? 0.04 : 0;
       updateVideoPreview(rootNode);
+      // UXP's play() reports errors through the error event, so retain that listener as the failure path.
+      Promise.resolve(video.play()).catch(() => {});
     });
     video.addEventListener("timeupdate", () => {
-      if (Number.isFinite(Number(video.duration)) && Number(video.currentTime) >= Number(video.duration)) {
-        video.pause();
-        video.currentTime = 0;
-      }
       updateVideoPreview(rootNode);
     });
     video.addEventListener("error", () => {

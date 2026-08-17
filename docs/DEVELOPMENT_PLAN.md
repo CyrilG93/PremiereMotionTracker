@@ -74,4 +74,5 @@ Critère de validation : la trajectoire détectée dans le média déplace réel
 - Implémenté au jalon 0.3.2 : la lecture directe du média est remplacée par deux modes. L’image In reste le défaut fiable ; une coche avant la capture demande à Premiere un export immédiat de la plage active vers un proxy MP4 temporaire, sans soumettre de tâche à Adobe Media Encoder. Le proxy reste à valider dans Premiere sur macOS et Windows.
 - Implémenté au jalon 0.3.3 : le rendu direct reçoit un preset H.264 muet embarqué, car Premiere refuse un `presetFile` vide même avec le mode `IMMEDIATELY`.
 - Implémenté au jalon 0.3.4 : le proxy temporaire H.264 est transmis au lecteur UXP comme URL locale `file:/` plutôt que comme URL de stockage `plugin-temp:/`, qui était lisible par l’image fixe mais n’a pas été validée pour la vidéo.
+- Implémenté au jalon 0.3.5 : après décodage, la prévisualisation se place après l’image zéro et démarre automatiquement en boucle afin de forcer le rafraîchissement vidéo dans Premiere UXP.
 - Étapes suivantes : ajouter correction manuelle, zone de recherche, lissage et campagnes de tests 4K/cadences/durées longues avant le port macOS.

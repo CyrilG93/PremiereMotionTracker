@@ -56,7 +56,7 @@ test("the In point frame is exported and accepts a normalized tracking point", (
 
 test("optional Premiere-rendered video preview updates only its overlay while analysis runs", () => {
   assert.match(uiSource, /<video class="pmt-preview-video"/);
-  assert.match(uiSource, /muted controls playsinline preload="auto"/);
+  assert.match(uiSource, /muted controls playsinline autoplay loop preload="auto"/);
   assert.match(uiSource, /pmt-render-video/);
   assert.match(uiSource, /renderVideoPreview: false/);
   assert.match(uiSource, /exportPreviewVideo\(\)/);
@@ -111,7 +111,7 @@ test("manifest v6 loads the platform Hybrid addon and exposes its startup diagno
   assert.equal(manifest.requiredPermissions.enableAddon, true);
   assert.equal(manifest.requiredPermissions.localFileSystem, "fullAccess");
   assert.equal(manifest.addon.name, "premiere-motion-tracker-" + manifest.version + ".uxpaddon");
-  assert.match(nativeSource, /await require\("premiere-motion-tracker-0\.3\.4\.uxpaddon"\)/);
+  assert.match(nativeSource, /await require\("premiere-motion-tracker-0\.3\.5\.uxpaddon"\)/);
   assert.match(nativeSource, /loadedAddon\.runSelfTest\(\)/);
   assert.match(nativeSource, /addon\.inspectMedia/);
   assert.match(nativeSource, /addon\.trackMedia/);

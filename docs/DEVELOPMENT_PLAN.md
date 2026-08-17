@@ -19,7 +19,7 @@ Critère de validation : la trajectoire détectée dans le média déplace réel
 ## Phase 2 — Sessions et prévisualisation
 
 - Stocker une session sérialisable sans conserver les proxies UXP fragiles.
-- Lire le média source dans un unique élément vidéo UXP muet et déplacer seulement le point superposé. Publier les échantillons natifs par lots pendant l’analyse afin que la vidéo reste jouable sans remplacer une séquence d’images fragiles.
+- Garder l’image fixe au point In comme aperçu par défaut. Sur demande, exporter directement depuis Premiere un proxy vidéo temporaire de la plage active, puis déplacer seulement le point superposé dans cet unique élément vidéo UXP. Publier les échantillons natifs par lots pendant l’analyse afin que la vidéo reste jouable sans remplacer une séquence d’images fragiles.
 - Permettre de poser le point de référence et choisir la zone de recherche.
 - Conserver les résultats, réglages et corrections manuelles.
 
@@ -71,4 +71,5 @@ Critère de validation : la trajectoire détectée dans le média déplace réel
 - OpenCV est relié statiquement au module Hybrid Windows pour inspecter un média via Media Foundation et calculer un suivi Lucas-Kanade avec contrôle aller-retour sur une plage bornée ; l’application crée maintenant une clé Position par image valide sur chaque clip de destination, y compris les médias redimensionnés et les Graphics Layers.
 - Validé dans Premiere : la trajectoire suit correctement le point et son application fonctionne sur un ou plusieurs clips sélectionnés.
 - Implémenté au jalon 0.3.1 : un unique élément vidéo UXP muet affiche le média source, tandis que l’addon publie les positions calculées par lots et que le panneau ne déplace que son point superposé. Une validation dans Premiere reste nécessaire sur macOS et Windows, notamment avec les codecs usuels.
+- Implémenté au jalon 0.3.2 : la lecture directe du média est remplacée par deux modes. L’image In reste le défaut fiable ; une coche avant la capture demande à Premiere un export immédiat de la plage active vers un proxy MP4 temporaire, sans soumettre de tâche à Adobe Media Encoder. Le proxy reste à valider dans Premiere sur macOS et Windows.
 - Étapes suivantes : ajouter correction manuelle, zone de recherche, lissage et campagnes de tests 4K/cadences/durées longues avant le port macOS.

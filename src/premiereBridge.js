@@ -248,11 +248,12 @@
   }
 
   // Wait for a native or Premiere export to flush into UXP's private temporary folder.
-  async function resolveExportedFile(temporaryFolder, fileStem, extension) {
+  async function resolveExportedFile(temporaryFolder, fileStem, extension, maxAttempts) {
     const nativeFileSystem = require("fs");
     const expectedExtension = String(extension || "").toLowerCase();
     let detectedNames = [];
-    for (let attempt = 0; attempt < 20; attempt += 1) {
+    const attempts = Math.max(1, Number(maxAttempts) || 20);
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
       const entries = await temporaryFolder.getEntries();
       const entryMatch = entries.find((entry) => entry.isFile && entry.name.toLowerCase().startsWith(fileStem.toLowerCase()) && entry.name.toLowerCase().endsWith(expectedExtension));
       if (entryMatch) {
@@ -279,6 +280,11 @@
   // Preserve the existing Premiere PNG export call while sharing its robust filesystem wait.
   function resolveExportedPreview(temporaryFolder, fileStem) {
     return resolveExportedFile(temporaryFolder, fileStem, ".png");
+  }
+
+  // Wait longer for a direct Premiere video render while still keeping the panel responsive.
+  function resolveExportedPreviewVideo(temporaryFolder, fileStem) {
+    return resolveExportedFile(temporaryFolder, fileStem, ".mp4", 1200);
   }
 
   // Build an explicit PointF because UXP constructors can ignore positional arguments.
@@ -451,6 +457,41 @@
     };
   }
 
+  // Render the active sequence range directly in Premiere, avoiding an Adobe Media Encoder queue.
+  async function exportPreviewVideo() {
+    if (!handles.source || !handles.source.sequence) {
+      throw new Error("Capturez d’abord le clip source.");
+    }
+    const app = handles.source.app;
+    if (!app.EncoderManager || typeof app.EncoderManager.getManager !== "function") {
+      throw new Error("Cette version de Premiere n’expose pas le rendu vidéo direct.");
+    }
+    const exportType = app.Constants && app.Constants.ExportType ? app.Constants.ExportType.IMMEDIATELY : undefined;
+    if (exportType === undefined) {
+      throw new Error("Premiere n’expose pas le mode d’export immédiat requis pour la prévisualisation vidéo.");
+    }
+    const encoderManager = await app.EncoderManager.getManager();
+    if (!encoderManager || typeof encoderManager.exportSequence !== "function") {
+      throw new Error("Le gestionnaire d’export Premiere est indisponible.");
+    }
+    const storage = require("uxp").storage.localFileSystem;
+    const temporaryFolder = await storage.getTemporaryFolder();
+    const fileStem = "pmt-preview-video-" + Date.now();
+    const fileName = fileStem + ".mp4";
+    const separator = /[\\/]$/.test(String(temporaryFolder.nativePath || "")) ? "" : "/";
+    const outputPath = String(temporaryFolder.nativePath) + separator + fileName;
+    // An empty preset asks Premiere to use its standard local export rules for this direct render.
+    const accepted = await encoderManager.exportSequence(handles.source.sequence, exportType, outputPath, "", false);
+    if (!accepted) {
+      throw new Error("Premiere a refusé le rendu vidéo direct.");
+    }
+    const rendered = await resolveExportedPreviewVideo(temporaryFolder, fileStem);
+    return {
+      url: rendered.url,
+      fileName: rendered.name
+    };
+  }
+
   // Expose whether the fragile source proxy is still available for the current panel session.
   function getHandleStatus() {
     return {
@@ -593,6 +634,7 @@
     captureSelectedClip,
     getActiveRange,
     exportPreviewFrame,
+    exportPreviewVideo,
     getHandleStatus,
     applyTracking
   };

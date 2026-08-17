@@ -128,6 +128,43 @@ input {
   min-width: 78px;
 }
 
+/* Keep the optional render mode compact without using an inconsistent native UXP checkbox. */
+.pmt-checkbox {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 5px;
+  min-height: 26px;
+  color: var(--pmt-muted);
+  font-size: 11px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.pmt-checkbox[aria-disabled="true"] {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.pmt-checkbox-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border: 1px solid var(--pmt-border);
+  border-radius: 3px;
+  color: #ffffff;
+  background: var(--pmt-panel-strong);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.pmt-checkbox[aria-checked="true"] .pmt-checkbox-box {
+  border-color: var(--pmt-accent);
+  background: var(--pmt-accent);
+}
+
 .pmt-label {
   color: var(--pmt-muted);
   font-size: 11px;

@@ -57,6 +57,7 @@ Critère de validation : la trajectoire détectée dans le média déplace réel
 - Implémenté au jalon 0.4.1 : poser manuellement quatre coins avec estimation d’homographie OpenCV à partir des détails contenus dans la surface.
 - Implémenté au jalon 0.4.2 : appliquer le résultat à Corner Pin avec quatre paramètres PointF animés à chaque image valide, convertis dans le repère du média cible après inversion de Motion.
 - Implémenté au jalon 0.4.3 : ajuster indépendamment les quatre coins avant l’analyse avec poignées déplaçables, aplat translucide et contour pointillé de la zone suivie.
+- Implémenté au jalon 0.4.4 : synchroniser l’aplat et le contour de la prévisualisation avec les quatre coins suivis, image par image.
 - À faire : autoriser la correction indépendante de chaque coin pendant la revue, reprendre le tracking à cette image, et valider les noms/coordonnées Corner Pin dans Premiere sur macOS et Windows.
 
 ## État au 16 août 2026 — jalon 0.3.0
@@ -82,4 +83,5 @@ Critère de validation : la trajectoire détectée dans le média déplace réel
 - Implémenté au jalon 0.3.9 : le panneau expose le seuil de confiance, les marqueurs de contrôle et un saut vers l’image douteuse suivante. La zone de recherche est transmise au moteur Lucas-Kanade (±5 à ±40 px). Un lissage centré léger est activé uniquement à l’application et peut être désactivé.
 - Implémenté au jalon 0.4.2 : mode Surface bêta avec sélection manuelle des quatre coins avant l’analyse, homographie RANSAC sur les features OpenCV de la zone, aperçu PNG des coins et application Corner Pin. Les coordonnées sont converties de la séquence vers le repère local Corner Pin du média cible.
 - Implémenté au jalon 0.4.3 : les quatre coins de surface peuvent être déplacés indépendamment avant l’analyse ; le panneau visualise le quadrilatère complet par un aplat translucide et un contour pointillé.
+- Implémenté au jalon 0.4.4 : le quadrilatère de l’aperçu Surface est actualisé à chaque image, en même temps que ses quatre poignées.
 - Étapes suivantes : campagnes de tests 4K/cadences/durées longues, améliorer le score de confiance avec une mesure de texture, puis porter et valider sur Windows/macOS.

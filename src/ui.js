@@ -520,6 +520,11 @@
           searchArea.style.top = (Number(correction.y) * 100).toFixed(3) + "%";
         }
         if (isSurfaceMode() && Array.isArray(frame.corners)) {
+          // Keep the translucent surface polygon in lockstep with the four tracked corner handles.
+          const polygon = rootNode.querySelector("#pmt-surface-polygon");
+          if (polygon) {
+            polygon.setAttribute("points", surfacePolygonPoints(frame.corners));
+          }
           Array.prototype.forEach.call(rootNode.querySelectorAll(".pmt-surface-corner"), (cornerElement) => {
             const cornerIndex = Number(cornerElement.getAttribute("data-surface-corner"));
             const corner = frame.corners[cornerIndex];

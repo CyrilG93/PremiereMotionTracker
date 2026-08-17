@@ -450,6 +450,7 @@
       return;
     }
     video.addEventListener("loadeddata", () => {
+      addLog("Preview video decoded: " + Number(video.videoWidth) + " × " + Number(video.videoHeight) + " · " + Number(video.duration).toFixed(3) + " s.");
       video.currentTime = 0;
       updateVideoPreview(rootNode);
     });
@@ -462,9 +463,15 @@
     });
     video.addEventListener("error", () => {
       state.videoUnavailable = true;
-      addLog(t("videoUnavailable"));
+      const mediaError = video.error;
+      const errorCode = mediaError && mediaError.code ? " (code " + mediaError.code + ")" : "";
+      addLog(t("videoUnavailable") + errorCode + " URL: " + String(video.currentSrc || video.src || "unknown"));
       render(rootNode);
     });
+    // Explicitly begin loading after listeners are attached so the diagnostic captures every UXP event.
+    if (typeof video.load === "function") {
+      video.load();
+    }
   }
 
   // Wait briefly between progress polls so UXP keeps repainting while OpenCV decodes in its worker thread.

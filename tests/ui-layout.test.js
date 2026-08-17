@@ -73,6 +73,10 @@ test("optional Premiere-rendered video preview updates only its overlay while an
   assert.match(premiereSource, /ExportType\.IMMEDIATELY/);
   assert.match(premiereSource, /encoderManager\.exportSequence/);
   assert.match(premiereSource, /assets\/presets\/pmt-preview-h264\.epr/);
+  assert.match(premiereSource, /createUxpFileUrl/);
+  assert.match(premiereSource, /"file:" \+ encodeURI/);
+  assert.match(uiSource, /Preview video decoded/);
+  assert.match(uiSource, /video\.load\(\)/);
   assert.match(styles, /\.pmt-preview-video\s*\{[^}]*width:\s*100%;/s);
   assert.match(styles, /\.pmt-checkbox\s*\{[^}]*display:\s*flex;/s);
   assert.doesNotMatch(styles, /@keyframes/);
@@ -107,7 +111,7 @@ test("manifest v6 loads the platform Hybrid addon and exposes its startup diagno
   assert.equal(manifest.requiredPermissions.enableAddon, true);
   assert.equal(manifest.requiredPermissions.localFileSystem, "fullAccess");
   assert.equal(manifest.addon.name, "premiere-motion-tracker-" + manifest.version + ".uxpaddon");
-  assert.match(nativeSource, /await require\("premiere-motion-tracker-0\.3\.3\.uxpaddon"\)/);
+  assert.match(nativeSource, /await require\("premiere-motion-tracker-0\.3\.4\.uxpaddon"\)/);
   assert.match(nativeSource, /loadedAddon\.runSelfTest\(\)/);
   assert.match(nativeSource, /addon\.inspectMedia/);
   assert.match(nativeSource, /addon\.trackMedia/);

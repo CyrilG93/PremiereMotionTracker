@@ -257,7 +257,7 @@
       const entries = await temporaryFolder.getEntries();
       const entryMatch = entries.find((entry) => entry.isFile && entry.name.toLowerCase().startsWith(fileStem.toLowerCase()) && entry.name.toLowerCase().endsWith(expectedExtension));
       if (entryMatch) {
-        return { url: entryMatch.url, name: entryMatch.name };
+        return { url: entryMatch.url, name: entryMatch.name, nativePath: entryMatch.nativePath };
       }
       try {
         // The path-based API sees newly flushed files earlier than Folder.getEntries on some hosts.
@@ -266,7 +266,7 @@
         const nativeMatch = detectedNames.find((name) => name.toLowerCase().startsWith(fileStem.toLowerCase()) && name.toLowerCase().endsWith(expectedExtension));
         if (nativeMatch) {
           const folderUrl = String(temporaryFolder.url || "plugin-temp:/").replace(/\/?$/, "/");
-          return { url: folderUrl + nativeMatch, name: nativeMatch };
+          return { url: folderUrl + nativeMatch, name: nativeMatch, nativePath: joinNativePath(temporaryFolder.nativePath, nativeMatch) };
         }
       } catch (error) {
         // Folder.getEntries remains the fallback when path-based sandbox access is unavailable.
@@ -291,6 +291,15 @@
   function joinNativePath(folderPath, fileName) {
     const folder = String(folderPath || "");
     return folder + (/[\\/]$/.test(folder) ? "" : "/") + String(fileName || "");
+  }
+
+  // Convert a native path to UXP's documented file:/ URL form for HTML media elements.
+  function createUxpFileUrl(nativePath) {
+    const normalizedPath = String(nativePath || "").replace(/\\/g, "/");
+    if (!normalizedPath) {
+      throw new Error("Le proxy vidéo ne fournit pas de chemin local.");
+    }
+    return normalizedPath.startsWith("/") ? "file:" + encodeURI(normalizedPath) : "file:/" + encodeURI(normalizedPath);
   }
 
   // Build an explicit PointF because UXP constructors can ignore positional arguments.
@@ -494,8 +503,9 @@
     }
     const rendered = await resolveExportedPreviewVideo(temporaryFolder, fileStem);
     return {
-      url: rendered.url,
-      fileName: rendered.name
+      url: createUxpFileUrl(rendered.nativePath),
+      fileName: rendered.name,
+      nativePath: rendered.nativePath
     };
   }
 

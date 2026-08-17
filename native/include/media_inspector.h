@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -27,6 +28,9 @@ struct MediaTrackingSample {
     bool valid = false;
 };
 
+// Allow the native worker to publish a durable sample without exposing OpenCV frame objects to UXP.
+using TrackingProgressCallback = std::function<bool(const MediaTrackingSample&)>;
+
 // Open a local video through OpenCV and return durable metadata for the tracking session.
 MediaInspection inspectMedia(const std::string& mediaPath);
 
@@ -36,7 +40,8 @@ std::vector<MediaTrackingSample> trackMedia(
     double normalizedX,
     double normalizedY,
     double startSeconds,
-    double endSeconds
+    double endSeconds,
+    const TrackingProgressCallback& progressCallback = {}
 );
 
 } // namespace pmt

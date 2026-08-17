@@ -13,7 +13,7 @@
     if (!candidate) {
       return names;
     }
-    ["getVersion", "runSelfTest", "inspectMedia", "trackMedia"].forEach((name) => {
+    ["getVersion", "runSelfTest", "inspectMedia", "trackMedia", "startTracking", "pollTracking", "cancelTracking"].forEach((name) => {
       if (typeof candidate[name] === "function") {
         names.push(name);
       }
@@ -41,7 +41,7 @@
     if (!loadPromise) {
       loadPromise = (async () => {
         try {
-      const loadedAddon = await require("premiere-motion-tracker-0.3.0.uxpaddon");
+      const loadedAddon = await require("premiere-motion-tracker-0.3.1.uxpaddon");
           exportNames = collectExportNames(loadedAddon);
           if (!loadedAddon || typeof loadedAddon.getVersion !== "function") {
             throw new Error("L’addon ne fournit pas getVersion() (" + describeExports(loadedAddon) + ").");
@@ -96,10 +96,44 @@
     );
   }
 
+  // Start a native worker and return immediately so UXP can keep the video preview responsive.
+  async function startTracking(mediaPath, normalizedPoint, startSeconds, endSeconds) {
+    if (!addon || typeof addon.startTracking !== "function") {
+      throw new Error(loadError || "L’addon natif ne fournit pas startTracking().");
+    }
+    const point = normalizedPoint || {};
+    return String(addon.startTracking(
+      String(mediaPath || ""),
+      Number(point.x),
+      Number(point.y),
+      Number(startSeconds),
+      Number(endSeconds)
+    ));
+  }
+
+  // Fetch only new primitive samples from the worker to avoid copying a whole long trajectory on every refresh.
+  async function pollTracking(taskId, afterIndex) {
+    if (!addon || typeof addon.pollTracking !== "function") {
+      throw new Error(loadError || "L’addon natif ne fournit pas pollTracking().");
+    }
+    return addon.pollTracking(String(taskId || ""), Number(afterIndex) || 0);
+  }
+
+  // Request cancellation between decoded frames when the panel is closed or the user starts a new source.
+  async function cancelTracking(taskId) {
+    if (!addon || typeof addon.cancelTracking !== "function") {
+      throw new Error(loadError || "L’addon natif ne fournit pas cancelTracking().");
+    }
+    return Boolean(addon.cancelTracking(String(taskId || "")));
+  }
+
   root.PMT_NATIVE = {
     initialize,
     probe,
     inspectMedia,
-    trackMedia
+    trackMedia,
+    startTracking,
+    pollTracking,
+    cancelTracking
   };
 }(window));

@@ -77,7 +77,8 @@ std::vector<MediaTrackingSample> trackMedia(
     double normalizedX,
     double normalizedY,
     double startSeconds,
-    double endSeconds
+    double endSeconds,
+    const TrackingProgressCallback& progressCallback
 ) {
     if (!std::isfinite(normalizedX) || !std::isfinite(normalizedY) || normalizedX < 0.0 || normalizedX > 1.0 || normalizedY < 0.0 || normalizedY > 1.0) {
         throw std::invalid_argument("Le point de tracking doit être normalisé entre 0 et 1.");
@@ -116,6 +117,10 @@ std::vector<MediaTrackingSample> trackMedia(
 
     std::vector<MediaTrackingSample> samples;
     samples.push_back({ firstFrame, static_cast<double>(firstFrame) / framesPerSecond, normalizedX, normalizedY, 1.0, true });
+    // Stop decoding promptly when the UI cancels an asynchronous tracking task.
+    if (progressCallback && !progressCallback(samples.back())) {
+        throw std::runtime_error("Tracking cancelled.");
+    }
     for (std::int64_t frame = firstFrame + 1; frame <= lastFrame && capture.read(decodedFrame); frame += 1) {
         cv::Mat currentGray = toGray(decodedFrame);
         const std::vector<cv::Point2f> sourcePoint { trackedPoint };
@@ -148,6 +153,10 @@ std::vector<MediaTrackingSample> trackMedia(
         const double pointX = std::clamp(static_cast<double>(trackedPoint.x) / static_cast<double>(currentGray.cols - 1), 0.0, 1.0);
         const double pointY = std::clamp(static_cast<double>(trackedPoint.y) / static_cast<double>(currentGray.rows - 1), 0.0, 1.0);
         samples.push_back({ frame, static_cast<double>(frame) / framesPerSecond, pointX, pointY, confidence, valid });
+        // Publish one plain-data sample at a time so the panel can update the overlay while tracking runs.
+        if (progressCallback && !progressCallback(samples.back())) {
+            throw std::runtime_error("Tracking cancelled.");
+        }
         previousGray = std::move(currentGray);
     }
     return samples;

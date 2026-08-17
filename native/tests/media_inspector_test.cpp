@@ -76,6 +76,20 @@ int main() {
             const pmt::MediaTrackingSample& finalSample = samples.back();
             passed &= expect(finalSample.valid, "forward-backward tracking should validate the textured sample point");
             passed &= expect(std::abs(finalSample.x - 42.0 / 95.0) < 0.06 && std::abs(finalSample.y - 34.0 / 63.0) < 0.06, "tracker should recover the generated square motion");
+            std::size_t publishedSamples = 0;
+            // Verify that the worker-facing callback receives every durable sample without changing the final trajectory.
+            const std::vector<pmt::MediaTrackingSample> streamedSamples = pmt::trackMedia(
+                samplePath.string(),
+                36.0 / 95.0,
+                31.0 / 63.0,
+                0.0,
+                0.3,
+                [&publishedSamples](const pmt::MediaTrackingSample&) {
+                    publishedSamples += 1;
+                    return true;
+                }
+            );
+            passed &= expect(publishedSamples == streamedSamples.size(), "progress callback should publish every tracked sample");
         } catch (const std::exception& error) {
             passed &= expect(false, std::string("decoder should open the generated sample: ") + error.what());
         }

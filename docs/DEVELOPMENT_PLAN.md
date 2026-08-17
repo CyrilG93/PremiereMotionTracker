@@ -19,7 +19,7 @@ Critère de validation : la trajectoire détectée dans le média déplace réel
 ## Phase 2 — Sessions et prévisualisation
 
 - Stocker une session sérialisable sans conserver les proxies UXP fragiles.
-- Mettre en cache les images de la plage trackée avec le point superposé et proposer une vérification fiable avant l’application. La lecture/pause et le changement rapide d’image restent bloqués par le rendu UXP actuel (images noires ou clignotement) ; le mode `Skip preview` est le contournement temporaire.
+- Lire le média source dans un unique élément vidéo UXP muet et déplacer seulement le point superposé. Publier les échantillons natifs par lots pendant l’analyse afin que la vidéo reste jouable sans remplacer une séquence d’images fragiles.
 - Permettre de poser le point de référence et choisir la zone de recherche.
 - Conserver les résultats, réglages et corrections manuelles.
 
@@ -70,5 +70,5 @@ Critère de validation : la trajectoire détectée dans le média déplace réel
 - Visual Studio Build Tools 2019 et son CMake intégré permettent le build Windows x64. Les binaires macOS resteront construits sur macOS pour Intel et Apple Silicon.
 - OpenCV est relié statiquement au module Hybrid Windows pour inspecter un média via Media Foundation et calculer un suivi Lucas-Kanade avec contrôle aller-retour sur une plage bornée ; l’application crée maintenant une clé Position par image valide sur chaque clip de destination, y compris les médias redimensionnés et les Graphics Layers.
 - Validé dans Premiere : la trajectoire suit correctement le point et son application fonctionne sur un ou plusieurs clips sélectionnés.
-- En attente : l’aperçu animé de la trajectoire dans UXP. Les essais par vidéo, canvas, double tampon et changement rapide d’image affichent du noir ou clignotent ; conserver `Skip preview` comme chemin stable jusqu’à une stratégie de rendu UXP validée.
-- Étapes suivantes : stabiliser cette vérification visuelle, puis ajouter correction manuelle, zone de recherche, lissage et campagnes de tests 4K/cadences/durées longues avant le port macOS.
+- Implémenté au jalon 0.3.1 : un unique élément vidéo UXP muet affiche le média source, tandis que l’addon publie les positions calculées par lots et que le panneau ne déplace que son point superposé. Une validation dans Premiere reste nécessaire sur macOS et Windows, notamment avec les codecs usuels.
+- Étapes suivantes : ajouter correction manuelle, zone de recherche, lissage et campagnes de tests 4K/cadences/durées longues avant le port macOS.

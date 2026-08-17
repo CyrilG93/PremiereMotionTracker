@@ -6,9 +6,9 @@ La première version visera un flux simple : sélectionner le clip à analyser, 
 
 ## État du projet
 
-Le projet est actuellement au jalon 0.3.0. Le panneau sait capturer le clip source depuis la timeline, lire la plage In/Out, afficher l’image de séquence au point In et placer un point de tracking. Le module Hybrid Windows charge le cœur C++, exécute un autotest, lit les métadonnées vidéo avec OpenCV et Media Foundation, puis suit le point image par image avec Lucas-Kanade et un contrôle aller-retour. La trajectoire validée peut être appliquée à un ou plusieurs clips de destination : le plugin ajoute un effet Transform et crée une clé Position par image valide, avec compensation des dimensions, de l’échelle Motion et des Graphics Layers.
+Le projet est actuellement au jalon 0.3.1. Le panneau sait capturer le clip source depuis la timeline, lire la plage In/Out et jouer silencieusement le média source dans le panneau pour placer un point de tracking. Le module Hybrid charge le cœur C++, exécute un autotest, lit les métadonnées vidéo avec OpenCV, puis suit le point image par image avec Lucas-Kanade et un contrôle aller-retour. Pendant l’analyse, le moteur publie ses positions par lots et le point superposé évolue sur la vidéo sans remplacer ses images. La trajectoire validée peut être appliquée à un ou plusieurs clips de destination : le plugin ajoute un effet Transform et crée une clé Position par image valide, avec compensation des dimensions, de l’échelle Motion et des Graphics Layers.
 
-Le rendu d’un aperçu animé dans le panneau UXP n’est pas encore fiable : les essais par vidéo, canvas, double tampon et changement rapide d’image produisent des images noires ou du clignotement selon Premiere. Le bouton `Skip preview` permet donc de conserver l’image In et d’appliquer directement la trajectoire. La correction visuelle des dérives et une prévisualisation fiable restent les prochains jalons ; les binaires Windows et macOS seront inclus dans le produit final.
+La vidéo est lue directement par l’élément vidéo UXP ; le panneau ne réécrit donc plus son image à chaque frame. Les effets et composites de la séquence ne sont pas inclus dans cette première prévisualisation : elle représente le média source réellement analysé. Une prévisualisation de séquence composite reste un jalon séparé.
 
 ## Tester le prototype
 
@@ -25,11 +25,13 @@ L’aperçu est généré dans l’espace temporaire privé du plugin : aucune a
 Pour tester la capture :
 
 1. Placez les In/Out de la séquence, sélectionnez le clip vidéo dans la timeline puis cliquez sur `Capturer et préparer`.
-2. Cliquez dans l’image pour placer le point de tracking, puis sur `Analyze` pour calculer la trajectoire sur la plage visible du clip. Cliquez sur `Skip preview` pendant la préparation si vous voulez conserver uniquement l’image In et appliquer directement la trajectoire.
-3. L’aperçu détaillé est encore expérimental dans Premiere UXP ; utilisez `Skip preview` si l’affichage clignote ou devient noir.
+2. Utilisez la vidéo muette pour repérer le point à suivre, cliquez dans l’image puis sur `Analyze` pour calculer la trajectoire sur la plage visible du clip.
+3. Pendant l’analyse, le point superposé se met à jour avec les résultats déjà calculés. Les contrôles vidéo restent utilisables pour revoir le média source.
 4. Consultez le nombre d’images incertaines signalé dans le diagnostic.
 5. Sélectionnez ensuite un ou plusieurs clips de destination dans la timeline.
 6. Cliquez sur `Appliquer la trajectoire` pour ajouter un effet Transform et une clé Position par image valide à chaque clip sélectionné.
+
+Le lecteur doit ouvrir le fichier média source sélectionné par Premiere ; le manifeste demande donc l’autorisation d’accéder aux fichiers locaux. Cette autorisation est utilisée uniquement pour afficher ce média dans le panneau et ne sert pas à téléverser des fichiers.
 
 Le choix des destinations se fait volontairement après l’analyse : une même trajectoire peut ainsi être appliquée à plusieurs clips. L’amplitude du mouvement est automatiquement compensée selon les dimensions et l’échelle Motion de chaque média cible : un petit logo suit donc le même déplacement visuel qu’un média plein écran. Les Graphics Layers restent compatibles et utilisent directement le canevas de la séquence. L’application modifie le projet Premiere ; dans ce prototype, utilisez Annuler pour retirer les clés et l’effet Transform ajoutés.
 
@@ -39,7 +41,7 @@ L’interface est en anglais par défaut. Utilisez le bouton `FR` dans l’en-t�
 
 ## Prochaines étapes
 
-- Stabiliser une prévisualisation de trajectoire réellement fiable dans Premiere UXP, sans animation d’images fragile dans le panneau.
+- Valider le lecteur vidéo et le suivi en direct sur des codecs, résolutions et systèmes macOS/Windows variés.
 - Ajouter la correction manuelle des images incertaines et la reprise du tracking après correction.
 - Ajouter une zone de recherche, un score de confiance exploitable et des options de lissage.
 - Tester les durées longues, 4K, différentes cadences et les remappages temporels refusés.

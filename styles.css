@@ -197,6 +197,15 @@ input {
   height: auto;
 }
 
+/* Let UXP's native video decoder own the moving pixels; only the tracking marker is updated by the panel. */
+.pmt-preview-video {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 330px;
+  background: #000000;
+}
+
 .pmt-tracking-point {
   position: absolute;
   z-index: 2;

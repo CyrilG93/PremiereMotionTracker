@@ -72,4 +72,5 @@ Critère de validation : la trajectoire détectée dans le média déplace réel
 - Validé dans Premiere : la trajectoire suit correctement le point et son application fonctionne sur un ou plusieurs clips sélectionnés.
 - Implémenté au jalon 0.3.1 : un unique élément vidéo UXP muet affiche le média source, tandis que l’addon publie les positions calculées par lots et que le panneau ne déplace que son point superposé. Une validation dans Premiere reste nécessaire sur macOS et Windows, notamment avec les codecs usuels.
 - Implémenté au jalon 0.3.2 : la lecture directe du média est remplacée par deux modes. L’image In reste le défaut fiable ; une coche avant la capture demande à Premiere un export immédiat de la plage active vers un proxy MP4 temporaire, sans soumettre de tâche à Adobe Media Encoder. Le proxy reste à valider dans Premiere sur macOS et Windows.
+- Implémenté au jalon 0.3.3 : le rendu direct reçoit un preset H.264 muet embarqué, car Premiere refuse un `presetFile` vide même avec le mode `IMMEDIATELY`.
 - Étapes suivantes : ajouter correction manuelle, zone de recherche, lissage et campagnes de tests 4K/cadences/durées longues avant le port macOS.

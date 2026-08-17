@@ -287,6 +287,12 @@
     return resolveExportedFile(temporaryFolder, fileStem, ".mp4", 1200);
   }
 
+  // Join native file paths without assuming whether Premiere is running on macOS or Windows.
+  function joinNativePath(folderPath, fileName) {
+    const folder = String(folderPath || "");
+    return folder + (/[\\/]$/.test(folder) ? "" : "/") + String(fileName || "");
+  }
+
   // Build an explicit PointF because UXP constructors can ignore positional arguments.
   function createPoint(app, x, y) {
     try {
@@ -476,12 +482,13 @@
     }
     const storage = require("uxp").storage.localFileSystem;
     const temporaryFolder = await storage.getTemporaryFolder();
+    const pluginFolder = await storage.getPluginFolder();
     const fileStem = "pmt-preview-video-" + Date.now();
     const fileName = fileStem + ".mp4";
-    const separator = /[\\/]$/.test(String(temporaryFolder.nativePath || "")) ? "" : "/";
-    const outputPath = String(temporaryFolder.nativePath) + separator + fileName;
-    // An empty preset asks Premiere to use its standard local export rules for this direct render.
-    const accepted = await encoderManager.exportSequence(handles.source.sequence, exportType, outputPath, "", false);
+    const outputPath = joinNativePath(temporaryFolder.nativePath, fileName);
+    const presetPath = joinNativePath(pluginFolder.nativePath, "assets/presets/pmt-preview-h264.epr");
+    // The bundled H.264 preset is required by Premiere even for an immediate in-app export.
+    const accepted = await encoderManager.exportSequence(handles.source.sequence, exportType, outputPath, presetPath, false);
     if (!accepted) {
       throw new Error("Premiere a refusé le rendu vidéo direct.");
     }

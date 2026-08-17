@@ -12,6 +12,7 @@ const uiSource = fs.readFileSync(path.join(projectRoot, "src", "ui.js"), "utf8")
 const premiereSource = fs.readFileSync(path.join(projectRoot, "src", "premiereBridge.js"), "utf8");
 const nativeSource = fs.readFileSync(path.join(projectRoot, "src", "nativeBridge.js"), "utf8");
 const manifest = JSON.parse(fs.readFileSync(path.join(projectRoot, "manifest.json"), "utf8"));
+const previewPreset = fs.readFileSync(path.join(projectRoot, "assets", "presets", "pmt-preview-h264.epr"), "utf8");
 
 test("interactive rows use flex instead of hidden UXP grid layouts", () => {
   assert.match(styles, /\.pmt-slot\s*\{[^}]*display:\s*flex;/s);
@@ -71,9 +72,17 @@ test("optional Premiere-rendered video preview updates only its overlay while an
   assert.match(premiereSource, /EncoderManager\.getManager\(\)/);
   assert.match(premiereSource, /ExportType\.IMMEDIATELY/);
   assert.match(premiereSource, /encoderManager\.exportSequence/);
+  assert.match(premiereSource, /assets\/presets\/pmt-preview-h264\.epr/);
   assert.match(styles, /\.pmt-preview-video\s*\{[^}]*width:\s*100%;/s);
   assert.match(styles, /\.pmt-checkbox\s*\{[^}]*display:\s*flex;/s);
   assert.doesNotMatch(styles, /@keyframes/);
+});
+
+test("the direct Premiere preview uses its bundled muted H.264 preset", () => {
+  assert.match(previewPreset, /<PresetName>Premiere Motion Tracker Preview H\.264<\/PresetName>/);
+  assert.match(previewPreset, /<DoAudio>false<\/DoAudio>/);
+  assert.match(previewPreset, /<DoVideo>true<\/DoVideo>/);
+  assert.match(previewPreset, /<ParamIdentifier>ADBEVideoCodec<\/ParamIdentifier>/);
 });
 
 test("Transform Position falls back to a direct value read for proxy variants", () => {
@@ -98,7 +107,7 @@ test("manifest v6 loads the platform Hybrid addon and exposes its startup diagno
   assert.equal(manifest.requiredPermissions.enableAddon, true);
   assert.equal(manifest.requiredPermissions.localFileSystem, "fullAccess");
   assert.equal(manifest.addon.name, "premiere-motion-tracker-" + manifest.version + ".uxpaddon");
-  assert.match(nativeSource, /await require\("premiere-motion-tracker-0\.3\.2\.uxpaddon"\)/);
+  assert.match(nativeSource, /await require\("premiere-motion-tracker-0\.3\.3\.uxpaddon"\)/);
   assert.match(nativeSource, /loadedAddon\.runSelfTest\(\)/);
   assert.match(nativeSource, /addon\.inspectMedia/);
   assert.match(nativeSource, /addon\.trackMedia/);

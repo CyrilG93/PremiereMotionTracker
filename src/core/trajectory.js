@@ -57,6 +57,55 @@
     });
   }
 
+  // Interpolate native media-frame tracking onto the exact displayed frames of the destination sequence.
+  function resampleTrackingSamples(samples, sourceStartSeconds, sourceEndSeconds, sequenceFrameRate, sourceSpeed) {
+    const validSamples = (Array.isArray(samples) ? samples : []).filter((sample) => {
+      const isPoint = Number.isFinite(Number(sample && sample.x)) && Number.isFinite(Number(sample && sample.y));
+      const isSurface = Array.isArray(sample && sample.corners) && sample.corners.length === 4
+        && sample.corners.every((corner) => Number.isFinite(Number(corner && corner.x)) && Number.isFinite(Number(corner && corner.y)));
+      return sample && sample.valid !== false && Number.isFinite(Number(sample.seconds)) && (isPoint || isSurface);
+    }).sort((left, right) => Number(left.seconds) - Number(right.seconds));
+    const start = Number(sourceStartSeconds);
+    const end = Number(sourceEndSeconds);
+    const frameRate = Number(sequenceFrameRate);
+    const speed = Number(sourceSpeed);
+    if (validSamples.length < 2 || !Number.isFinite(start) || !Number.isFinite(end) || end <= start
+      || !Number.isFinite(frameRate) || frameRate <= 0 || !Number.isFinite(speed) || speed <= 0) {
+      return validSamples;
+    }
+    const sequenceDuration = (end - start) / speed;
+    const frameCount = Math.max(2, Math.ceil(sequenceDuration * frameRate - 0.000001));
+    let upperIndex = 1;
+    return Array.from({ length: frameCount }, (_, index) => {
+      const seconds = Math.min(end, start + index / frameRate * speed);
+      while (upperIndex < validSamples.length - 1 && Number(validSamples[upperIndex].seconds) < seconds) {
+        upperIndex += 1;
+      }
+      const upper = validSamples[upperIndex];
+      const lower = validSamples[Math.max(0, upperIndex - 1)];
+      const interval = Number(upper.seconds) - Number(lower.seconds);
+      const ratio = interval > 0 ? Math.max(0, Math.min(1, (seconds - Number(lower.seconds)) / interval)) : 0;
+      const interpolate = (left, right) => Number(left) + (Number(right) - Number(left)) * ratio;
+      const result = {
+        frame: Number(lower.frame),
+        seconds,
+        progress: index / frameCount,
+        confidence: Math.min(Number(lower.confidence), Number(upper.confidence)),
+        valid: true
+      };
+      if (Array.isArray(lower.corners)) {
+        result.corners = lower.corners.map((corner, cornerIndex) => ({
+          x: interpolate(corner.x, upper.corners[cornerIndex].x),
+          y: interpolate(corner.y, upper.corners[cornerIndex].y)
+        }));
+      } else {
+        result.x = interpolate(lower.x, upper.x);
+        result.y = interpolate(lower.y, upper.y);
+      }
+      return result;
+    });
+  }
+
   // Convert valid native frame samples into relative Position offsets and clip-relative timing.
   function buildPositionKeyframes(samples, referencePoint) {
     const validSamples = (Array.isArray(samples) ? samples : []).filter((sample) => {
@@ -81,7 +130,8 @@
       const indexedProgress = index / (validSamples.length - 1);
       const timedProgress = duration > 0 ? (Number(sample.seconds) - firstSeconds) / duration : indexedProgress;
       // Keep time monotonically increasing when a decoder reports duplicate frame timestamps.
-      const progress = Math.max(previousProgress, Math.min(1, Math.max(0, timedProgress)));
+      const suppliedProgress = Number(sample.progress);
+      const progress = Math.max(previousProgress, Math.min(1, Number.isFinite(suppliedProgress) ? suppliedProgress : Math.max(0, timedProgress)));
       previousProgress = progress;
       return {
         frame: Number(sample.frame),
@@ -112,7 +162,8 @@
     return validSamples.map((sample, index) => {
       const indexedProgress = index / (validSamples.length - 1);
       const timedProgress = duration > 0 ? (Number(sample.seconds) - firstSeconds) / duration : indexedProgress;
-      const progress = Math.max(previousProgress, Math.min(1, Math.max(0, timedProgress)));
+      const suppliedProgress = Number(sample.progress);
+      const progress = Math.max(previousProgress, Math.min(1, Number.isFinite(suppliedProgress) ? suppliedProgress : Math.max(0, timedProgress)));
       previousProgress = progress;
       return {
         frame: Number(sample.frame),
@@ -260,6 +311,7 @@
     computeRelativeOffsets,
     findUncertainSamples,
     smoothTrackingSamples,
+    resampleTrackingSamples,
     buildPositionKeyframes,
     buildSurfaceKeyframes,
     buildSurfaceMotionKeyframes,

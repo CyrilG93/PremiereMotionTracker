@@ -601,11 +601,21 @@
       throw new Error("Aucune séquence active.");
     }
     const rawFrameSize = await readMethod(sequence, "getFrameSize", null);
+    let frameRate = 0;
+    try {
+      // Premiere exposes the exact sequence cadence, including fractional broadcast rates, through SequenceSettings.
+      const settings = await sequence.getSettings();
+      const videoFrameRate = settings && typeof settings.getVideoFrameRate === "function" ? await settings.getVideoFrameRate() : null;
+      frameRate = Number(videoFrameRate && videoFrameRate.value);
+    } catch (error) {
+      // A missing cadence leaves the existing native-frame timing as a safe fallback on older host builds.
+    }
     return {
       sequenceId: String(sequence.guid || sequence.name || ""),
       inPoint: describeTime(await readMethod(sequence, "getInPoint", null)),
       outPoint: describeTime(await readMethod(sequence, "getOutPoint", null)),
       frameSize: rawFrameSize ? { width: Number(rawFrameSize.width), height: Number(rawFrameSize.height) } : null,
+      frameRate,
       timebase: String(await readMethod(sequence, "getTimebase", ""))
     };
   }

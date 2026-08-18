@@ -20,7 +20,8 @@
     searchRadius: 10,
     smoothingEnabled: true,
     trackingMode: "point",
-    surfaceApplication: "motion",
+    // Keep the experimental shape-preserving implementation dormant while Surface uses Corner Pin only.
+    surfaceApplication: "perspective",
     referencePoint: null,
     referenceCorners: [],
     tracking: null,
@@ -84,7 +85,7 @@
       nextFrame: "+ frame",
       applyTitle: "3. Apply",
       applyHelp: "After tracking, select one or more destination clips. One Position keyframe will be created for every valid frame.",
-      applySurfaceHelp: "After surface tracking, select one or more destination clips. Corner Pin will receive four keyframes per valid frame.",
+      applySurfaceHelp: "After surface tracking, select one or more destination clips. Corner Pin will receive four keys for every sequence frame.",
       surfaceApplication: "Surface application",
       surfaceMotion: "Preserve shape",
       surfacePerspective: "Match perspective",
@@ -147,7 +148,7 @@
       nextFrame: "+ image",
       applyTitle: "3. Application",
       applyHelp: "Après le tracking, sélectionnez un ou plusieurs clips de destination. Une clé Position sera créée pour chaque image valide.",
-      applySurfaceHelp: "Après le suivi de surface, sélectionnez un ou plusieurs clips de destination. Corner Pin recevra quatre clés par image valide.",
+      applySurfaceHelp: "Après le suivi de surface, sélectionnez un ou plusieurs clips de destination. Corner Pin recevra quatre clés pour chaque image de la séquence.",
       surfaceApplication: "Application de la surface",
       surfaceMotion: "Conserver la forme",
       surfacePerspective: "Suivre la perspective",
@@ -451,10 +452,9 @@
       '  </div>',
       '  <div class="pmt-card">',
       '    <h2 class="pmt-card-title">' + escapeHtml(t("applyTitle")) + '</h2>',
-      '    <div class="pmt-label">' + escapeHtml(surfaceMode ? (state.surfaceApplication === "motion" ? t("applySurfaceMotionHelp") : t("applySurfacePerspectiveHelp")) : t("applyHelp")) + '</div>',
-      surfaceMode ? '    <div class="pmt-settings"><div class="pmt-label">' + escapeHtml(t("surfaceApplication")) + '</div><div class="pmt-actions">' + buttonMarkup("pmt-surface-application-motion", t("surfaceMotion"), [], !canPrepare || state.surfaceApplication === "motion") + buttonMarkup("pmt-surface-application-perspective", t("surfacePerspective"), [], !canPrepare || state.surfaceApplication === "perspective") + '</div></div>' : '',
+      '    <div class="pmt-label">' + escapeHtml(surfaceMode ? t("applySurfaceHelp") : t("applyHelp")) + '</div>',
       !surfaceMode ? '    ' + checkboxMarkup("pmt-toggle-smoothing", state.smoothingEnabled ? t("smoothing") : t("rawTrajectory"), state.smoothingEnabled, !canPrepare) : '',
-      '    ' + buttonMarkup("pmt-apply-tracking", surfaceMode ? (state.surfaceApplication === "motion" ? t("applySurfaceMotion") : t("applySurfacePerspective")) : t("applyTrajectory"), ["pmt-button-full"], !canApplyTracking),
+      '    ' + buttonMarkup("pmt-apply-tracking", surfaceMode ? t("applySurfacePerspective") : t("applyTrajectory"), ["pmt-button-full"], !canApplyTracking),
       '  </div>',
       '  <div class="pmt-card">',
       '    <div class="pmt-card-header"><h2 class="pmt-card-title">' + escapeHtml(t("diagnostics")) + '</h2>' + buttonMarkup("pmt-copy-log", t("copy"), ["pmt-button-compact"], false) + '</div>',
@@ -1019,7 +1019,7 @@
     }
   }
 
-  // Convert native samples into either Corner Pin vertices or a shape-preserving planar movement.
+  // Convert native samples to sequence-frame cadence before applying point or Corner Pin keyframes.
   async function applyTracking(rootNode) {
     state.busy = true;
     render(rootNode);
@@ -1027,20 +1027,17 @@
       const surfaceMode = isSurfaceMode();
       // Anchor point trajectories to their first actual sample; surface trajectories retain their exact four-corner shape.
       const trajectoryForApply = !surfaceMode && state.smoothingEnabled ? root.PMT_TRAJECTORY.smoothTrackingSamples(state.tracking) : state.tracking;
-      const preserveShape = surfaceMode && state.surfaceApplication === "motion";
-      const keyframes = surfaceMode
-        ? (preserveShape ? root.PMT_TRAJECTORY.buildSurfaceMotionKeyframes(trajectoryForApply, state.range.frameSize) : root.PMT_TRAJECTORY.buildSurfaceKeyframes(trajectoryForApply))
-        : root.PMT_TRAJECTORY.buildPositionKeyframes(trajectoryForApply);
-      const results = surfaceMode
-        ? (preserveShape ? await root.PMT_PREMIERE.applySurfaceMotionTracking(keyframes) : await root.PMT_PREMIERE.applySurfaceTracking(keyframes))
-        : await root.PMT_PREMIERE.applyTracking(keyframes);
-      addLog((preserveShape ? "Preserved surface motion" : (surfaceMode ? "Surface perspective" : "Trajectory")) + " applied to " + results.length + " selected clip(s). " + keyframes.length + " keyframes per clip.");
+      const mediaRange = getTrackingMediaRange();
+      const sequenceSamples = root.PMT_TRAJECTORY.resampleTrackingSamples(trajectoryForApply, mediaRange.startSeconds, mediaRange.endSeconds, state.range.frameRate, Number(state.source.speed) === 100 ? 1 : Number(state.source.speed));
+      const keyframes = surfaceMode ? root.PMT_TRAJECTORY.buildSurfaceKeyframes(sequenceSamples) : root.PMT_TRAJECTORY.buildPositionKeyframes(sequenceSamples);
+      const results = surfaceMode ? await root.PMT_PREMIERE.applySurfaceTracking(keyframes) : await root.PMT_PREMIERE.applyTracking(keyframes);
+      addLog((surfaceMode ? "Surface perspective" : "Trajectory") + " applied to " + results.length + " selected clip(s). " + keyframes.length + " sequence-frame keys per clip.");
       if (!surfaceMode) {
         addLog("Applied trajectory: " + (state.smoothingEnabled ? "light smoothing." : "raw tracking."));
       }
       results.forEach((result) => {
         if (surfaceMode) {
-          addLog(result.clipName + ": " + result.keyframeCount + (preserveShape ? " Transform keys · shape preserved · " : " Corner Pin keys · ") + result.matchName + ".");
+          addLog(result.clipName + ": " + result.keyframeCount + " Corner Pin keys · " + result.matchName + ".");
           return;
         }
         const scale = result.positionScale || { x: 1, y: 1 };
@@ -1168,14 +1165,6 @@
     bindButton(rootNode, "pmt-retrack-from-here", () => retrackFromCorrection(rootNode));
     bindButton(rootNode, "pmt-toggle-smoothing", () => {
       state.smoothingEnabled = !state.smoothingEnabled;
-      render(rootNode);
-    });
-    bindButton(rootNode, "pmt-surface-application-motion", () => {
-      state.surfaceApplication = "motion";
-      render(rootNode);
-    });
-    bindButton(rootNode, "pmt-surface-application-perspective", () => {
-      state.surfaceApplication = "perspective";
       render(rootNode);
     });
     bindButton(rootNode, "pmt-apply-tracking", () => applyTracking(rootNode));

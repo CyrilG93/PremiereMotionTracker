@@ -117,7 +117,7 @@ test("destination clips are selected only when applying the finished tracking", 
   assert.match(premiereSource, /coordinateSpace: "sequence"/);
 });
 
-test("surface mode collects four corners and can preserve target shape or match perspective", () => {
+test("surface mode collects four corners and applies the tracked plane through Corner Pin", () => {
   assert.match(uiSource, /trackingMode: "point"/);
   assert.match(uiSource, /pmt-mode-surface/);
   assert.match(uiSource, /referenceCorners\.length === 4/);
@@ -128,17 +128,12 @@ test("surface mode collects four corners and can preserve target shape or match 
   assert.match(uiSource, /polygon\.setAttribute\("points", surfacePolygonPoints\(frame\.corners\)\)/);
   assert.match(uiSource, /PMT_NATIVE\.trackSurface/);
   assert.match(uiSource, /buildSurfaceKeyframes/);
-  assert.match(uiSource, /buildSurfaceMotionKeyframes/);
   assert.match(uiSource, /PMT_PREMIERE\.applySurfaceTracking/);
-  assert.match(uiSource, /PMT_PREMIERE\.applySurfaceMotionTracking/);
-  assert.match(uiSource, /surfaceApplication: "motion"/);
-  assert.match(uiSource, /pmt-surface-application-motion/);
-  assert.match(uiSource, /pmt-surface-application-perspective/);
+  assert.match(uiSource, /resampleTrackingSamples/);
+  assert.doesNotMatch(uiSource, /pmt-surface-application-motion/);
   assert.match(nativeSource, /addon\.trackSurface/);
   assert.match(premiereSource, /createCornerPinComponent/);
   assert.match(premiereSource, /applySurfaceTracking/);
-  assert.match(premiereSource, /applySurfaceMotionTracking/);
-  assert.match(premiereSource, /findSurfaceMotionParams/);
   assert.match(premiereSource, /getTargetMotionGeometry/);
   assert.match(premiereSource, /computeCornerPinPoint/);
   assert.match(styles, /\.pmt-surface-corner\s*\{[^}]*position:\s*absolute;/s);
@@ -146,12 +141,18 @@ test("surface mode collects four corners and can preserve target shape or match 
   assert.match(styles, /\.pmt-surface-corner-editable\s*\{[^}]*cursor:\s*grab;/s);
 });
 
+test("the active range reads Premiere's exact sequence frame rate for tracking resampling", () => {
+  assert.match(premiereSource, /sequence\.getSettings\(\)/);
+  assert.match(premiereSource, /settings\.getVideoFrameRate\(\)/);
+  assert.match(premiereSource, /frameRate,/);
+});
+
 test("manifest v6 loads the platform Hybrid addon and exposes its startup diagnostic", () => {
   assert.equal(manifest.manifestVersion, 6);
   assert.equal(manifest.requiredPermissions.enableAddon, true);
   assert.equal(manifest.requiredPermissions.localFileSystem, "fullAccess");
   assert.equal(manifest.addon.name, "premiere-motion-tracker-" + manifest.version + ".uxpaddon");
-  assert.match(nativeSource, /await require\("premiere-motion-tracker-0\.4\.6\.uxpaddon"\)/);
+  assert.match(nativeSource, /await require\("premiere-motion-tracker-0\.4\.7\.uxpaddon"\)/);
   assert.match(nativeSource, /loadedAddon\.runSelfTest\(\)/);
   assert.match(nativeSource, /addon\.inspectMedia/);
   assert.match(nativeSource, /addon\.trackMedia/);
@@ -164,8 +165,8 @@ test("manifest v6 loads the platform Hybrid addon and exposes its startup diagno
 
 test("panel assets use the current version cache key", () => {
   const index = fs.readFileSync(path.join(projectRoot, "index.html"), "utf8");
-  assert.match(index, /premiereBridge\.js\?v=0\.4\.6/);
-  assert.match(index, /trajectory\.js\?v=0\.4\.6/);
+  assert.match(index, /premiereBridge\.js\?v=0\.4\.7/);
+  assert.match(index, /trajectory\.js\?v=0\.4\.7/);
 });
 
 test("native analysis visibly enters an in-progress state before tracking begins", () => {

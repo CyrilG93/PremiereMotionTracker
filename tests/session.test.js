@@ -70,6 +70,26 @@ test("smoothTrackingSamples reduces one-frame jitter without moving either endpo
   assert.ok(Math.abs(smoothed[1].y - 0.525) < 0.000001);
 });
 
+test("resampleTrackingSamples interpolates media tracking onto exact sequence frames", () => {
+  const samples = Array.from({ length: 31 }, (_, index) => ({ frame: index, seconds: index / 30, x: index / 30, y: index / 60, confidence: 1, valid: true }));
+  const resampled = trajectoryApi.resampleTrackingSamples(samples, 0, 1, 25, 1);
+  assert.equal(resampled.length, 25);
+  assert.equal(resampled[0].progress, 0);
+  assert.ok(Math.abs(resampled[1].seconds - 0.04) < 0.000001);
+  assert.ok(Math.abs(resampled[1].x - 0.04) < 0.000001);
+  assert.ok(Math.abs(resampled[24].seconds - 0.96) < 0.000001);
+  assert.ok(Math.abs(resampled[24].progress - 24 / 25) < 0.000001);
+});
+
+test("resampleTrackingSamples interpolates all four Corner Pin vertices", () => {
+  const resampled = trajectoryApi.resampleTrackingSamples([
+    { frame: 0, seconds: 0, confidence: 1, valid: true, corners: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0, y: 1 }] },
+    { frame: 1, seconds: 1, confidence: 1, valid: true, corners: [{ x: 0.2, y: 0.1 }, { x: 1, y: 0.2 }, { x: 0.9, y: 1 }, { x: 0.1, y: 0.8 }] }
+  ], 0, 1, 2, 1);
+  assert.equal(resampled.length, 2);
+  assert.deepEqual(resampled[1].corners[0], { x: 0.1, y: 0.05 });
+});
+
 test("buildPositionKeyframes retains one Position keyframe for every valid frame", () => {
   const keyframes = trajectoryApi.buildPositionKeyframes([
     { frame: 100, seconds: 4, x: 0.25, y: 0.5, confidence: 1, valid: true },

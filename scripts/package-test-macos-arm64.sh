@@ -1,14 +1,36 @@
 #!/bin/bash
 set -euo pipefail
 
-# Build an unsigned Apple-Silicon CCX test package with every Homebrew dylib required by the Hybrid addon.
+# Build an Apple-Silicon CCX package with every Homebrew dylib required by the Hybrid addon.
 script_dir="$(cd "$(dirname "$0")" && pwd)"
 project_dir="$(cd "$script_dir/.." && pwd)"
 version="$(node -p "require('$project_dir/package.json').version")"
 addon_name="premiere-motion-tracker-${version}.uxpaddon"
 source_addon="$project_dir/mac/arm64/$addon_name"
-output_dir="${1:-$project_dir/Releases/Test}"
-output_file="$output_dir/PremiereMotionTracker-${version}-macos-arm64-unsigned.ccx"
+codesign_identity="${PMT_CODESIGN_IDENTITY:--}"
+notary_profile="${PMT_NOTARY_PROFILE:-}"
+codesign_jobs="${PMT_CODESIGN_JOBS:-8}"
+if ! [[ "$codesign_jobs" =~ ^[1-9][0-9]*$ ]]; then
+  echo "PMT_CODESIGN_JOBS must be a positive integer." >&2
+  exit 1
+fi
+package_label="unsigned"
+if [ "$codesign_identity" != "-" ]; then
+  package_label="signed"
+fi
+if [ -n "$notary_profile" ]; then
+  if [ "$codesign_identity" = "-" ]; then
+    echo "PMT_NOTARY_PROFILE requires a Developer ID signing identity." >&2
+    exit 1
+  fi
+  package_label="notarized"
+fi
+default_output_dir="$project_dir/Releases/Test"
+if [ "$package_label" = "notarized" ]; then
+  default_output_dir="$project_dir/Releases"
+fi
+output_dir="${1:-$default_output_dir}"
+output_file="$output_dir/PremiereMotionTracker-${version}-macos-arm64-${package_label}.ccx"
 
 if [ ! -f "$source_addon" ]; then
   echo "Missing arm64 addon: $source_addon" >&2
@@ -34,6 +56,16 @@ done
 /usr/bin/ditto "$project_dir/assets" "$plugin_dir/assets"
 /bin/mkdir -p "$plugin_dir/mac/arm64"
 /bin/cp -L "$source_addon" "$plugin_dir/mac/arm64/$addon_name"
+
+# Sign each executable component explicitly; --deep is unsafe for a bundle with independently linked libraries.
+sign_macho() {
+  local target_file="$1"
+  if [ "$codesign_identity" = "-" ]; then
+    /usr/bin/codesign --force --sign - --timestamp=none "$target_file"
+  else
+    /usr/bin/codesign --force --sign "$codesign_identity" --options runtime --timestamp "$target_file"
+  fi
+}
 
 # Resolve an indirect Mach-O dependency from its original Homebrew binary before staging it.
 resolve_dependency() {
@@ -125,7 +157,6 @@ while IFS= read -r current_file; do
   if [ "${#change_args[@]}" -gt 0 ]; then
     /usr/bin/install_name_tool "${change_args[@]}" "$current_file"
   fi
-  /usr/bin/codesign --force --sign - --timestamp=none "$current_file"
 done < <(/usr/bin/find "$library_dir" -type f -name '*.dylib' -print)
 
 # The addon lives one directory above lib, so its dependencies use an explicit lib prefix.
@@ -144,7 +175,12 @@ done < <(/usr/bin/otool -L "$staged_addon" | /usr/bin/awk 'NR > 2 { print $1 }')
 if [ "${#addon_change_args[@]}" -gt 0 ]; then
   /usr/bin/install_name_tool "${addon_change_args[@]}" "$staged_addon"
 fi
-/usr/bin/codesign --force --sign - --timestamp=none "$staged_addon"
+
+# The timestamp service is network-bound, so sign independent dylibs concurrently after all install names are final.
+export codesign_identity
+export -f sign_macho
+/usr/bin/find "$library_dir" -type f -name '*.dylib' -print0 | /usr/bin/xargs -0 -n 1 -P "$codesign_jobs" /bin/bash -c 'sign_macho "$1"' _
+sign_macho "$staged_addon"
 
 # Refuse to emit a package that still relies on a developer-machine Homebrew path.
 # Skip each first otool entry because it is the binary's own install name, not a load dependency.
@@ -158,11 +194,19 @@ if {
   exit 1
 fi
 /usr/bin/codesign --verify --strict --verbose=2 "$staged_addon"
+while IFS= read -r current_file; do
+  /usr/bin/codesign --verify --strict --verbose=2 "$current_file"
+done < <(/usr/bin/find "$library_dir" -type f -name '*.dylib' -print)
 
-# CCX is a ZIP container with the plugin manifest at its root; this is an unsigned private test package.
+# CCX is a ZIP container with the plugin manifest at its root; notarize the ZIP form before naming it .ccx.
+notary_archive="$stage_dir/PremiereMotionTracker-${version}-macos-arm64-${package_label}.zip"
 (
   cd "$plugin_dir"
-  COPYFILE_DISABLE=1 /usr/bin/zip -qry "$output_file" .
+  COPYFILE_DISABLE=1 /usr/bin/zip -qry "$notary_archive" .
 )
+if [ -n "$notary_profile" ]; then
+  /usr/bin/xcrun notarytool submit "$notary_archive" --keychain-profile "$notary_profile" --wait
+fi
+/bin/mv "$notary_archive" "$output_file"
 /usr/bin/unzip -t "$output_file" >/dev/null
-echo "Created unsigned Apple-Silicon test package: $output_file"
+echo "Created $package_label Apple-Silicon package: $output_file"

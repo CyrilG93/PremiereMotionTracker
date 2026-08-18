@@ -25,7 +25,6 @@
     referencePoint: null,
     referenceCorners: [],
     tracking: null,
-    trackingFromSequenceFrames: false,
     liveSamples: [],
     analysisTaskId: "",
     analysisSampleIndex: 0,
@@ -207,7 +206,6 @@
     state.liveSamples = [];
     state.analysisTaskId = "";
     state.analysisSampleIndex = 0;
-    state.trackingFromSequenceFrames = false;
   }
 
   // Keep the established point workflow separate from the four-corner planar workflow.
@@ -946,19 +944,19 @@
         Promise.resolve(video.play()).catch(() => {});
       }
       await waitForPanelPaint();
-      const renderedSequence = await root.PMT_PREMIERE.exportSequenceTrackingFrames(state.range.frameRate);
-      addLog("Premiere sequence frames exported: " + renderedSequence.frameCount + " at " + renderedSequence.frameRate.toFixed(3) + " fps.");
+      const mediaRange = getTrackingMediaRange();
       let samples;
       if (isSurfaceMode()) {
-        // Track Premiere-rendered PNG frames so Corner Pin sees the same cadence as the final sequence.
-        samples = await root.PMT_NATIVE.trackSurface(renderedSequence.pattern, state.referenceCorners, 0, renderedSequence.frameCount / renderedSequence.frameRate, state.searchRadius);
+        // The planar tracker follows the original selected media while the preview remains Premiere-rendered.
+        samples = await root.PMT_NATIVE.trackSurface(state.source.mediaPath, state.referenceCorners, mediaRange.startSeconds, mediaRange.endSeconds, state.searchRadius);
       } else {
-        samples = await root.PMT_NATIVE.trackMedia(renderedSequence.pattern, state.referencePoint, 0, renderedSequence.frameCount / renderedSequence.frameRate, state.searchRadius);
+        state.analysisTaskId = await root.PMT_NATIVE.startTracking(state.source.mediaPath, state.referencePoint, mediaRange.startSeconds, mediaRange.endSeconds, state.searchRadius);
+        samples = await collectLiveTracking(rootNode, state.analysisTaskId);
+        state.analysisTaskId = "";
       }
-      state.tracking = samples.map((sample, index) => Object.assign({}, sample, { progress: index / renderedSequence.frameCount }));
-      state.trackingFromSequenceFrames = true;
+      state.tracking = samples;
       const invalidCount = root.PMT_TRAJECTORY.findUncertainSamples(state.tracking, state.confidenceThreshold).length;
-      addLog("OpenCV " + (isSurfaceMode() ? "surface tracking" : "tracking") + ": " + state.tracking.length + " Premiere frames.");
+      addLog("OpenCV " + (isSurfaceMode() ? "surface tracking" : "tracking") + ": " + state.tracking.length + " frames from " + mediaRange.startSeconds.toFixed(3) + " s to " + mediaRange.endSeconds.toFixed(3) + " s.");
       addLog("Tracking settings: search ±" + state.searchRadius + " px · confidence alert below " + Math.round(state.confidenceThreshold * 100) + "%.");
       addLog("Uncertain frames: " + invalidCount + ".");
       try {
@@ -1021,7 +1019,7 @@
     }
   }
 
-  // Convert native samples to sequence-frame cadence before applying point or Corner Pin keyframes.
+  // Convert native samples into Position or Corner Pin keyframes using their original tracking timing.
   async function applyTracking(rootNode) {
     state.busy = true;
     render(rootNode);
@@ -1029,11 +1027,9 @@
       const surfaceMode = isSurfaceMode();
       // Anchor point trajectories to their first actual sample; surface trajectories retain their exact four-corner shape.
       const trajectoryForApply = !surfaceMode && state.smoothingEnabled ? root.PMT_TRAJECTORY.smoothTrackingSamples(state.tracking) : state.tracking;
-      const mediaRange = getTrackingMediaRange();
-      const sequenceSamples = state.trackingFromSequenceFrames ? trajectoryForApply : root.PMT_TRAJECTORY.resampleTrackingSamples(trajectoryForApply, mediaRange.startSeconds, mediaRange.endSeconds, state.range.frameRate, Number(state.source.speed) === 100 ? 1 : Number(state.source.speed));
-      const keyframes = surfaceMode ? root.PMT_TRAJECTORY.buildSurfaceKeyframes(sequenceSamples) : root.PMT_TRAJECTORY.buildPositionKeyframes(sequenceSamples);
+      const keyframes = surfaceMode ? root.PMT_TRAJECTORY.buildSurfaceKeyframes(trajectoryForApply) : root.PMT_TRAJECTORY.buildPositionKeyframes(trajectoryForApply);
       const results = surfaceMode ? await root.PMT_PREMIERE.applySurfaceTracking(keyframes) : await root.PMT_PREMIERE.applyTracking(keyframes);
-      addLog((surfaceMode ? "Surface perspective" : "Trajectory") + " applied to " + results.length + " selected clip(s). " + keyframes.length + " sequence-frame keys per clip.");
+      addLog((surfaceMode ? "Surface perspective" : "Trajectory") + " applied to " + results.length + " selected clip(s). " + keyframes.length + " keyframes per clip.");
       if (!surfaceMode) {
         addLog("Applied trajectory: " + (state.smoothingEnabled ? "light smoothing." : "raw tracking."));
       }

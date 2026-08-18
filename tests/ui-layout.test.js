@@ -129,7 +129,6 @@ test("surface mode collects four corners and applies the tracked plane through C
   assert.match(uiSource, /PMT_NATIVE\.trackSurface/);
   assert.match(uiSource, /buildSurfaceKeyframes/);
   assert.match(uiSource, /PMT_PREMIERE\.applySurfaceTracking/);
-  assert.match(uiSource, /resampleTrackingSamples/);
   assert.doesNotMatch(uiSource, /pmt-surface-application-motion/);
   assert.match(nativeSource, /addon\.trackSurface/);
   assert.match(premiereSource, /createCornerPinComponent/);
@@ -141,18 +140,12 @@ test("surface mode collects four corners and applies the tracked plane through C
   assert.match(styles, /\.pmt-surface-corner-editable\s*\{[^}]*cursor:\s*grab;/s);
 });
 
-test("the active range reads Premiere's exact sequence frame rate for tracking resampling", () => {
-  assert.match(premiereSource, /sequence\.getSettings\(\)/);
-  assert.match(premiereSource, /settings\.getVideoFrameRate\(\)/);
-  assert.match(premiereSource, /frameRate,/);
-});
-
 test("manifest v6 loads the platform Hybrid addon and exposes its startup diagnostic", () => {
   assert.equal(manifest.manifestVersion, 6);
   assert.equal(manifest.requiredPermissions.enableAddon, true);
   assert.equal(manifest.requiredPermissions.localFileSystem, "fullAccess");
   assert.equal(manifest.addon.name, "premiere-motion-tracker-" + manifest.version + ".uxpaddon");
-  assert.match(nativeSource, /await require\("premiere-motion-tracker-0\.4\.8\.uxpaddon"\)/);
+  assert.match(nativeSource, /await require\("premiere-motion-tracker-0\.4\.9\.uxpaddon"\)/);
   assert.match(nativeSource, /loadedAddon\.runSelfTest\(\)/);
   assert.match(nativeSource, /addon\.inspectMedia/);
   assert.match(nativeSource, /addon\.trackMedia/);
@@ -165,8 +158,8 @@ test("manifest v6 loads the platform Hybrid addon and exposes its startup diagno
 
 test("panel assets use the current version cache key", () => {
   const index = fs.readFileSync(path.join(projectRoot, "index.html"), "utf8");
-  assert.match(index, /premiereBridge\.js\?v=0\.4\.8/);
-  assert.match(index, /trajectory\.js\?v=0\.4\.8/);
+  assert.match(index, /premiereBridge\.js\?v=0\.4\.9/);
+  assert.match(index, /trajectory\.js\?v=0\.4\.9/);
 });
 
 test("native analysis visibly enters an in-progress state before tracking begins", () => {

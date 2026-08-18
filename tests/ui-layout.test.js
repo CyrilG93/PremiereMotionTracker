@@ -152,7 +152,7 @@ test("manifest v6 loads the platform Hybrid addon and exposes its startup diagno
   assert.equal(manifest.requiredPermissions.enableAddon, true);
   assert.equal(manifest.requiredPermissions.localFileSystem, "fullAccess");
   assert.equal(manifest.addon.name, "premiere-motion-tracker-" + manifest.version + ".uxpaddon");
-  assert.match(nativeSource, /await require\("premiere-motion-tracker-0\.4\.7\.uxpaddon"\)/);
+  assert.match(nativeSource, /await require\("premiere-motion-tracker-0\.4\.8\.uxpaddon"\)/);
   assert.match(nativeSource, /loadedAddon\.runSelfTest\(\)/);
   assert.match(nativeSource, /addon\.inspectMedia/);
   assert.match(nativeSource, /addon\.trackMedia/);
@@ -165,8 +165,8 @@ test("manifest v6 loads the platform Hybrid addon and exposes its startup diagno
 
 test("panel assets use the current version cache key", () => {
   const index = fs.readFileSync(path.join(projectRoot, "index.html"), "utf8");
-  assert.match(index, /premiereBridge\.js\?v=0\.4\.7/);
-  assert.match(index, /trajectory\.js\?v=0\.4\.7/);
+  assert.match(index, /premiereBridge\.js\?v=0\.4\.8/);
+  assert.match(index, /trajectory\.js\?v=0\.4\.8/);
 });
 
 test("native analysis visibly enters an in-progress state before tracking begins", () => {

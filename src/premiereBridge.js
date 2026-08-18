@@ -698,6 +698,39 @@
     return { url: imageEntry.url, fileName: imageEntry.name, width: dimensions.width, height: dimensions.height };
   }
 
+  // Export every displayed sequence frame so OpenCV tracks Premiere's actual cadence instead of the source-media cadence.
+  async function exportSequenceTrackingFrames(frameRate) {
+    if (!handles.source || !handles.source.sequence) {
+      throw new Error("Capturez d’abord le clip source.");
+    }
+    const app = handles.source.app;
+    const rate = Number(frameRate);
+    if (!app || !app.Exporter || typeof app.Exporter.exportSequenceFrame !== "function" || !app.TickTime || typeof app.TickTime.createWithSeconds !== "function" || !Number.isFinite(rate) || rate <= 0) {
+      throw new Error("Cette version de Premiere ne fournit pas la cadence de séquence nécessaire au tracking frame exact.");
+    }
+    const inPoint = await handles.source.sequence.getInPoint();
+    const outPoint = await handles.source.sequence.getOutPoint();
+    const startSeconds = Number(describeTime(inPoint).seconds);
+    const endSeconds = Number(describeTime(outPoint).seconds);
+    const frameCount = Math.max(2, Math.round((endSeconds - startSeconds) * rate));
+    const storage = require("uxp").storage.localFileSystem;
+    const temporaryFolder = await storage.getTemporaryFolder();
+    const frameSize = await handles.source.sequence.getFrameSize();
+    // Preserve the real sequence pixels for tracking accuracy; the lightweight preview still uses its separate compact export.
+    const dimensions = { width: Math.round(Number(frameSize.width)), height: Math.round(Number(frameSize.height)) };
+    const paths = [];
+    for (let index = 0; index < frameCount; index += 1) {
+      const stem = "pmt-sequence-track-" + String(index).padStart(5, "0");
+      const exported = await app.Exporter.exportSequenceFrame(handles.source.sequence, app.TickTime.createWithSeconds(startSeconds + index / rate), stem + ".png", temporaryFolder.nativePath, dimensions.width, dimensions.height);
+      if (!exported) {
+        throw new Error("Premiere a refusé l’export de l’image " + String(index + 1) + " du tracking.");
+      }
+      const image = await resolveExportedPreview(temporaryFolder, stem);
+      paths.push(image.nativePath);
+    }
+    return { pattern: joinNativePath(temporaryFolder.nativePath, "pmt-sequence-track-%05d.png"), frameCount, frameRate: rate };
+  }
+
   // Render the active sequence range directly in Premiere, avoiding an Adobe Media Encoder queue.
   async function exportPreviewVideo() {
     if (!handles.source || !handles.source.sequence) {
@@ -1113,6 +1146,7 @@
     getActiveRange,
     exportPreviewFrame,
     exportTrackingPreviewFrame,
+    exportSequenceTrackingFrames,
     exportPreviewVideo,
     getHandleStatus,
     applyTracking,

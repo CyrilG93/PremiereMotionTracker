@@ -109,6 +109,19 @@ test("buildSurfaceKeyframes retains four ordered corners and skips invalid surfa
   assert.deepEqual(keyframes[1].corners[2], { x: 0.5, y: 0.6 });
 });
 
+test("buildSurfaceMotionKeyframes preserves the target shape while deriving planar motion", () => {
+  const keyframes = trajectoryApi.buildSurfaceMotionKeyframes([
+    { frame: 10, seconds: 1, confidence: 1, valid: true, corners: [{ x: 0.2, y: 0.3 }, { x: 0.4, y: 0.3 }, { x: 0.4, y: 0.5 }, { x: 0.2, y: 0.5 }] },
+    // The second surface has moved 100 px right, rotated 90 degrees and doubled in size.
+    { frame: 11, seconds: 1.04, confidence: 1, valid: true, corners: [{ x: 0.4, y: 0.2 }, { x: 0.4, y: 0.6 }, { x: 0.0, y: 0.6 }, { x: 0.0, y: 0.2 }] }
+  ], { width: 1000, height: 1000 });
+  assert.deepEqual({ dx: keyframes[0].dx, dy: keyframes[0].dy, scale: keyframes[0].scale, rotation: keyframes[0].rotation }, { dx: 0, dy: 0, scale: 1, rotation: 0 });
+  assert.ok(Math.abs(keyframes[1].dx - -0.1) < 0.000001);
+  assert.ok(Math.abs(keyframes[1].dy) < 0.000001);
+  assert.ok(Math.abs(keyframes[1].scale - 2) < 0.000001);
+  assert.ok(Math.abs(keyframes[1].rotation - 90) < 0.000001);
+});
+
 test("computeTargetPositionScale compensates a smaller target media and its Motion scale", () => {
   const scale = trajectoryApi.computeTargetPositionScale(
     { width: 1920, height: 1080 },

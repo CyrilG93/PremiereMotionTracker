@@ -125,6 +125,47 @@
     });
   }
 
+  // Reduce each tracked quadrilateral to its best-fitting translation, rotation and uniform scale.
+  // This intentionally discards perspective/skew so a target can follow a surface without being warped.
+  function buildSurfaceMotionKeyframes(samples, sequenceFrame) {
+    const keyframes = buildSurfaceKeyframes(samples);
+    const width = Number(sequenceFrame && sequenceFrame.width);
+    const height = Number(sequenceFrame && sequenceFrame.height);
+    if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) {
+      throw new Error("La taille de la séquence est invalide.");
+    }
+    const toPixels = (corners) => corners.map((corner) => ({ x: Number(corner.x) * width, y: Number(corner.y) * height }));
+    const centerOf = (corners) => corners.reduce((center, corner) => ({ x: center.x + corner.x / corners.length, y: center.y + corner.y / corners.length }), { x: 0, y: 0 });
+    const referenceCorners = toPixels(keyframes[0].corners);
+    const referenceCenter = centerOf(referenceCorners);
+    const referenceOffsets = referenceCorners.map((corner) => ({ x: corner.x - referenceCenter.x, y: corner.y - referenceCenter.y }));
+    const referenceEnergy = referenceOffsets.reduce((sum, corner) => sum + corner.x * corner.x + corner.y * corner.y, 0);
+    if (referenceEnergy <= Number.EPSILON) {
+      throw new Error("La surface de référence est trop petite pour calculer son mouvement.");
+    }
+    return keyframes.map((sample) => {
+      const corners = toPixels(sample.corners);
+      const center = centerOf(corners);
+      let cosineNumerator = 0;
+      let sineNumerator = 0;
+      corners.forEach((corner, index) => {
+        const reference = referenceOffsets[index];
+        const currentX = corner.x - center.x;
+        const currentY = corner.y - center.y;
+        cosineNumerator += reference.x * currentX + reference.y * currentY;
+        sineNumerator += reference.x * currentY - reference.y * currentX;
+      });
+      const cosine = cosineNumerator / referenceEnergy;
+      const sine = sineNumerator / referenceEnergy;
+      return Object.assign({}, sample, {
+        dx: (center.x - referenceCenter.x) / width,
+        dy: (center.y - referenceCenter.y) / height,
+        scale: Math.sqrt(cosine * cosine + sine * sine),
+        rotation: Math.atan2(sine, cosine) * 180 / Math.PI
+      });
+    });
+  }
+
   // Convert sequence-normalized motion into a target clip's normalized Transform coordinate space.
   function computeTargetPositionScale(sequenceFrame, targetFrame, motionScale) {
     const sequenceWidth = Number(sequenceFrame && sequenceFrame.width);
@@ -221,6 +262,7 @@
     smoothTrackingSamples,
     buildPositionKeyframes,
     buildSurfaceKeyframes,
+    buildSurfaceMotionKeyframes,
     computeTargetPositionScale,
     computeCornerPinPoint,
     selectPreviewSamples,

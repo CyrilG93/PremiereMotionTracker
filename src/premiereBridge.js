@@ -429,6 +429,54 @@
     return { param: null, names };
   }
 
+  // Locate the three Transform controls needed for shape-preserving surface motion.
+  function findSurfaceMotionParams(component) {
+    const matches = { position: null, scale: null, rotation: null };
+    const names = [];
+    const count = component && typeof component.getParamCount === "function" ? component.getParamCount() : 0;
+    for (let index = 0; index < count; index += 1) {
+      const param = component.getParam(index);
+      const name = String(param && param.displayName ? param.displayName : "");
+      const normalized = normalizeLabel(name);
+      names.push(name || ("Param " + index));
+      if (!matches.position && normalized.includes("position")) {
+        matches.position = param;
+      } else if (!matches.rotation && (normalized.includes("rotation") || normalized.includes("rotate"))) {
+        matches.rotation = param;
+      } else if (!matches.scale && (normalized === "scale" || normalized === "chelle")) {
+        matches.scale = param;
+      }
+    }
+    return { params: matches, names };
+  }
+
+  // Read a numeric Premiere property while accepting the value wrappers used by host proxies.
+  function readScalarValue(value) {
+    let current = value;
+    let depth = 0;
+    while (current && typeof current === "object" && depth < 4) {
+      let nestedValue;
+      try {
+        nestedValue = current.value;
+      } catch (error) {
+        break;
+      }
+      if (nestedValue === undefined || nestedValue === current) {
+        break;
+      }
+      current = nestedValue;
+      depth += 1;
+    }
+    const scalar = Number(current);
+    return Number.isFinite(scalar) ? scalar : null;
+  }
+
+  // Preserve whether Transform Scale is exposed as a scalar or a two-axis PointF value.
+  function createScaledValue(app, originalValue, scale, multiplier) {
+    const scaled = { x: Number(scale.x) * multiplier, y: Number(scale.y) * multiplier };
+    return readPointValue(originalValue) ? createPoint(app, scaled.x, scaled.y) : scaled.x;
+  }
+
   // Create Premiere's Transform effect using the runtime catalog and known match-name aliases.
   async function createTransformComponent(app) {
     const candidates = ["AE.ADBE Geometry2", "AE.ADBE Geometry", "AE.ADBE Transform"];
@@ -902,6 +950,69 @@
     return { clipName: String(clipName), matchName: cornerPin.matchName, keyframeCount: keyframes.length, coordinateSpace: "target-local-normalized", initialCorners };
   }
 
+  // Add Transform keys derived from a tracked surface while deliberately retaining the target's aspect ratio.
+  async function applySurfaceMotionTrackingToItem(context, item, keyframes) {
+    const chain = await item.getComponentChain();
+    const previousCount = chain && typeof chain.getComponentCount === "function" ? chain.getComponentCount() : 0;
+    const transform = await createTransformComponent(context.app);
+    const canInsert = chain && typeof chain.createInsertComponentAction === "function";
+    const preferredIndex = canInsert ? 0 : previousCount;
+    executeActions(context.project, [() => canInsert
+      ? chain.createInsertComponentAction(transform.component, preferredIndex)
+      : chain.createAppendComponentAction(transform.component)], "Motion Tracker : ajouter Transform Surface");
+    await waitForHostPaint();
+    const updatedChain = await item.getComponentChain();
+    const insertedComponent = await resolveInsertedTransform(updatedChain, preferredIndex, transform.matchName);
+    const parameterResult = findSurfaceMotionParams(insertedComponent);
+    const params = parameterResult.params;
+    if (!params.position || !params.scale || !params.rotation) {
+      throw new Error("Les paramètres Position, Échelle et Rotation de Transform sont introuvables. Paramètres exposés : " + (parameterResult.names.join(", ") || "aucun"));
+    }
+    const inPoint = await item.getInPoint();
+    const outPoint = await item.getOutPoint();
+    const positionValue = await readMotionParamValue(params.position, inPoint);
+    const initialPoint = readPointValue(positionValue);
+    const scaleValue = await readMotionParamValue(params.scale, inPoint);
+    const initialScale = readScaleValue(scaleValue);
+    const rotationValue = await readMotionParamValue(params.rotation, inPoint);
+    const initialRotation = readScalarValue(rotationValue);
+    if (!initialPoint || !initialScale || initialScale.x <= 0 || initialScale.y <= 0 || initialRotation === null) {
+      throw new Error("Premiere n’a pas renvoyé les valeurs Transform initiales compatibles.");
+    }
+    const looksNormalized = Math.abs(initialPoint.x) <= 1.5 && Math.abs(initialPoint.y) <= 1.5;
+    const targetFrame = looksNormalized ? await getTargetMediaFrame(context, item) : null;
+    const motionScale = looksNormalized ? await getTargetMotionScale(item, inPoint) : null;
+    const positionScale = getPositionScale(context, looksNormalized, targetFrame, motionScale);
+    executeActions(context.project, [
+      () => params.position.createSetTimeVaryingAction(true),
+      () => params.scale.createSetTimeVaryingAction(true),
+      () => params.rotation.createSetTimeVaryingAction(true)
+    ], "Motion Tracker : activer Transform Surface");
+    await waitForHostPaint();
+    const actions = [];
+    keyframes.forEach((sample) => {
+      const time = createTimeAtProgress(context.app, inPoint, outPoint, sample.progress);
+      actions.push(() => {
+        const keyframe = params.position.createKeyframe(createPoint(context.app, initialPoint.x + Number(sample.dx) * positionScale.x, initialPoint.y + Number(sample.dy) * positionScale.y));
+        keyframe.position = time;
+        return params.position.createAddKeyframeAction(keyframe);
+      });
+      actions.push(() => {
+        const keyframe = params.scale.createKeyframe(createScaledValue(context.app, scaleValue, initialScale, Number(sample.scale)));
+        keyframe.position = time;
+        return params.scale.createAddKeyframeAction(keyframe);
+      });
+      actions.push(() => {
+        const keyframe = params.rotation.createKeyframe(initialRotation + Number(sample.rotation));
+        keyframe.position = time;
+        return params.rotation.createAddKeyframeAction(keyframe);
+      });
+    });
+    executeActions(context.project, actions, "Motion Tracker : appliquer Mouvement Surface");
+    const clipName = await readMethod(item, "getName", "Clip cible");
+    return { clipName: String(clipName), matchName: transform.matchName, keyframeCount: keyframes.length, mode: "shape-preserving", positionScale };
+  }
+
   // Apply the analysed frame-by-frame trajectory to every selected destination clip.
   async function applyTracking(keyframes) {
     if (!getHandleStatus().source) {
@@ -959,6 +1070,34 @@
     return results;
   }
 
+  // Apply a tracked surface as translation, rotation and uniform scale instead of a Corner Pin warp.
+  async function applySurfaceMotionTracking(keyframes) {
+    if (!getHandleStatus().source) {
+      throw new Error("Capturez d’abord le clip source.");
+    }
+    if (!Array.isArray(keyframes) || keyframes.length < 2) {
+      throw new Error("Analysez au moins deux images de surface valides avant d’appliquer le mouvement.");
+    }
+    const context = await getSelectionContext();
+    if (String(context.sequence.guid || context.sequence.name || "") !== handles.source.descriptor.sequenceId) {
+      throw new Error("Les clips de destination doivent appartenir à la séquence du tracking.");
+    }
+    const targets = [];
+    for (const item of context.videoItems) {
+      if (await getItemIdentity(context.sequence, item) !== handles.source.descriptor.id) {
+        targets.push(item);
+      }
+    }
+    if (!targets.length) {
+      throw new Error("Sélectionnez au moins un clip de destination différent du clip source.");
+    }
+    const results = [];
+    for (const item of targets) {
+      results.push(await applySurfaceMotionTrackingToItem(context, item, keyframes));
+    }
+    return results;
+  }
+
   root.PMT_PREMIERE = {
     captureSelectedClip,
     getActiveRange,
@@ -967,6 +1106,7 @@
     exportPreviewVideo,
     getHandleStatus,
     applyTracking,
-    applySurfaceTracking
+    applySurfaceTracking,
+    applySurfaceMotionTracking
   };
 }(window));

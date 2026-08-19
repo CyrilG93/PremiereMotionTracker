@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(PremiereMotionTrackerAddon VERSION 0.4.9 LANGUAGES CXX)
+project(PremiereMotionTrackerAddon VERSION 0.4.10 LANGUAGES CXX)
 
 # Enable the OpenCV media decoder only in builds configured with vcpkg.
 option(PMT_ENABLE_OPENCV "Build OpenCV media inspection support" OFF)
@@ -20,7 +20,7 @@ endif()
 if(PMT_ENABLE_OPENCV)
   # OpenCV videoio uses Microsoft Media Foundation on the current Windows build.
   # The planar tracker detects corners inside the selected surface before estimating its homography.
-  find_package(OpenCV CONFIG REQUIRED COMPONENTS core imgproc imgcodecs video videoio features)
+  find_package(OpenCV CONFIG REQUIRED COMPONENTS core imgproc imgcodecs video videoio features2d)
   # Detect static OpenCV so the Hybrid addon does not expect sidecar DLLs at runtime.
   get_target_property(PMT_OPENCV_CORE_TYPE opencv_core TYPE)
   # Derive the triplet bin directory from vcpkg's OpenCV package config location.

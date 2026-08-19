@@ -3,7 +3,8 @@
 #include <opencv2/videoio.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
-#include <opencv2/features.hpp>
+// Expose OpenCV 4 feature detectors used to seed the planar surface tracker.
+#include <opencv2/features2d.hpp>
 #include <opencv2/video/tracking.hpp>
 #include <opencv2/calib3d.hpp>
 

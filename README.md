@@ -46,12 +46,12 @@ The plugin adds a Transform effect and Position keyframes to every selected dest
 
 ## Track a Surface
 
-1. Pu in/out, capture and prepare a source clip.
+1. Set In/Out, then capture and prepare a source clip.
 2. Choose **Surface**.
 3. Click the four corners of the surface in this order: top-left, top-right, bottom-right, bottom-left.
 4. Drag the numbered handles to refine the selection.
 5. Click **Analyze**.
-6. Select the destination clip and click **Apply perspective**.
+6. Use **Cancel analysis** if needed, then select the destination clip and click **Apply perspective**.
 
 Surface mode works best with flat, textured, clearly visible surfaces. It can be unreliable on blurred, reflective, heavily occluded, or strongly deforming surfaces.
 
@@ -61,11 +61,13 @@ The preview contains every tracked frame in the selected range. On long clips, g
 
 - Enable **Skip preview generation** before or during analysis to keep the tracking result without exporting preview images.
 - Use **Skip preview** while images are being generated to stop the remaining preview export.
+- For more than 600 images, the plugin asks for confirmation before using temporary storage for the full preview.
 - Enable **Light smoothing when applying** to reduce small position jitters, or disable it to apply the raw motion.
 
 ## Formats, Privacy, and Limitations
 
 - Landscape, square, vertical, and ultra-wide sequence formats are supported; tracking is not limited to 16:9.
+- NAS media is supported when Premiere exposes a local media path. If it does not, the plugin uses an attached proxy when available, or lets you select the original source file manually.
 - Reversed clips are not supported. Variable time remapping may not track accurately.
 - Fast movement, motion blur, poor lighting, or low-detail areas can reduce tracking accuracy.
 - The plugin requires local file access only to analyse the selected media and create temporary previews. It does not upload media anywhere.

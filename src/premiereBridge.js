@@ -562,7 +562,15 @@
       ? context.app.ClipProjectItem.cast(projectItem)
       : projectItem;
     const name = await readMethod(item, "getName", projectItem && projectItem.name ? projectItem.name : "Clip vidéo");
-    const mediaPath = await readMethod(clipProjectItem, "getMediaFilePath", "");
+    const directMediaPath = await readMethod(clipProjectItem, "getMediaFilePath", "");
+    const proxyPath = await readMethod(clipProjectItem, "getProxyPath", "");
+    const isOffline = Boolean(await readMethod(clipProjectItem, "isOffline", false));
+    const isSequence = Boolean(await readMethod(clipProjectItem, "isSequence", false));
+    const isMulticam = Boolean(await readMethod(clipProjectItem, "isMulticamClip", false));
+    const isMerged = Boolean(await readMethod(clipProjectItem, "isMergedClip", false));
+    const contentType = await readMethod(clipProjectItem, "getContentType", "");
+    // Prefer the original file, but use an attached proxy when Premiere withholds a NAS source path.
+    const mediaPath = directMediaPath || proxyPath;
     const start = describeTime(await readMethod(item, "getStartTime", null));
     const end = describeTime(await readMethod(item, "getEndTime", null));
     const inPoint = describeTime(await readMethod(item, "getInPoint", null));
@@ -577,6 +585,15 @@
       projectItemId,
       name: String(name),
       mediaPath: String(mediaPath || ""),
+      mediaPathOrigin: directMediaPath ? "original" : (proxyPath ? "proxy" : "none"),
+      sourceDiagnostics: {
+        isOffline,
+        isSequence,
+        isMulticam,
+        isMerged,
+        hasProxy: Boolean(proxyPath),
+        contentType: String(contentType || "")
+      },
       sequenceId,
       trackIndex,
       start,
@@ -589,6 +606,24 @@
     };
     handles.source = { app: context.app, project: context.project, sequence: context.sequence, item, descriptor };
     return descriptor;
+  }
+
+  // Let the user explicitly select the actual source file when Premiere cannot expose a NAS or composite clip path.
+  async function chooseSourceMediaFile() {
+    if (!handles.source || !handles.source.descriptor) {
+      throw new Error("Capture a source clip before choosing its media file.");
+    }
+    const storage = require("uxp").storage.localFileSystem;
+    const entry = await storage.getFileForOpening();
+    if (!entry) {
+      return null;
+    }
+    if (!entry.nativePath) {
+      throw new Error("The selected media file does not provide a local path.");
+    }
+    handles.source.descriptor.mediaPath = String(entry.nativePath);
+    handles.source.descriptor.mediaPathOrigin = "manual";
+    return { mediaPath: handles.source.descriptor.mediaPath, fileName: String(entry.name || "selected media") };
   }
 
   // Read the active sequence range so the tracker can later intersect it with the source clip.
@@ -1044,6 +1079,24 @@
     return results;
   }
 
+  // Count valid destination clips before applying so the panel can explain an empty selection without a failed transaction.
+  async function getDestinationSelectionStatus() {
+    if (!getHandleStatus().source) {
+      return { targetCount: 0, sameSequence: false };
+    }
+    const context = await getSelectionContext();
+    const sameSequence = String(context.sequence.guid || context.sequence.name || "") === handles.source.descriptor.sequenceId;
+    let targetCount = 0;
+    if (sameSequence) {
+      for (const item of context.videoItems) {
+        if (await getItemIdentity(context.sequence, item) !== handles.source.descriptor.id) {
+          targetCount += 1;
+        }
+      }
+    }
+    return { targetCount, sameSequence };
+  }
+
   // Apply the completed planar trajectory only to destination items in the captured source sequence.
   async function applySurfaceTracking(keyframes) {
     if (!getHandleStatus().source) {
@@ -1102,11 +1155,13 @@
 
   root.PMT_PREMIERE = {
     captureSelectedClip,
+    chooseSourceMediaFile,
     getActiveRange,
     exportPreviewFrame,
     exportTrackingPreviewFrame,
     exportPreviewVideo,
     getHandleStatus,
+    getDestinationSelectionStatus,
     applyTracking,
     applySurfaceTracking,
     applySurfaceMotionTracking

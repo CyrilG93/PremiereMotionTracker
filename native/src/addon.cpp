@@ -30,7 +30,7 @@ std::string readFirstStringArgument(addon_env env, addon_callback_info info) {
     std::size_t argumentCount = 1;
     Check(UxpAddonApis.uxp_addon_get_cb_info(env, info, &argumentCount, &argument, nullptr, nullptr));
     if (argumentCount != 1) {
-        throw std::invalid_argument("Un chemin média est requis.");
+        throw std::invalid_argument("A media path is required.");
     }
     std::size_t byteCount = 0;
     Check(UxpAddonApis.uxp_addon_get_value_string_utf8(env, argument, nullptr, 0, &byteCount));
@@ -59,7 +59,7 @@ void readTrackingArguments(
     std::size_t argumentCount = 6;
     Check(UxpAddonApis.uxp_addon_get_cb_info(env, info, &argumentCount, arguments, nullptr, nullptr));
     if (argumentCount != 5 && argumentCount != 6) {
-        throw std::invalid_argument("Le tracking requiert un média, un point et une plage.");
+        throw std::invalid_argument("Tracking requires media, a point, and a range.");
     }
     std::size_t byteCount = 0;
     Check(UxpAddonApis.uxp_addon_get_value_string_utf8(env, arguments[0], nullptr, 0, &byteCount));
@@ -95,7 +95,7 @@ void readSurfaceTrackingArguments(
     std::size_t argumentCount = 5;
     Check(UxpAddonApis.uxp_addon_get_cb_info(env, info, &argumentCount, arguments, nullptr, nullptr));
     if (argumentCount != 4 && argumentCount != 5) {
-        throw std::invalid_argument("Le surface tracking requiert un média, quatre coins et une plage.");
+        throw std::invalid_argument("Surface tracking requires media, four corners, and a range.");
     }
     std::size_t byteCount = 0;
     Check(UxpAddonApis.uxp_addon_get_value_string_utf8(env, arguments[0], nullptr, 0, &byteCount));
@@ -189,6 +189,8 @@ addon_value createSurfaceTrackingSample(addon_env env, const pmt::SurfaceTrackin
 struct TrackingTask {
     std::mutex mutex;
     std::vector<pmt::MediaTrackingSample> samples;
+    std::vector<pmt::SurfaceTrackingSample> surfaceSamples;
+    bool isSurface = false;
     std::string error;
     std::atomic<bool> cancelRequested { false };
     std::atomic<bool> cancelled { false };
@@ -282,7 +284,7 @@ addon_value inspectMedia(addon_env env, addon_callback_info info) {
         return result;
 #else
         (void)info;
-        throw std::runtime_error("L’addon a été construit sans OpenCV.");
+        throw std::runtime_error("The addon was built without OpenCV.");
 #endif
     } catch (...) {
         return CreateErrorFromException(env);
@@ -310,7 +312,7 @@ addon_value trackMedia(addon_env env, addon_callback_info info) {
         return result;
 #else
         (void)info;
-        throw std::runtime_error("L’addon a été construit sans OpenCV.");
+        throw std::runtime_error("The addon was built without OpenCV.");
 #endif
     } catch (...) {
         return CreateErrorFromException(env);
@@ -336,7 +338,7 @@ addon_value trackSurface(addon_env env, addon_callback_info info) {
         return result;
 #else
         (void)info;
-        throw std::runtime_error("L’addon a été construit sans OpenCV.");
+        throw std::runtime_error("The addon was built without OpenCV.");
 #endif
     } catch (...) {
         return CreateErrorFromException(env);
@@ -384,7 +386,55 @@ addon_value startTracking(addon_env env, addon_callback_info info) {
         return createString(env, taskId);
 #else
         (void)info;
-        throw std::runtime_error("L’addon a été construit sans OpenCV.");
+        throw std::runtime_error("The addon was built without OpenCV.");
+#endif
+    } catch (...) {
+        return CreateErrorFromException(env);
+    }
+}
+
+// Start planar tracking on the same cancellable worker path used by point tracking.
+addon_value startSurfaceTracking(addon_env env, addon_callback_info info) {
+    try {
+#if defined(PMT_WITH_OPENCV)
+        std::string mediaPath;
+        std::array<std::array<double, 2>, 4> corners {};
+        double startSeconds = 0.0;
+        double endSeconds = 0.0;
+        int searchRadius = 10;
+        readSurfaceTrackingArguments(env, info, mediaPath, corners, startSeconds, endSeconds, searchRadius);
+        const std::string taskId = "surface-tracking-" + std::to_string(nextTrackingTaskId.fetch_add(1));
+        const auto task = std::make_shared<TrackingTask>();
+        task->isSurface = true;
+        {
+            std::lock_guard<std::mutex> lock(trackingTasksMutex);
+            trackingTasks.emplace(taskId, task);
+        }
+        task->worker = std::thread([task, mediaPath, corners, startSeconds, endSeconds, searchRadius]() {
+            try {
+                pmt::trackSurface(mediaPath, corners, startSeconds, endSeconds, [task](const pmt::SurfaceTrackingSample& sample) {
+                    if (task->cancelRequested.load()) {
+                        return false;
+                    }
+                    // Keep only serializable corner coordinates while OpenCV owns decoded image memory.
+                    std::lock_guard<std::mutex> lock(task->mutex);
+                    task->surfaceSamples.push_back(sample);
+                    return true;
+                }, searchRadius);
+            } catch (const std::exception& error) {
+                std::lock_guard<std::mutex> lock(task->mutex);
+                if (task->cancelRequested.load()) {
+                    task->cancelled.store(true);
+                } else {
+                    task->error = error.what();
+                }
+            }
+            task->done.store(true);
+        });
+        return createString(env, taskId);
+#else
+        (void)info;
+        throw std::runtime_error("The addon was built without OpenCV.");
 #endif
     } catch (...) {
         return CreateErrorFromException(env);
@@ -403,18 +453,24 @@ addon_value pollTracking(addon_env env, addon_callback_info info) {
             std::lock_guard<std::mutex> lock(trackingTasksMutex);
             const auto iterator = trackingTasks.find(taskId);
             if (iterator == trackingTasks.end()) {
-                throw std::runtime_error("La tâche de tracking est introuvable ou déjà libérée.");
+                throw std::runtime_error("The tracking task was not found or has already been released.");
             }
             task = iterator->second;
         }
         std::vector<pmt::MediaTrackingSample> newSamples;
+        std::vector<pmt::SurfaceTrackingSample> newSurfaceSamples;
         std::string error;
         std::size_t nextIndex = 0;
         {
             std::lock_guard<std::mutex> lock(task->mutex);
-            const std::size_t safeAfterIndex = std::min(afterIndex, task->samples.size());
-            newSamples.assign(task->samples.begin() + static_cast<std::ptrdiff_t>(safeAfterIndex), task->samples.end());
-            nextIndex = task->samples.size();
+            const std::size_t sampleCount = task->isSurface ? task->surfaceSamples.size() : task->samples.size();
+            const std::size_t safeAfterIndex = std::min(afterIndex, sampleCount);
+            if (task->isSurface) {
+                newSurfaceSamples.assign(task->surfaceSamples.begin() + static_cast<std::ptrdiff_t>(safeAfterIndex), task->surfaceSamples.end());
+            } else {
+                newSamples.assign(task->samples.begin() + static_cast<std::ptrdiff_t>(safeAfterIndex), task->samples.end());
+            }
+            nextIndex = sampleCount;
             error = task->error;
         }
         const bool done = task->done.load();
@@ -425,9 +481,13 @@ addon_value pollTracking(addon_env env, addon_callback_info info) {
         addon_value result = nullptr;
         Check(UxpAddonApis.uxp_addon_create_object(env, &result));
         addon_value samples = nullptr;
-        Check(UxpAddonApis.uxp_addon_create_array_with_length(env, newSamples.size(), &samples));
-        for (std::size_t index = 0; index < newSamples.size(); index += 1) {
-            Check(UxpAddonApis.uxp_addon_set_element(env, samples, static_cast<std::uint32_t>(index), createTrackingSample(env, newSamples[index])));
+        const std::size_t returnedSampleCount = task->isSurface ? newSurfaceSamples.size() : newSamples.size();
+        Check(UxpAddonApis.uxp_addon_create_array_with_length(env, returnedSampleCount, &samples));
+        for (std::size_t index = 0; index < returnedSampleCount; index += 1) {
+            const addon_value sample = task->isSurface
+                ? createSurfaceTrackingSample(env, newSurfaceSamples[index])
+                : createTrackingSample(env, newSamples[index]);
+            Check(UxpAddonApis.uxp_addon_set_element(env, samples, static_cast<std::uint32_t>(index), sample));
         }
         Check(UxpAddonApis.uxp_addon_set_named_property(env, result, "samples", samples));
         setNumberProperty(env, result, "nextIndex", static_cast<double>(nextIndex));
@@ -442,7 +502,7 @@ addon_value pollTracking(addon_env env, addon_callback_info info) {
         return result;
 #else
         (void)info;
-        throw std::runtime_error("L’addon a été construit sans OpenCV.");
+        throw std::runtime_error("The addon was built without OpenCV.");
 #endif
     } catch (...) {
         return CreateErrorFromException(env);
@@ -457,7 +517,7 @@ addon_value cancelTracking(addon_env env, addon_callback_info info) {
         std::lock_guard<std::mutex> lock(trackingTasksMutex);
         const auto iterator = trackingTasks.find(taskId);
         if (iterator == trackingTasks.end()) {
-            throw std::runtime_error("La tâche de tracking est introuvable.");
+            throw std::runtime_error("The tracking task was not found.");
         }
         iterator->second->cancelRequested.store(true);
         addon_value result = nullptr;
@@ -465,7 +525,7 @@ addon_value cancelTracking(addon_env env, addon_callback_info info) {
         return result;
 #else
         (void)info;
-        throw std::runtime_error("L’addon a été construit sans OpenCV.");
+        throw std::runtime_error("The addon was built without OpenCV.");
 #endif
     } catch (...) {
         return CreateErrorFromException(env);
@@ -497,6 +557,7 @@ addon_value init(addon_env env, addon_value exports, const addon_apis& addonAPIs
     registerFunction(env, exports, "trackMedia", trackMedia, addonAPIs);
     registerFunction(env, exports, "trackSurface", trackSurface, addonAPIs);
     registerFunction(env, exports, "startTracking", startTracking, addonAPIs);
+    registerFunction(env, exports, "startSurfaceTracking", startSurfaceTracking, addonAPIs);
     registerFunction(env, exports, "pollTracking", pollTracking, addonAPIs);
     registerFunction(env, exports, "cancelTracking", cancelTracking, addonAPIs);
     return exports;

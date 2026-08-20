@@ -16,6 +16,8 @@
     previewBuildTotal: 0,
     previewSkipRequested: false,
     previewGenerationSkipped: false,
+    previewGenerationDeferred: false,
+    previewGenerationConfirmed: false,
     correction: null,
     confidenceThreshold: 0.65,
     searchRadius: 10,
@@ -43,6 +45,9 @@
       noMedia: "Video metadata not read",
       sourceClip: "Clip to analyze",
       capturePrepare: "Capture and prepare",
+      chooseSourceFile: "Choose source file…",
+      sourceUsesProxy: "Premiere did not expose the original path; the attached proxy will be analyzed.",
+      sourcePathUnavailable: "Premiere did not expose a usable media path. Choose the original source file to continue.",
       video: "Video",
       selectCapture: "Select and capture the clip to analyze.",
       analysisRunning: "OpenCV analysis in progress… Do not close the panel.",
@@ -86,6 +91,8 @@
       skipPreview: "Skip preview",
       skipPreviewBefore: "Skip preview generation",
       previewSkippedBefore: "Preview generation skipped",
+      longPreviewWarning: "This range contains {count} preview images. Generating them can take time and use temporary storage.",
+      generatePreview: "Generate preview images",
       start: "Start",
       previousFrame: "− frame",
       nextFrame: "+ frame",
@@ -100,6 +107,7 @@
       applySurfaceMotion: "Apply preserved motion",
       applySurfacePerspective: "Apply perspective",
       applyTrajectory: "Apply trajectory",
+      selectDestination: "Select at least one destination clip, different from the source clip, in the same sequence.",
       diagnostics: "Diagnostics",
       copy: "Copy",
       nativeEngine: "Native engine",
@@ -110,6 +118,9 @@
       noMedia: "Métadonnées vidéo non lues",
       sourceClip: "Clip à analyser",
       capturePrepare: "Capturer et préparer",
+      chooseSourceFile: "Choisir le fichier source…",
+      sourceUsesProxy: "Premiere ne fournit pas le chemin original ; le proxy associé sera analysé.",
+      sourcePathUnavailable: "Premiere ne fournit pas de chemin média exploitable. Choisissez le fichier source original pour continuer.",
       video: "Vidéo",
       selectCapture: "Sélectionnez puis capturez le clip à analyser.",
       analysisRunning: "Analyse OpenCV en cours… Ne fermez pas le panneau.",
@@ -153,6 +164,8 @@
       skipPreview: "Ignorer l’aperçu",
       skipPreviewBefore: "Ne pas générer l’aperçu",
       previewSkippedBefore: "Génération d’aperçu ignorée",
+      longPreviewWarning: "Cette plage contient {count} images d’aperçu. Leur génération peut prendre du temps et utiliser du stockage temporaire.",
+      generatePreview: "Générer les images d’aperçu",
       start: "Début",
       previousFrame: "− image",
       nextFrame: "+ image",
@@ -167,6 +180,7 @@
       applySurfaceMotion: "Appliquer le mouvement conservé",
       applySurfacePerspective: "Appliquer la perspective",
       applyTrajectory: "Appliquer la trajectoire",
+      selectDestination: "Sélectionnez au moins un clip de destination différent du clip source dans la même séquence.",
       diagnostics: "Diagnostic",
       copy: "Copier",
       nativeEngine: "Moteur natif",
@@ -194,7 +208,19 @@
 
   // Add a diagnostic line while keeping enough history for useful bug reports.
   function addLog(message) {
-    state.log.push(String(message));
+    // Keep diagnostics in English whenever the panel is in English, including legacy Premiere bridge errors.
+    const rawMessage = String(message);
+    let englishMessage = state.language === "en"
+      ? rawMessage
+        .replace(/Sélectionnez au moins un clip de destination différent du clip source\./g, "Select at least one destination clip different from the source clip.")
+        .replace(/Le fichier de prévisualisation reste introuvable après attente\./g, "The preview file was not found before the timeout.")
+        .replace(/Aucun fichier détecté\./g, "No files detected.")
+      : rawMessage;
+    if (state.language === "en" && /[À-ÿ]|\b(Aucune|Aucun|Capturez|Cette|Impossible|Les|Le|La|Ouvrez|Sélectionnez)\b/.test(englishMessage)) {
+      // Native host errors can arrive in Premiere's French locale; never mix them into an English diagnostic.
+      englishMessage = "Premiere reported a localized error. Switch the panel to French for the original host message.";
+    }
+    state.log.push(englishMessage);
     state.log = state.log.slice(-100);
   }
 
@@ -212,6 +238,8 @@
     state.previewBuildCount = 0;
     state.previewBuildTotal = 0;
     state.previewSkipRequested = false;
+    state.previewGenerationDeferred = false;
+    state.previewGenerationConfirmed = false;
     state.correction = null;
     state.liveSamples = [];
     state.analysisTaskId = "";
@@ -440,6 +468,7 @@
       '      ' + buttonMarkup("pmt-capture-source", t("capturePrepare"), [], state.busy),
       '    </div>',
       state.source ? '    <div class="pmt-label">' + escapeHtml(t("video")) + ': ' + escapeHtml(mediaLabel(state.media)) + '</div>' : '',
+      state.source && !state.media && nativeStatus.available ? '    <div class="pmt-label">' + escapeHtml(t("sourcePathUnavailable")) + '</div>' + buttonMarkup("pmt-choose-source-media", t("chooseSourceFile"), ["pmt-button-full"], state.busy) : '',
       state.source ? '    <div class="pmt-settings"><div class="pmt-label">' + escapeHtml(t("trackingMode")) + '</div><div class="pmt-actions">' + buttonMarkup("pmt-mode-point", t("pointMode"), [], !canPrepare || !surfaceMode) + buttonMarkup("pmt-mode-surface", t("surfaceMode"), [], !canPrepare || surfaceMode) + '</div></div>' : '',
       state.source ? '    <div class="pmt-settings"><div class="pmt-label">' + escapeHtml(t("searchArea", { value: state.searchRadius })) + '</div><sp-slider class="pmt-setting-slider" id="pmt-search-radius" min="5" max="40" step="1" value="' + String(state.searchRadius) + '"' + (canPrepare ? '' : ' disabled') + ' aria-label="' + escapeHtml(t("searchArea", { value: state.searchRadius })) + '"></sp-slider></div>' : '',
       state.source ? '    <div class="pmt-settings"><div class="pmt-label">' + escapeHtml(t("confidenceThreshold", { value: Math.round(state.confidenceThreshold * 100) })) + '</div><sp-slider class="pmt-setting-slider" id="pmt-confidence-threshold" min="0.1" max="1" step="0.05" value="' + String(state.confidenceThreshold) + '"' + (canPrepare ? '' : ' disabled') + ' aria-label="' + escapeHtml(t("confidenceThreshold", { value: Math.round(state.confidenceThreshold * 100) })) + '"></sp-slider></div>' : '',
@@ -453,7 +482,7 @@
       !playbackFrame && surfaceMode && state.preview ? '    <div class="pmt-label">' + escapeHtml(t("surfaceHelp")) + ' (' + String(state.referenceCorners.length) + '/4)</div>' : '',
       '    <div class="pmt-actions">',
       '      ' + buttonMarkup("pmt-analyze", analyzeLabel, ["pmt-button-primary"], !canAnalyze),
-      state.operation === "analysis" && !surfaceMode ? '      ' + buttonMarkup("pmt-cancel-analysis", t("cancelAnalysis"), [], state.cancelRequested) : '',
+      state.operation === "analysis" ? '      ' + buttonMarkup("pmt-cancel-analysis", t("cancelAnalysis"), [], state.cancelRequested) : '',
       '      ' + buttonMarkup("pmt-play-preview", state.previewPlaying ? t("pause") : t("play"), [], !canPlayPreview),
       !playbackFrame && surfaceMode ? '      ' + buttonMarkup("pmt-reset-surface", t("resetSurface"), [], !state.referenceCorners.length || state.busy) : '',
       state.operation === "preview" ? '      ' + buttonMarkup("pmt-skip-preview", t("skipPreview"), [], state.previewSkipRequested) : '',
@@ -461,11 +490,13 @@
       playbackFrame ? '      ' + buttonMarkup("pmt-preview-reset", t("start"), [], !canPlayPreview) : '',
       playbackFrame ? '      ' + buttonMarkup("pmt-next-uncertain", t("nextUncertain"), [], !uncertainIndexes.length || state.busy) : '',
       '    </div>',
+      state.previewGenerationDeferred ? '    <div class="pmt-label">' + escapeHtml(t("longPreviewWarning", { count: state.previewBuildTotal })) + '</div>' + buttonMarkup("pmt-generate-long-preview", t("generatePreview"), ["pmt-button-full", "pmt-button-primary"], state.busy) : '',
       playbackFrame && !surfaceMode ? '    ' + buttonMarkup("pmt-retrack-from-here", t("retrackFromHere"), ["pmt-button-full", "pmt-button-primary"], !canRetrack) : '',
       '  </div>',
       '  <div class="pmt-card">',
       '    <h2 class="pmt-card-title">' + escapeHtml(t("applyTitle")) + '</h2>',
       '    <div class="pmt-label">' + escapeHtml(surfaceMode ? t("applySurfaceHelp") : t("applyHelp")) + '</div>',
+      canApplyTracking ? '    <div class="pmt-label">' + escapeHtml(t("selectDestination")) + '</div>' : '',
       !surfaceMode ? '    ' + checkboxMarkup("pmt-toggle-smoothing", state.smoothingEnabled ? t("smoothing") : t("rawTrajectory"), state.smoothingEnabled, !canPrepare) : '',
       '    ' + buttonMarkup("pmt-apply-tracking", surfaceMode ? t("applySurfacePerspective") : t("applyTrajectory"), ["pmt-button-full"], !canApplyTracking),
       '  </div>',
@@ -594,6 +625,14 @@
       addLog("Tracking preview generation skipped by user.");
       return false;
     }
+    if (samples.length > 600 && !state.previewGenerationConfirmed) {
+      // Require an explicit decision before a long full-frame preview can consume substantial temporary storage.
+      state.previewGenerationDeferred = true;
+      state.previewBuildTotal = samples.length;
+      addLog("Preview generation requires confirmation for " + samples.length + " images.");
+      return false;
+    }
+    state.previewGenerationDeferred = false;
     const frames = [];
     state.operation = "preview";
     state.previewBuildCount = 0;
@@ -629,6 +668,38 @@
     state.previewGenerationSkipped = !state.previewGenerationSkipped;
     addLog(state.previewGenerationSkipped ? "Tracking preview generation will be skipped." : "Tracking preview generation enabled.");
     render(rootNode);
+  }
+
+  // Resume a deliberately confirmed long preview after tracking has already completed successfully.
+  async function generateDeferredPreview(rootNode) {
+    if (!state.previewGenerationDeferred || state.busy) {
+      return;
+    }
+    state.previewGenerationConfirmed = true;
+    state.busy = true;
+    try {
+      await buildTrackingPreview(rootNode);
+    } catch (error) {
+      clearTrackingPreview();
+      addLog("Preview unavailable: " + (error && error.message ? error.message : String(error)));
+    } finally {
+      state.busy = false;
+      state.operation = "";
+      refreshAfterHostWork(rootNode, false);
+    }
+  }
+
+  // Summarize Premiere's source-item diagnostics without exposing NAS paths in the copied support log.
+  function sourcePathDiagnostic(clip) {
+    const details = clip && clip.sourceDiagnostics ? clip.sourceDiagnostics : {};
+    const flags = [];
+    if (details.isOffline) flags.push("offline");
+    if (details.isSequence) flags.push("sequence/nest");
+    if (details.isMulticam) flags.push("multicam");
+    if (details.isMerged) flags.push("merged clip");
+    if (details.hasProxy) flags.push("proxy attached");
+    if (details.contentType) flags.push("content type " + details.contentType);
+    return flags.length ? flags.join(" · ") : "no compatible file-backed media type reported";
   }
 
   // Toggle image playback without rebuilding the panel or its diagnostics section.
@@ -703,8 +774,11 @@
       clearTrackingPreview();
       addLog("Source captured: " + clip.name);
       if (!clip.mediaPath) {
-        addLog("Warning: Premiere did not return a media path for this source.");
+        addLog("Warning: Premiere did not return a usable media path for this source (" + sourcePathDiagnostic(clip) + ").");
       } else {
+        if (clip.mediaPathOrigin === "proxy") {
+          addLog(t("sourceUsesProxy"));
+        }
         const nativeStatus = await root.PMT_NATIVE.initialize();
         if (!nativeStatus.available) {
           addLog("OpenCV reading unavailable: " + (nativeStatus.error || "addon not loaded"));
@@ -723,6 +797,36 @@
     } finally {
       state.busy = false;
       refreshAfterHostWork(rootNode, true);
+    }
+  }
+
+  // Inspect a manually selected source file and keep the captured sequence range ready for analysis.
+  async function chooseSourceMedia(rootNode) {
+    if (!state.source || state.busy) {
+      return;
+    }
+    state.busy = true;
+    render(rootNode);
+    try {
+      const selected = await root.PMT_PREMIERE.chooseSourceMediaFile();
+      if (!selected) {
+        addLog("Manual source selection cancelled.");
+        return;
+      }
+      state.source.mediaPath = selected.mediaPath;
+      state.source.mediaPathOrigin = "manual";
+      const nativeStatus = await root.PMT_NATIVE.initialize();
+      if (!nativeStatus.available) {
+        throw new Error(nativeStatus.error || "OpenCV media reading is unavailable.");
+      }
+      state.media = await root.PMT_NATIVE.inspectMedia(selected.mediaPath);
+      addLog("Manual source file selected: " + selected.fileName + ".");
+      addLog("OpenCV media: " + mediaLabel(state.media) + ".");
+    } catch (error) {
+      addLog("Manual source error: " + (error && error.message ? error.message : String(error)));
+    } finally {
+      state.busy = false;
+      refreshAfterHostWork(rootNode, false);
     }
   }
 
@@ -1001,8 +1105,14 @@
       const mediaRange = getTrackingMediaRange();
       let samples;
       if (isSurfaceMode()) {
-        // The planar tracker follows the original selected media while the preview remains Premiere-rendered.
-        samples = await root.PMT_NATIVE.trackSurface(state.source.mediaPath, state.referenceCorners, mediaRange.startSeconds, mediaRange.endSeconds, state.searchRadius);
+        // Use the cancellable worker for planar tracking as well as point tracking.
+        state.analysisTaskId = await root.PMT_NATIVE.startSurfaceTracking(state.source.mediaPath, state.referenceCorners, mediaRange.startSeconds, mediaRange.endSeconds, state.searchRadius);
+        if (state.cancelRequested) {
+          await root.PMT_NATIVE.cancelTracking(state.analysisTaskId);
+          throw new Error("Tracking cancelled.");
+        }
+        samples = await collectLiveTracking(rootNode, state.analysisTaskId);
+        state.analysisTaskId = "";
       } else {
         state.analysisTaskId = await root.PMT_NATIVE.startTracking(state.source.mediaPath, state.referencePoint, mediaRange.startSeconds, mediaRange.endSeconds, state.searchRadius);
         if (state.cancelRequested) {
@@ -1092,6 +1202,11 @@
     render(rootNode);
     try {
       const surfaceMode = isSurfaceMode();
+      const destinationStatus = await root.PMT_PREMIERE.getDestinationSelectionStatus();
+      if (!destinationStatus.sameSequence || !destinationStatus.targetCount) {
+        addLog(t("selectDestination"));
+        return;
+      }
       // Anchor point trajectories to their first actual sample; surface trajectories retain their exact four-corner shape.
       const trajectoryForApply = !surfaceMode && state.smoothingEnabled ? root.PMT_TRAJECTORY.smoothTrackingSamples(state.tracking) : state.tracking;
       const keyframes = surfaceMode ? root.PMT_TRAJECTORY.buildSurfaceKeyframes(trajectoryForApply) : root.PMT_TRAJECTORY.buildPositionKeyframes(trajectoryForApply);
@@ -1200,6 +1315,7 @@
       render(rootNode);
     });
     bindButton(rootNode, "pmt-capture-source", () => captureAndPrepare(rootNode));
+    bindButton(rootNode, "pmt-choose-source-media", () => chooseSourceMedia(rootNode));
     bindButton(rootNode, "pmt-mode-point", () => {
       state.trackingMode = "point";
       state.tracking = null;
@@ -1220,6 +1336,7 @@
     bindButton(rootNode, "pmt-play-preview", () => toggleTrackingPreview(rootNode));
     bindButton(rootNode, "pmt-skip-preview", () => skipTrackingPreview(rootNode));
     bindButton(rootNode, "pmt-toggle-preview-generation", () => togglePreviewGeneration(rootNode));
+    bindButton(rootNode, "pmt-generate-long-preview", () => generateDeferredPreview(rootNode));
     bindButton(rootNode, "pmt-preview-reset", () => showTrackingPreviewFrame(rootNode, 0));
     bindButton(rootNode, "pmt-reset-surface", () => {
       state.referenceCorners = [];

@@ -1,70 +1,79 @@
 # Premiere Motion Tracker
 
-Premiere Motion Tracker est un plugin en cours de développement pour suivre un point dans une vidéo et appliquer son mouvement à un autre clip Adobe Premiere Pro.
+Premiere Motion Tracker tracks a point or a flat surface in a Premiere Pro sequence and applies that motion to one or more other clips.
 
-La première version visera un flux simple : sélectionner le clip à analyser, poser un point, corriger les éventuelles dérives, puis sélectionner un ou plusieurs clips de destination et créer automatiquement leurs keyframes Position sur un effet Transform.
+Use Point mode to transfer position movement to a logo, title, image, or video. Use Surface mode (beta) to place a clip onto a tracked four-corner surface with Corner Pin.
 
-## État du projet
+## Compatibility
 
-Le projet est actuellement au jalon 0.4.15. En plus du suivi de point, le panneau propose un mode Surface expérimental : placez manuellement les quatre coins d’une surface plane sur l’image In, dans l’ordre haut gauche, haut droit, bas droit, bas gauche, puis ajustez chaque poignée indépendamment par glisser-déposer. Un quadrilatère orange translucide avec un contour pointillé matérialise la zone analysée et suit les quatre coins durant l’aperçu. OpenCV suit les détails contenus dans le média source et estime sa perspective image par image. L’aperçu PNG montre chaque image trackée sur la plage analysée ; à l’application, Corner Pin ajuste le média cible aux quatre coins. Le mode Point, ses corrections et son lissage restent inchangés. Le paquet macOS ARM64 embarque les dépendances indirectes déclarées via `@rpath`, signe chaque composant natif avec Developer ID et peut être envoyé à la notarisation Apple.
+- macOS on Apple Silicon (M-series Macs)
+- Adobe Premiere Pro 26.2 or later
+- Adobe Creative Cloud Desktop
 
-La prévisualisation animée reste fondée sur des images PNG rendues par Premiere, pas sur le lecteur vidéo UXP. Pendant la préparation, seul le bandeau d’avancement est actualisé afin que le diagnostic reste visible. Le tracking continue d’analyser le média source d’origine.
+The current macOS package does not support Intel Macs or Windows.
 
-Le panneau se fait défiler verticalement lorsque sa hauteur est insuffisante. Le tracking et les aperçus conservent les proportions réelles de la séquence : les formats paysage, carré, vertical et ultra-large sont pris en charge, sans être limités au 16:9.
+## Install
 
-## Tester le prototype
+1. Download the `.ccx` installer from a trusted source.
+2. Double-click the `.ccx` file. Adobe Creative Cloud Desktop opens automatically.
+3. Choose **Install** and accept the requested permissions. macOS may ask for an administrator password because the plugin includes a native video-analysis engine.
+4. Restart Premiere Pro if it was already open.
+5. In Premiere Pro, open **Window > UXP Plugins > Motion Tracker**.
 
-Prérequis :
+To remove the plugin, open Creative Cloud Desktop, go to **Plugins > Manage Plugins**, find Premiere Motion Tracker, then choose **Uninstall**.
 
-- Adobe Premiere Pro 26.2 ou plus récent ;
-- UXP Developer Tool 2.2 ou plus récent ;
-- mode développeur activé dans les préférences Plugins de Premiere.
+## Before You Start
 
-Dans UXP Developer Tool, ajoutez le dossier du projet, chargez le plugin, puis ouvrez `Fenêtre > UXP Plugins > Motion Tracker` dans Premiere. Après une modification du manifeste ou de l’addon natif, utilisez `Unload`, puis `Load` : `Reload` ne recharge pas ces éléments. Le diagnostic doit alors indiquer `Native engine loaded`, sa version et `self-test ok`.
+1. Open the sequence you want to work in.
+2. Set the sequence In and Out points to the part you want to track.
+3. Put the source clip in the timeline and select it.
 
-L’aperçu est généré dans l’espace temporaire privé du plugin : aucune autorisation supplémentaire de lecture des fichiers utilisateur n’est nécessaire.
+The source and destination clips must be in the same sequence.
 
-Pour tester la capture :
+## Track a Point
 
-1. Placez les In/Out de la séquence, sélectionnez le clip vidéo dans la timeline puis cliquez sur `Capturer et préparer`.
-2. Cliquez dans l’image fixe pour poser le point, puis sur `Analyze` pour calculer la trajectoire sur la plage visible du clip.
-3. Si vous ne voulez pas d’aperçu, activez `Skip preview generation` avant ou pendant l’analyse : le tracking sera conservé sans exporter les PNG. Pendant une analyse de point, utilisez `Cancel analysis` pour l’arrêter proprement ; aucune trajectoire partielle n’est conservée. Sinon, après l’analyse, attendez l’export des images de prévisualisation. Utilisez `Play`, `Start` ou la réglette pour revoir le point ; `Skip preview` conserve le tracking sans attendre tous les exports.
-4. Pour corriger un décalage, placez la réglette sur l’image concernée, cliquez le bon emplacement du point, puis choisissez `Relancer depuis cette image`. Les images antérieures restent conservées et seule la suite est recalculée.
-5. Les marqueurs jaunes et `Suivante incertaine` donnent accès aux passages sous le seuil de confiance. Réduisez le seuil pour signaler moins d’images, ou augmentez la zone de recherche si le mouvement est plus rapide.
-6. Conservez `Lissage léger à l’application` pour atténuer les petites vibrations ; désactivez-le si vous voulez appliquer la trajectoire brute.
-7. Sélectionnez ensuite un ou plusieurs clips de destination dans la timeline.
-8. Cliquez sur `Appliquer la trajectoire` pour ajouter un effet Transform et une clé Position par image valide à chaque clip sélectionné.
+1. Select the source clip and click **Capture and prepare**.
+2. Click the preview image to place the tracking point.
+3. Adjust **Search area** if the point moves quickly.
+4. Click **Analyze**.
+5. During analysis, use **Cancel analysis** if you need to stop. No partial tracking data is kept.
+6. After tracking, review the result with **Play**, the frame slider, or the yellow confidence markers.
+7. To fix a drift, select the affected frame, click the correct point, then click **Re-track from here**.
+8. Select one or more destination clips in the timeline.
+9. Click **Apply trajectory**.
 
-Pour tester une surface, choisissez `Surface (bêta)` dans la carte Source. Cliquez les quatre coins de la surface dans l’ordre indiqué, puis analysez. Sélectionnez ensuite le clip à projeter et appliquez la surface avec Corner Pin. Le suivi est adapté aux surfaces planes, texturées et visibles ; les surfaces floues, réfléchissantes ou occultées peuvent perdre le tracking.
+The plugin adds a Transform effect and Position keyframes to every selected destination clip. Use Premiere Pro's **Edit > Undo** to remove the applied result.
 
-Le manifeste demande l’autorisation d’accéder aux fichiers locaux afin que le moteur natif puisse analyser le média sélectionné et que Premiere puisse déposer les aperçus temporaires. Cette autorisation ne sert pas à téléverser des fichiers.
+## Preview Options
 
-Le choix des destinations se fait volontairement après l’analyse : une même trajectoire peut ainsi être appliquée à plusieurs clips. L’amplitude du mouvement est automatiquement compensée selon les dimensions et l’échelle Motion de chaque média cible : un petit logo suit donc le même déplacement visuel qu’un média plein écran. Les Graphics Layers restent compatibles et utilisent directement le canevas de la séquence. L’application modifie le projet Premiere ; dans ce prototype, utilisez Annuler pour retirer les clés et l’effet Transform ajoutés.
+The preview contains every tracked frame in the selected range. On long clips, generating it can take time.
 
-Le diagnostic peut être copié avec le bouton `Copy` (ou `Copier` en français). Il reste sélectionnable avec `Ctrl+C` et isolé de l’aperçu pendant la lecture. Si Premiere refuse temporairement l’accès au presse-papiers après une mise à jour du plugin, retirez puis ajoutez à nouveau le plugin dans UXP Developer Tool afin de recharger les permissions du manifest.
+- Enable **Skip preview generation** before or during analysis to keep the tracking result without exporting preview images.
+- Use **Skip preview** while images are being generated to stop the remaining preview export.
+- Enable **Light smoothing when applying** to reduce small position jitters, or disable it to apply the raw motion.
 
-L’interface est en anglais par défaut. Utilisez le bouton `FR` dans l’en-tête pour basculer les contrôles en français.
+## Track a Surface (Beta)
 
-## Prochaines étapes
+1. Capture and prepare a source clip.
+2. Choose **Surface (beta)**.
+3. Click the four corners of the surface in this order: top-left, top-right, bottom-right, bottom-left.
+4. Drag the numbered handles to refine the selection.
+5. Click **Analyze**.
+6. Select the destination clip and click **Apply perspective**.
 
-- Valider le lecteur vidéo et le suivi en direct sur des codecs, résolutions et systèmes macOS/Windows variés.
-- Ajouter la correction manuelle des images incertaines et la reprise du tracking après correction.
-- Ajouter une zone de recherche, un score de confiance exploitable et des options de lissage.
-- Tester les durées longues, 4K, différentes cadences et les remappages temporels refusés.
-- Construire et valider les addons macOS Apple Silicon et Intel.
+Surface mode works best with flat, textured, clearly visible surfaces. It can be unreliable on blurred, reflective, heavily occluded, or strongly deforming surfaces.
 
-## Développement
+## Formats, Privacy, and Limitations
 
-Les vérifications locales ne nécessitent aucune dépendance npm :
+- Landscape, square, vertical, and ultra-wide sequence formats are supported; tracking is not limited to 16:9.
+- Reversed clips are not supported. Variable time remapping may not track accurately.
+- Fast movement, motion blur, poor lighting, or low-detail areas can reduce tracking accuracy.
+- Point tracking requires at least two valid tracked frames.
+- The plugin requires local file access only to analyze the selected media and create temporary previews. It does not upload media.
+- The **Copy** button copies diagnostics to the clipboard for troubleshooting.
 
-```powershell
-npm run verify
-```
-
-La construction du moteur natif demande le SDK Adobe UXP Hybrid, Visual Studio avec les outils C++, CMake, vcpkg et OpenCV. Sur Windows, la configuration actuelle utilise Media Foundation pour décoder les médias et lie OpenCV statiquement dans l’addon afin que Premiere puisse le charger sans DLL OpenCV externes. Ces dépendances seront intégrées au produit final : l’utilisateur n’aura pas à installer Python ou OpenCV séparément.
-
-Le plan complet est disponible dans [docs/DEVELOPMENT_PLAN.md](docs/DEVELOPMENT_PLAN.md).
+Use the **FR** button in the panel header to switch the interface to French.
 
 ## Changelog
 
-Aucune version publique n’a encore été publiée.
+No public release has been published yet.

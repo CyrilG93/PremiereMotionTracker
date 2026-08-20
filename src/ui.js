@@ -15,6 +15,7 @@
     previewBuildCount: 0,
     previewBuildTotal: 0,
     previewSkipRequested: false,
+    previewGenerationSkipped: false,
     correction: null,
     confidenceThreshold: 0.65,
     searchRadius: 10,
@@ -83,6 +84,8 @@
       sourceTitle: "1. Tracking source",
       previewTitle: "2. Preview",
       skipPreview: "Skip preview",
+      skipPreviewBefore: "Skip preview generation",
+      previewSkippedBefore: "Preview generation skipped",
       start: "Start",
       previousFrame: "− frame",
       nextFrame: "+ frame",
@@ -148,6 +151,8 @@
       sourceTitle: "1. Source du tracking",
       previewTitle: "2. Prévisualisation",
       skipPreview: "Ignorer l’aperçu",
+      skipPreviewBefore: "Ne pas générer l’aperçu",
+      previewSkippedBefore: "Génération d’aperçu ignorée",
       start: "Début",
       previousFrame: "− image",
       nextFrame: "+ image",
@@ -452,6 +457,7 @@
       '      ' + buttonMarkup("pmt-play-preview", state.previewPlaying ? t("pause") : t("play"), [], !canPlayPreview),
       !playbackFrame && surfaceMode ? '      ' + buttonMarkup("pmt-reset-surface", t("resetSurface"), [], !state.referenceCorners.length || state.busy) : '',
       state.operation === "preview" ? '      ' + buttonMarkup("pmt-skip-preview", t("skipPreview"), [], state.previewSkipRequested) : '',
+      !playbackFrame && state.preview && (state.operation === "" || state.operation === "analysis") ? '      ' + buttonMarkup("pmt-toggle-preview-generation", state.previewGenerationSkipped ? t("previewSkippedBefore") : t("skipPreviewBefore"), state.previewGenerationSkipped ? ["pmt-button-primary"] : [], false) : '',
       playbackFrame ? '      ' + buttonMarkup("pmt-preview-reset", t("start"), [], !canPlayPreview) : '',
       playbackFrame ? '      ' + buttonMarkup("pmt-next-uncertain", t("nextUncertain"), [], !uncertainIndexes.length || state.busy) : '',
       '    </div>',
@@ -583,6 +589,11 @@
   // Export every tracked frame so preview duration and navigation match the effective analyzed range.
   async function buildTrackingPreview(rootNode) {
     const samples = Array.isArray(state.tracking) ? state.tracking.slice() : [];
+    if (state.previewGenerationSkipped) {
+      // Honor the choice made before analysis completes without mounting or exporting preview PNGs.
+      addLog("Tracking preview generation skipped by user.");
+      return false;
+    }
     const frames = [];
     state.operation = "preview";
     state.previewBuildCount = 0;
@@ -611,6 +622,13 @@
   function skipTrackingPreview(rootNode) {
     state.previewSkipRequested = true;
     updatePreviewBuildStatus(rootNode);
+  }
+
+  // Let users opt out before tracking completes, while preserving the existing in-progress export skip action.
+  function togglePreviewGeneration(rootNode) {
+    state.previewGenerationSkipped = !state.previewGenerationSkipped;
+    addLog(state.previewGenerationSkipped ? "Tracking preview generation will be skipped." : "Tracking preview generation enabled.");
+    render(rootNode);
   }
 
   // Toggle image playback without rebuilding the panel or its diagnostics section.
@@ -1201,6 +1219,7 @@
     bindButton(rootNode, "pmt-cancel-analysis", () => cancelAnalysis(rootNode));
     bindButton(rootNode, "pmt-play-preview", () => toggleTrackingPreview(rootNode));
     bindButton(rootNode, "pmt-skip-preview", () => skipTrackingPreview(rootNode));
+    bindButton(rootNode, "pmt-toggle-preview-generation", () => togglePreviewGeneration(rootNode));
     bindButton(rootNode, "pmt-preview-reset", () => showTrackingPreviewFrame(rootNode, 0));
     bindButton(rootNode, "pmt-reset-surface", () => {
       state.referenceCorners = [];

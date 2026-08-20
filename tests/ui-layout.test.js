@@ -66,6 +66,9 @@ test("tracking preview replays Premiere-rendered image frames without replacing 
   assert.match(uiSource, /buildTrackingPreview/);
   assert.match(uiSource, /Array\.isArray\(state\.tracking\) \? state\.tracking\.slice\(\) : \[\]/);
   assert.doesNotMatch(uiSource, /selectPreviewSamples/);
+  assert.match(uiSource, /pmt-toggle-preview-generation/);
+  assert.match(uiSource, /state\.previewGenerationSkipped/);
+  assert.match(uiSource, /Tracking preview generation skipped by user/);
   assert.match(uiSource, /pmt-tracking-image-a/);
   assert.match(uiSource, /pmt-tracking-image-b/);
   assert.match(uiSource, /updatePreviewBuildStatus/);

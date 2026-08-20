@@ -64,7 +64,8 @@ test("the In point frame is exported and accepts a normalized tracking point", (
 
 test("tracking preview replays Premiere-rendered image frames without replacing diagnostics", () => {
   assert.match(uiSource, /buildTrackingPreview/);
-  assert.match(uiSource, /selectPreviewSamples\(state\.tracking, 120\)/);
+  assert.match(uiSource, /Array\.isArray\(state\.tracking\) \? state\.tracking\.slice\(\) : \[\]/);
+  assert.doesNotMatch(uiSource, /selectPreviewSamples/);
   assert.match(uiSource, /pmt-tracking-image-a/);
   assert.match(uiSource, /pmt-tracking-image-b/);
   assert.match(uiSource, /updatePreviewBuildStatus/);

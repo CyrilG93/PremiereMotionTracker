@@ -2,7 +2,7 @@
   "manifestVersion": 6,
   "id": "com.cyrilplugin.premieremotiontracker",
   "name": "Premiere Motion Tracker",
-  "version": "0.4.13",
+  "version": "0.4.14",
   "main": "index.html",
   "host": {
     "app": "premierepro",
@@ -14,7 +14,7 @@
     "enableAddon": true
   },
   "addon": {
-    "name": "premiere-motion-tracker-0.4.13.uxpaddon"
+    "name": "premiere-motion-tracker-0.4.14.uxpaddon"
   },
   "entrypoints": [
     {

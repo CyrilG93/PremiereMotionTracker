@@ -580,9 +580,9 @@
     }, 83);
   }
 
-  // Export a bounded sequence of Premiere PNGs after tracking, then make it available for replay.
+  // Export every tracked frame so preview duration and navigation match the effective analyzed range.
   async function buildTrackingPreview(rootNode) {
-    const samples = root.PMT_TRAJECTORY.selectPreviewSamples(state.tracking, 120);
+    const samples = Array.isArray(state.tracking) ? state.tracking.slice() : [];
     const frames = [];
     state.operation = "preview";
     state.previewBuildCount = 0;

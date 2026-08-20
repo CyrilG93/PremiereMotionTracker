@@ -226,21 +226,6 @@
     };
   }
 
-  // Keep the review bounded on unusually long ranges while retaining its first and last tracked frames.
-  function selectPreviewSamples(samples, maximumFrames) {
-    const source = Array.isArray(samples) ? samples.slice() : [];
-    const limit = Math.max(2, Math.floor(Number(maximumFrames) || 180));
-    if (source.length <= limit) {
-      return source;
-    }
-    const selected = [];
-    for (let index = 0; index < limit; index += 1) {
-      const sourceIndex = Math.round(index * (source.length - 1) / (limit - 1));
-      selected.push(source[sourceIndex]);
-    }
-    return selected;
-  }
-
   // Keep the approved prefix and replace every later sample after a manual correction.
   function replaceTrackingTail(samples, replacement) {
     const original = Array.isArray(samples) ? samples : [];
@@ -265,7 +250,6 @@
     buildSurfaceMotionKeyframes,
     computeTargetPositionScale,
     computeCornerPinPoint,
-    selectPreviewSamples,
     replaceTrackingTail
   };
 }));

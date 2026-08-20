@@ -20,6 +20,12 @@ test("interactive rows use flex instead of hidden UXP grid layouts", () => {
   assert.doesNotMatch(styles, /display:\s*grid;/);
 });
 
+test("the complete docked panel scrolls when its controls exceed the available height", () => {
+  assert.match(styles, /html,\s*body,\s*#pmt-root\s*\{[^}]*height:\s*100%;/s);
+  assert.match(styles, /#pmt-root\s*\{[^}]*overflow-y:\s*auto;/s);
+  assert.match(styles, /\.pmt-shell\s*\{[^}]*min-height:\s*100%;/s);
+});
+
 test("panel cards use simple div containers in Premiere UXP", () => {
   assert.doesNotMatch(uiSource, /<\/?section/);
   assert.match(uiSource, /<div class="pmt-card">/);

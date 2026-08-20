@@ -140,6 +140,15 @@ test("computeTargetPositionScale preserves Graphics Layers using the sequence ca
   assert.deepEqual(scale, { x: 1, y: 1 });
 });
 
+test("computeTargetPositionScale keeps portrait sequence motion independent of aspect ratio", () => {
+  const scale = trajectoryApi.computeTargetPositionScale(
+    { width: 1080, height: 1920 },
+    { width: 108, height: 192 },
+    { x: 100, y: 100 }
+  );
+  assert.deepEqual(scale, { x: 10, y: 10 });
+});
+
 test("computeCornerPinPoint reverses target Motion before writing local Corner Pin coordinates", () => {
   const point = trajectoryApi.computeCornerPinPoint(
     { width: 1920, height: 1080 },
@@ -160,6 +169,16 @@ test("computeCornerPinPoint accounts for a resized target clip", () => {
     { x: 0.75, y: 0.25 }
   );
   assert.deepEqual(point, { x: 5.3, y: -0.85 });
+});
+
+test("computeCornerPinPoint preserves normalized corners in a portrait sequence", () => {
+  const point = trajectoryApi.computeCornerPinPoint(
+    { width: 1080, height: 1920 },
+    { width: 1080, height: 1920 },
+    { position: { x: 540, y: 960 }, anchor: { x: 540, y: 960 }, scale: { x: 100, y: 100 } },
+    { x: 0.2, y: 0.8 }
+  );
+  assert.deepEqual(point, { x: 0.2, y: 0.8 });
 });
 
 test("selectPreviewSamples bounds a long cached review while preserving both ends", () => {

@@ -3,8 +3,12 @@
 #include <opencv2/videoio.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
-// Expose OpenCV 4 feature detectors used to seed the planar surface tracker.
+// OpenCV 5 moved goodFeaturesToTrack out of the legacy features2d header.
+#if CV_VERSION_MAJOR >= 5
+#include <opencv2/features.hpp>
+#else
 #include <opencv2/features2d.hpp>
+#endif
 #include <opencv2/video/tracking.hpp>
 #include <opencv2/calib3d.hpp>
 

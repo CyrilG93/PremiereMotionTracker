@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(PremiereMotionTrackerAddon VERSION 0.4.10 LANGUAGES CXX)
+project(PremiereMotionTrackerAddon VERSION 0.4.11 LANGUAGES CXX)
 
 # Enable the OpenCV media decoder only in builds configured with vcpkg.
 option(PMT_ENABLE_OPENCV "Build OpenCV media inspection support" OFF)
@@ -20,7 +20,17 @@ endif()
 if(PMT_ENABLE_OPENCV)
   # OpenCV videoio uses Microsoft Media Foundation on the current Windows build.
   # The planar tracker detects corners inside the selected surface before estimating its homography.
-  find_package(OpenCV CONFIG REQUIRED COMPONENTS core imgproc imgcodecs video videoio features2d)
+  # Request only the modules used by the tracker; OpenCV 5 no longer exports the legacy features2d target.
+  find_package(OpenCV CONFIG REQUIRED COMPONENTS core imgproc imgcodecs video videoio)
+  set(PMT_OPENCV_TRACKING_LIBS ${OpenCV_LIBS})
+  if(OpenCV_VERSION VERSION_GREATER_EQUAL "5.0")
+    # OpenCV 5 moved findHomography into its geometry module.
+    find_package(OpenCV CONFIG REQUIRED COMPONENTS geometry)
+  else()
+    # OpenCV 4 provides findHomography through the legacy calib3d module.
+    find_package(OpenCV CONFIG REQUIRED COMPONENTS calib3d)
+  endif()
+  list(APPEND PMT_OPENCV_TRACKING_LIBS ${OpenCV_LIBS})
   # Detect static OpenCV so the Hybrid addon does not expect sidecar DLLs at runtime.
   get_target_property(PMT_OPENCV_CORE_TYPE opencv_core TYPE)
   # Derive the triplet bin directory from vcpkg's OpenCV package config location.
@@ -29,7 +39,7 @@ if(PMT_ENABLE_OPENCV)
   add_library(PremiereMotionTrackerMedia STATIC src/media_inspector.cpp)
   target_compile_features(PremiereMotionTrackerMedia PUBLIC cxx_std_17)
   target_include_directories(PremiereMotionTrackerMedia PUBLIC include)
-  target_link_libraries(PremiereMotionTrackerMedia PUBLIC ${OpenCV_LIBS})
+  target_link_libraries(PremiereMotionTrackerMedia PUBLIC ${PMT_OPENCV_TRACKING_LIBS})
   if(MSVC)
     # Preserve French diagnostic strings encoded as UTF-8 in the native sources.
     target_compile_options(PremiereMotionTrackerMedia PRIVATE /utf-8)

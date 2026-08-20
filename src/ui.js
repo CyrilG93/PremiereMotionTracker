@@ -28,6 +28,7 @@
     liveSamples: [],
     analysisTaskId: "",
     analysisSampleIndex: 0,
+    cancelRequested: false,
     busy: false,
     operation: "",
     log: ["Prototype ready. Capture the source clip first."]
@@ -58,6 +59,8 @@
       unavailable: "unavailable",
       analyze: "Analyze",
       analyzing: "Analyzing…",
+      cancelAnalysis: "Cancel analysis",
+      cancellingAnalysis: "Cancelling analysis…",
       play: "Play",
       pause: "Pause",
       preparingPreview: "Preparing preview {count} / {total}…",
@@ -121,6 +124,8 @@
       unavailable: "indisponible",
       analyze: "Analyser",
       analyzing: "Analyse en cours…",
+      cancelAnalysis: "Annuler l’analyse",
+      cancellingAnalysis: "Annulation de l’analyse…",
       play: "Lire",
       pause: "Pause",
       preparingPreview: "Préparation de l’aperçu {count} / {total}…",
@@ -206,6 +211,7 @@
     state.liveSamples = [];
     state.analysisTaskId = "";
     state.analysisSampleIndex = 0;
+    state.cancelRequested = false;
   }
 
   // Keep the established point workflow separate from the four-corner planar workflow.
@@ -368,7 +374,7 @@
     const nativeStatus = root.PMT_NATIVE.probe();
     if (state.operation === "analysis") {
       // Keep the in-progress feedback limited to the existing stable UXP banner.
-      return { tone: "warning", text: t("analysisRunning") };
+      return { tone: "warning", text: state.cancelRequested ? t("cancellingAnalysis") : t("analysisRunning") };
     }
     if (state.operation === "preview") {
       return { tone: "warning", text: state.previewSkipRequested ? t("skippingPreview") : t("preparingPreview", { count: state.previewBuildCount, total: state.previewBuildTotal }) };
@@ -442,6 +448,7 @@
       !playbackFrame && surfaceMode && state.preview ? '    <div class="pmt-label">' + escapeHtml(t("surfaceHelp")) + ' (' + String(state.referenceCorners.length) + '/4)</div>' : '',
       '    <div class="pmt-actions">',
       '      ' + buttonMarkup("pmt-analyze", analyzeLabel, ["pmt-button-primary"], !canAnalyze),
+      state.operation === "analysis" && !surfaceMode ? '      ' + buttonMarkup("pmt-cancel-analysis", t("cancelAnalysis"), [], state.cancelRequested) : '',
       '      ' + buttonMarkup("pmt-play-preview", state.previewPlaying ? t("pause") : t("play"), [], !canPlayPreview),
       !playbackFrame && surfaceMode ? '      ' + buttonMarkup("pmt-reset-surface", t("resetSurface"), [], !state.referenceCorners.length || state.busy) : '',
       state.operation === "preview" ? '      ' + buttonMarkup("pmt-skip-preview", t("skipPreview"), [], state.previewSkipRequested) : '',
@@ -904,9 +911,35 @@
     return new Promise((resolve) => setTimeout(resolve, 100));
   }
 
+  // Keep user cancellation distinct from a native tracking failure so the diagnostic stays actionable.
+  function isTrackingCancellation(error) {
+    return state.cancelRequested || /tracking cancelled/i.test(String(error && error.message ? error.message : error));
+  }
+
+  // Stop the active native point-tracking worker between decoded frames without keeping a partial trajectory.
+  async function cancelAnalysis(rootNode) {
+    if (state.operation !== "analysis" || state.cancelRequested) {
+      return;
+    }
+    state.cancelRequested = true;
+    addLog("Tracking cancellation requested.");
+    render(rootNode);
+    if (!state.analysisTaskId) {
+      return;
+    }
+    try {
+      await root.PMT_NATIVE.cancelTracking(state.analysisTaskId);
+    } catch (error) {
+      addLog("Tracking cancellation request failed: " + (error && error.message ? error.message : String(error)));
+    }
+  }
+
   // Drain native progress batches until the worker returns its final trajectory or a useful failure message.
   async function collectLiveTracking(rootNode, taskId) {
     while (true) {
+      if (state.cancelRequested) {
+        throw new Error("Tracking cancelled.");
+      }
       const progress = await root.PMT_NATIVE.pollTracking(taskId, state.analysisSampleIndex);
       const newSamples = Array.prototype.slice.call(progress.samples || []);
       if (newSamples.length) {
@@ -944,6 +977,9 @@
         Promise.resolve(video.play()).catch(() => {});
       }
       await waitForPanelPaint();
+      if (state.cancelRequested) {
+        throw new Error("Tracking cancelled.");
+      }
       const mediaRange = getTrackingMediaRange();
       let samples;
       if (isSurfaceMode()) {
@@ -951,6 +987,10 @@
         samples = await root.PMT_NATIVE.trackSurface(state.source.mediaPath, state.referenceCorners, mediaRange.startSeconds, mediaRange.endSeconds, state.searchRadius);
       } else {
         state.analysisTaskId = await root.PMT_NATIVE.startTracking(state.source.mediaPath, state.referencePoint, mediaRange.startSeconds, mediaRange.endSeconds, state.searchRadius);
+        if (state.cancelRequested) {
+          await root.PMT_NATIVE.cancelTracking(state.analysisTaskId);
+          throw new Error("Tracking cancelled.");
+        }
         samples = await collectLiveTracking(rootNode, state.analysisTaskId);
         state.analysisTaskId = "";
       }
@@ -968,10 +1008,11 @@
     } catch (error) {
       state.tracking = null;
       state.analysisTaskId = "";
-      addLog("Tracking error: " + (error && error.message ? error.message : String(error)));
+      addLog(isTrackingCancellation(error) ? "Tracking cancelled by user." : "Tracking error: " + (error && error.message ? error.message : String(error)));
     } finally {
       state.busy = false;
       state.operation = "";
+      state.cancelRequested = false;
       refreshAfterHostWork(rootNode, false);
     }
   }
@@ -992,11 +1033,18 @@
     render(rootNode);
     try {
       await waitForPanelPaint();
+      if (state.cancelRequested) {
+        throw new Error("Tracking cancelled.");
+      }
       const mediaRange = getTrackingMediaRange();
       if (Number(correction.seconds) >= Number(mediaRange.endSeconds)) {
         throw new Error("The correction must be before the end of the tracking range.");
       }
       state.analysisTaskId = await root.PMT_NATIVE.startTracking(state.source.mediaPath, correction.point, correction.seconds, mediaRange.endSeconds, state.searchRadius);
+      if (state.cancelRequested) {
+        await root.PMT_NATIVE.cancelTracking(state.analysisTaskId);
+        throw new Error("Tracking cancelled.");
+      }
       const replacement = await collectLiveTracking(rootNode, state.analysisTaskId);
       state.analysisTaskId = "";
       state.tracking = root.PMT_TRAJECTORY.replaceTrackingTail(previousTracking, replacement);
@@ -1011,10 +1059,11 @@
       }
     } catch (error) {
       state.analysisTaskId = "";
-      addLog("Correction error: " + (error && error.message ? error.message : String(error)));
+      addLog(isTrackingCancellation(error) ? "Correction tracking cancelled by user." : "Correction error: " + (error && error.message ? error.message : String(error)));
     } finally {
       state.busy = false;
       state.operation = "";
+      state.cancelRequested = false;
       refreshAfterHostWork(rootNode, false);
     }
   }
@@ -1149,6 +1198,7 @@
       render(rootNode);
     });
     bindButton(rootNode, "pmt-analyze", () => analyzeTracking(rootNode));
+    bindButton(rootNode, "pmt-cancel-analysis", () => cancelAnalysis(rootNode));
     bindButton(rootNode, "pmt-play-preview", () => toggleTrackingPreview(rootNode));
     bindButton(rootNode, "pmt-skip-preview", () => skipTrackingPreview(rootNode));
     bindButton(rootNode, "pmt-preview-reset", () => showTrackingPreviewFrame(rootNode, 0));

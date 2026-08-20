@@ -181,6 +181,14 @@ test("native analysis visibly enters an in-progress state before tracking begins
   assert.doesNotMatch(styles, /pmt-analysis-progress|@keyframes/);
 });
 
+test("point tracking exposes a real native cancellation control while analysis is running", () => {
+  assert.match(uiSource, /pmt-cancel-analysis/);
+  assert.match(uiSource, /cancelAnalysis\(rootNode\)/);
+  assert.match(uiSource, /PMT_NATIVE\.cancelTracking\(state\.analysisTaskId\)/);
+  assert.match(uiSource, /state\.cancelRequested/);
+  assert.match(nativeSource, /async function cancelTracking/);
+});
+
 test("English is the default panel language and a compact French switch remains available", () => {
   assert.match(uiSource, /language: "en"/);
   assert.match(uiSource, /languageButton: "FR"/);

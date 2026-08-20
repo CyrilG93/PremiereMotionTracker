@@ -21,8 +21,10 @@ test("interactive rows use flex instead of hidden UXP grid layouts", () => {
 });
 
 test("the complete docked panel scrolls when its controls exceed the available height", () => {
-  assert.match(styles, /html,\s*body,\s*#pmt-root\s*\{[^}]*height:\s*100%;/s);
-  assert.match(styles, /#pmt-root\s*\{[^}]*overflow-y:\s*auto;/s);
+  assert.match(styles, /body\s*\{[^}]*position:\s*absolute;/s);
+  assert.match(styles, /body\s*\{[^}]*bottom:\s*20px;/s);
+  assert.match(styles, /body\s*\{[^}]*overflow:\s*auto;/s);
+  assert.match(styles, /#pmt-root\s*\{[^}]*min-height:\s*100%;/s);
   assert.match(styles, /\.pmt-shell\s*\{[^}]*min-height:\s*100%;/s);
 });
 

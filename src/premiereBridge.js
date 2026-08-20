@@ -352,7 +352,8 @@
     const nativeFileSystem = require("fs");
     const expectedExtension = String(extension || "").toLowerCase();
     let detectedNames = [];
-    const attempts = Math.max(1, Number(maxAttempts) || 20);
+    // Premiere queues PNG frame exports and can flush a later frame several seconds after reporting success.
+    const attempts = Math.max(1, Number(maxAttempts) || 150);
     for (let attempt = 0; attempt < attempts; attempt += 1) {
       const entries = await temporaryFolder.getEntries();
       const entryMatch = entries.find((entry) => entry.isFile && entry.name.toLowerCase().startsWith(fileStem.toLowerCase()) && entry.name.toLowerCase().endsWith(expectedExtension));
@@ -373,7 +374,8 @@
       }
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
-    const detail = detectedNames.length ? " Fichiers détectés : " + detectedNames.slice(-8).join(", ") + "." : " Aucun fichier détecté.";
+    // Keep the expected stem in the error so support logs can distinguish a delayed render from a wrong-file match.
+    const detail = " Attendu : " + fileStem + expectedExtension + "." + (detectedNames.length ? " Fichiers détectés : " + detectedNames.slice(-8).join(", ") + "." : " Aucun fichier détecté.");
     throw new Error("Le fichier de prévisualisation reste introuvable après attente." + detail);
   }
 

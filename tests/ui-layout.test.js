@@ -106,7 +106,7 @@ test("validation exposes confidence markers, visible search-area tuning, and Sur
   assert.match(uiSource, /frameRatesAreCompatible/);
   assert.match(nativeSource, /Number\(searchRadius\) \|\| 10/);
   assert.match(styles, /\.pmt-search-area\s*\{[^}]*pointer-events:\s*none;/s);
-  assert.match(styles, /\.pmt-search-area\s*\{[^}]*min-width:\s*24px;/s);
+  assert.match(uiSource, /getSearchAreaVisualSize/);
   assert.match(styles, /\.pmt-uncertain-markers\s*\{[^}]*position:\s*relative;/s);
 });
 

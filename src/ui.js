@@ -299,16 +299,20 @@
     });
   }
 
+  // Magnify the small source-pixel search radius so its change remains visible in a compact 4K preview.
+  function getSearchAreaVisualSize() {
+    return Math.round(18 + Number(state.searchRadius) * 1.5);
+  }
+
   // Resize every visible search window during a slider drag without rebuilding the active Spectrum control.
   function updateSearchAreaSize(rootNode) {
-    if (!rootNode || !state.media || !Number(state.media.width) || !Number(state.media.height)) {
+    if (!rootNode) {
       return;
     }
-    const width = Math.min(100, Math.max(1, Number(state.searchRadius) * 2 / Number(state.media.width) * 100));
-    const height = Math.min(100, Math.max(1, Number(state.searchRadius) * 2 / Number(state.media.height) * 100));
+    const visualSize = getSearchAreaVisualSize();
     Array.prototype.forEach.call(rootNode.querySelectorAll(".pmt-search-area"), (searchArea) => {
-      searchArea.style.width = width.toFixed(3) + "%";
-      searchArea.style.height = height.toFixed(3) + "%";
+      searchArea.style.width = String(visualSize) + "px";
+      searchArea.style.height = String(visualSize) + "px";
     });
   }
 
@@ -377,14 +381,13 @@
     return Array.from({ length: limit }, (_, index) => indexes[Math.round(index * (indexes.length - 1) / (limit - 1))]);
   }
 
-  // Draw the configured optical-flow search window at the actual normalized tracking point.
+  // Draw a scaled visual representation of the configured optical-flow search window at its normalized location.
   function searchAreaMarkup(point) {
-    if (!point || !state.media || !Number(state.media.width) || !Number(state.media.height)) {
+    if (!point) {
       return "";
     }
-    const width = Math.min(100, Math.max(1, Number(state.searchRadius) * 2 / Number(state.media.width) * 100));
-    const height = Math.min(100, Math.max(1, Number(state.searchRadius) * 2 / Number(state.media.height) * 100));
-    return '<div class="pmt-search-area" style="left:' + (Number(point.x) * 100).toFixed(3) + '%;top:' + (Number(point.y) * 100).toFixed(3) + '%;width:' + width.toFixed(3) + '%;height:' + height.toFixed(3) + '%"></div>';
+    const visualSize = getSearchAreaVisualSize();
+    return '<div class="pmt-search-area" style="left:' + (Number(point.x) * 100).toFixed(3) + '%;top:' + (Number(point.y) * 100).toFixed(3) + '%;width:' + String(visualSize) + 'px;height:' + String(visualSize) + 'px"></div>';
   }
 
   // Convert normalized corners into the stable 0–100 viewBox coordinates used by the non-interactive shape overlay.

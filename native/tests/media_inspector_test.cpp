@@ -45,6 +45,7 @@ int main() {
 
     // Create a small deterministic clip so the decoder is tested without depending on user media.
     const std::filesystem::path samplePath = std::filesystem::temp_directory_path() / "pmt-media-inspector-sample.avi";
+    const std::filesystem::path recoveryPath = std::filesystem::temp_directory_path() / "pmt-surface-recovery-sample.avi";
     const std::filesystem::path imagePath = std::filesystem::temp_directory_path() / "pmt-media-inspector-target.png";
     cv::VideoWriter writer(samplePath.string(), cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), 12.0, cv::Size(96, 64));
     passed &= expect(writer.isOpened(), "OpenCV should create the temporary motion-tracking sample");
@@ -108,6 +109,45 @@ int main() {
             passed &= expect(false, std::string("decoder should open the generated sample: ") + error.what());
         }
     }
+    // Insert one detail-free frame to prove Surface tracking publishes the full range and recovers afterward.
+    cv::VideoWriter recoveryWriter(recoveryPath.string(), cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), 12.0, cv::Size(96, 64));
+    passed &= expect(recoveryWriter.isOpened(), "OpenCV should create the temporary Surface recovery sample");
+    if (recoveryWriter.isOpened()) {
+        for (int frameIndex = 0; frameIndex < 6; frameIndex += 1) {
+            cv::Mat frame(64, 96, CV_8UC3, cv::Scalar(15, 15, 15));
+            if (frameIndex != 2) {
+                // Keep a textured plane before and after the dropout so a later frame can reseed features.
+                const int originX = 28 + frameIndex * 2;
+                const int originY = 22 + frameIndex;
+                for (int y = 0; y < 28; y += 1) {
+                    for (int x = 0; x < 28; x += 1) {
+                        const unsigned char checker = static_cast<unsigned char>(((x / 2 + y / 2) % 2) * 90);
+                        frame.at<cv::Vec3b>(originY + y, originX + x) = cv::Vec3b(
+                            static_cast<unsigned char>(30 + x * 7 + checker),
+                            static_cast<unsigned char>(50 + y * 6 + checker),
+                            static_cast<unsigned char>(180 - (x + y) * 3 - checker / 3)
+                        );
+                    }
+                }
+            }
+            recoveryWriter.write(frame);
+        }
+        recoveryWriter.release();
+        try {
+            const std::array<std::array<double, 2>, 4> recoveryCorners {{
+                {{ 27.0 / 95.0, 21.0 / 63.0 }},
+                {{ 57.0 / 95.0, 21.0 / 63.0 }},
+                {{ 57.0 / 95.0, 51.0 / 63.0 }},
+                {{ 27.0 / 95.0, 51.0 / 63.0 }}
+            }};
+            const std::vector<pmt::SurfaceTrackingSample> recoverySamples = pmt::trackSurface(recoveryPath.string(), recoveryCorners, 0.0, 0.42);
+            passed &= expect(recoverySamples.size() >= 6, "surface tracker should continue after one detail-free frame");
+            passed &= expect(!recoverySamples[2].valid, "the detail-free frame should be reported as uncertain");
+            passed &= expect(recoverySamples.back().valid, "surface tracker should reseed features and recover on later frames");
+        } catch (const std::exception& error) {
+            passed &= expect(false, std::string("surface tracker should recover after a dropout: ") + error.what());
+        }
+    }
     // Create a small image target to validate the dimension path used for graphics and logos.
     cv::Mat targetImage(192, 192, CV_8UC4, cv::Scalar(20, 180, 80, 255));
     passed &= expect(cv::imwrite(imagePath.string(), targetImage), "OpenCV should create the temporary target image");
@@ -121,6 +161,8 @@ int main() {
     std::error_code removeError;
     std::filesystem::remove(samplePath, removeError);
     passed &= expect(!removeError, "temporary sample media should be removable");
+    std::filesystem::remove(recoveryPath, removeError);
+    passed &= expect(!removeError, "temporary Surface recovery media should be removable");
     std::filesystem::remove(imagePath, removeError);
     passed &= expect(!removeError, "temporary target image should be removable");
 

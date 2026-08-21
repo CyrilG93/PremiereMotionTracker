@@ -4,6 +4,7 @@
   const handles = {
     source: null
   };
+  let trackingPreviewExportContext = null;
 
   // Load Premiere's UXP module only inside the host application.
   function getPremiere() {
@@ -351,10 +352,22 @@
   async function resolveExportedFile(temporaryFolder, fileStem, extension, maxAttempts) {
     const nativeFileSystem = require("fs");
     const expectedExtension = String(extension || "").toLowerCase();
+    const expectedName = String(fileStem || "") + expectedExtension;
+    const expectedNativePath = joinNativePath(temporaryFolder.nativePath, expectedName);
     let detectedNames = [];
     // Premiere queues PNG frame exports and can flush a later frame several seconds after reporting success.
     const attempts = Math.max(1, Number(maxAttempts) || 150);
     for (let attempt = 0; attempt < attempts; attempt += 1) {
+      try {
+        // Probe the exact requested name first: scanning a growing temporary folder slows every later preview frame.
+        if (typeof nativeFileSystem.stat === "function") {
+          await nativeFileSystem.stat(expectedNativePath);
+          const folderUrl = String(temporaryFolder.url || "plugin-temp:/").replace(/\/?$/, "/");
+          return { url: folderUrl + expectedName, name: expectedName, nativePath: expectedNativePath };
+        }
+      } catch (error) {
+        // Premiere may append a suffix on some hosts; preserve the existing directory-search fallback below.
+      }
       const entries = await temporaryFolder.getEntries();
       const entryMatch = entries.find((entry) => entry.isFile && entry.name.toLowerCase().startsWith(fileStem.toLowerCase()) && entry.name.toLowerCase().endsWith(expectedExtension));
       if (entryMatch) {
@@ -605,6 +618,8 @@
       selectedCount: context.selectedCount
     };
     handles.source = { app: context.app, project: context.project, sequence: context.sequence, item, descriptor };
+    // A new source must not reuse the previous sequence's temporary folder or export dimensions.
+    trackingPreviewExportContext = null;
     return descriptor;
   }
 
@@ -706,9 +721,16 @@
     if (!app || !app.Exporter || typeof app.Exporter.exportSequenceFrame !== "function" || !app.TickTime || typeof app.TickTime.createWithSeconds !== "function") {
       throw new Error("Cette version de Premiere n’expose pas l’export d’image requis pour l’aperçu animé.");
     }
-    const storage = require("uxp").storage.localFileSystem;
-    const temporaryFolder = await storage.getTemporaryFolder();
-    const dimensions = getTrackingPreviewDimensions(await handles.source.sequence.getFrameSize());
+    if (!trackingPreviewExportContext) {
+      const storage = require("uxp").storage.localFileSystem;
+      // Reuse these stable values for every PNG: repeated folder and frame-size requests grow noticeably on long reviews.
+      trackingPreviewExportContext = {
+        temporaryFolder: await storage.getTemporaryFolder(),
+        dimensions: getTrackingPreviewDimensions(await handles.source.sequence.getFrameSize())
+      };
+    }
+    const temporaryFolder = trackingPreviewExportContext.temporaryFolder;
+    const dimensions = trackingPreviewExportContext.dimensions;
     const fileStem = "pmt-track-preview-" + Date.now() + "-" + Number(frameIndex);
     const exported = await app.Exporter.exportSequenceFrame(
       handles.source.sequence,

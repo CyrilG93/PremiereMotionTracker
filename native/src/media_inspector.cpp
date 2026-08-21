@@ -224,13 +224,17 @@ std::vector<SurfaceTrackingSample> trackSurface(
     double startSeconds,
     double endSeconds,
     const SurfaceTrackingProgressCallback& progressCallback,
-    int searchRadius
+    int searchRadius,
+    int featureCount
 ) {
     if (!std::isfinite(startSeconds) || !std::isfinite(endSeconds) || startSeconds < 0.0 || endSeconds <= startSeconds) {
         throw std::invalid_argument("La plage média de surface tracking est invalide.");
     }
     if (searchRadius < 5 || searchRadius > 40) {
         throw std::invalid_argument("La zone de recherche doit être comprise entre 5 et 40 pixels.");
+    }
+    if (featureCount < 80 || featureCount > 400) {
+        throw std::invalid_argument("Le niveau de détail de surface doit être compris entre 80 et 400 points.");
     }
     cv::VideoCapture capture(mediaPath, cv::CAP_ANY);
     if (!capture.isOpened()) {
@@ -254,15 +258,20 @@ std::vector<SurfaceTrackingSample> trackSurface(
     }
     cv::Mat previousGray = toGray(decodedFrame);
     std::vector<cv::Point2f> surfaceCorners = makeSurfaceCorners(normalizedCorners, previousGray.cols, previousGray.rows);
-    cv::Mat selectionMask(previousGray.size(), CV_8UC1, cv::Scalar(0));
-    std::vector<cv::Point> polygon;
-    polygon.reserve(surfaceCorners.size());
-    for (const cv::Point2f& corner : surfaceCorners) {
-        polygon.emplace_back(cvRound(corner.x), cvRound(corner.y));
-    }
-    cv::fillConvexPoly(selectionMask, polygon, cv::Scalar(255));
-    std::vector<cv::Point2f> trackedFeatures;
-    cv::goodFeaturesToTrack(previousGray, trackedFeatures, 160, 0.01, 5.0, selectionMask, 3, false, 0.04);
+    // Reseed only inside the last trusted surface so recovery does not drift to unrelated frame details.
+    const auto reseedSurfaceFeatures = [&surfaceCorners, featureCount](const cv::Mat& gray) {
+        cv::Mat selectionMask(gray.size(), CV_8UC1, cv::Scalar(0));
+        std::vector<cv::Point> polygon;
+        polygon.reserve(surfaceCorners.size());
+        for (const cv::Point2f& corner : surfaceCorners) {
+            polygon.emplace_back(cvRound(corner.x), cvRound(corner.y));
+        }
+        cv::fillConvexPoly(selectionMask, polygon, cv::Scalar(255));
+        std::vector<cv::Point2f> features;
+        cv::goodFeaturesToTrack(gray, features, featureCount, 0.01, 5.0, selectionMask, 3, false, 0.04);
+        return features;
+    };
+    std::vector<cv::Point2f> trackedFeatures = reseedSurfaceFeatures(previousGray);
     if (trackedFeatures.size() < 8) {
         throw std::runtime_error("La surface ne contient pas assez de détails contrastés pour le tracking.");
     }
@@ -275,6 +284,16 @@ std::vector<SurfaceTrackingSample> trackSurface(
     const cv::Size searchWindow(searchRadius * 2 + 1, searchRadius * 2 + 1);
     for (std::int64_t frame = firstFrame + 1; frame <= lastFrame && capture.read(decodedFrame); frame += 1) {
         cv::Mat currentGray = toGray(decodedFrame);
+        if (trackedFeatures.size() < 8) {
+            // A previous dropout left no points to flow; flag this frame and wait until texture returns.
+            samples.push_back(makeSurfaceSample(frame, framesPerSecond, surfaceCorners, currentGray.cols, currentGray.rows, 0.0, false));
+            if (progressCallback && !progressCallback(samples.back())) {
+                throw std::runtime_error("Tracking cancelled.");
+            }
+            trackedFeatures = reseedSurfaceFeatures(currentGray);
+            previousGray = std::move(currentGray);
+            continue;
+        }
         std::vector<cv::Point2f> forwardFeatures;
         std::vector<unsigned char> forwardStatus;
         std::vector<float> forwardError;
@@ -326,8 +345,8 @@ std::vector<SurfaceTrackingSample> trackSurface(
             throw std::runtime_error("Tracking cancelled.");
         }
         if (!valid || trackedFeatures.size() < 8) {
-            // Preserve the last usable corners, but stop before an underconstrained homography drifts unpredictably.
-            break;
+            // Keep the last verified surface, mark this frame uncertain, then reseed features for the next frame.
+            trackedFeatures = reseedSurfaceFeatures(currentGray);
         }
         previousGray = std::move(currentGray);
     }

@@ -65,7 +65,8 @@ std::vector<SurfaceTrackingSample> trackSurface(
     double startSeconds,
     double endSeconds,
     const SurfaceTrackingProgressCallback& progressCallback = {},
-    int searchRadius = 10
+    int searchRadius = 10,
+    int featureCount = 240
 );
 
 } // namespace pmt

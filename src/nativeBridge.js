@@ -41,7 +41,7 @@
     if (!loadPromise) {
       loadPromise = (async () => {
         try {
-      const loadedAddon = await require("premiere-motion-tracker-0.4.17.uxpaddon");
+      const loadedAddon = await require("premiere-motion-tracker-0.5.0.uxpaddon");
           exportNames = collectExportNames(loadedAddon);
           if (!loadedAddon || typeof loadedAddon.getVersion !== "function") {
             throw new Error("The addon does not provide getVersion() (" + describeExports(loadedAddon) + ").");
@@ -98,7 +98,7 @@
   }
 
   // Delegate the four selected corners to the homography tracker without exposing OpenCV matrices to UXP.
-  async function trackSurface(mediaPath, normalizedCorners, startSeconds, endSeconds, searchRadius) {
+  async function trackSurface(mediaPath, normalizedCorners, startSeconds, endSeconds, searchRadius, featureCount) {
     if (!addon || typeof addon.trackSurface !== "function") {
       throw new Error(loadError || "The native addon does not provide trackSurface().");
     }
@@ -111,7 +111,8 @@
       corners,
       Number(startSeconds),
       Number(endSeconds),
-      Number(searchRadius) || 10
+      Number(searchRadius) || 10,
+      Number(featureCount) || 240
     );
   }
 
@@ -132,7 +133,7 @@
   }
 
   // Start planar tracking asynchronously so Surface mode can publish progress and honour cancellation.
-  async function startSurfaceTracking(mediaPath, normalizedCorners, startSeconds, endSeconds, searchRadius) {
+  async function startSurfaceTracking(mediaPath, normalizedCorners, startSeconds, endSeconds, searchRadius, featureCount) {
     if (!addon || typeof addon.startSurfaceTracking !== "function") {
       throw new Error(loadError || "The native addon does not provide startSurfaceTracking().");
     }
@@ -145,7 +146,8 @@
       corners,
       Number(startSeconds),
       Number(endSeconds),
-      Number(searchRadius) || 10
+      Number(searchRadius) || 10,
+      Number(featureCount) || 240
     ));
   }
 

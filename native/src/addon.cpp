@@ -89,12 +89,13 @@ void readSurfaceTrackingArguments(
     std::array<std::array<double, 2>, 4>& corners,
     double& startSeconds,
     double& endSeconds,
-    int& searchRadius
+    int& searchRadius,
+    int& featureCount
 ) {
-    addon_value arguments[5] = { nullptr, nullptr, nullptr, nullptr, nullptr };
-    std::size_t argumentCount = 5;
+    addon_value arguments[6] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
+    std::size_t argumentCount = 6;
     Check(UxpAddonApis.uxp_addon_get_cb_info(env, info, &argumentCount, arguments, nullptr, nullptr));
-    if (argumentCount != 4 && argumentCount != 5) {
+    if (argumentCount != 4 && argumentCount != 5 && argumentCount != 6) {
         throw std::invalid_argument("Surface tracking requires media, four corners, and a range.");
     }
     std::size_t byteCount = 0;
@@ -125,10 +126,16 @@ void readSurfaceTrackingArguments(
     Check(UxpAddonApis.uxp_addon_get_value_double(env, arguments[2], &startSeconds));
     Check(UxpAddonApis.uxp_addon_get_value_double(env, arguments[3], &endSeconds));
     searchRadius = 10;
-    if (argumentCount == 5) {
+    if (argumentCount >= 5) {
         double requestedSearchRadius = 10.0;
         Check(UxpAddonApis.uxp_addon_get_value_double(env, arguments[4], &requestedSearchRadius));
         searchRadius = static_cast<int>(std::lround(requestedSearchRadius));
+    }
+    featureCount = 240;
+    if (argumentCount == 6) {
+        double requestedFeatureCount = 240.0;
+        Check(UxpAddonApis.uxp_addon_get_value_double(env, arguments[5], &requestedFeatureCount));
+        featureCount = static_cast<int>(std::lround(requestedFeatureCount));
     }
 }
 
@@ -328,8 +335,9 @@ addon_value trackSurface(addon_env env, addon_callback_info info) {
         double startSeconds = 0.0;
         double endSeconds = 0.0;
         int searchRadius = 10;
-        readSurfaceTrackingArguments(env, info, mediaPath, corners, startSeconds, endSeconds, searchRadius);
-        const std::vector<pmt::SurfaceTrackingSample> samples = pmt::trackSurface(mediaPath, corners, startSeconds, endSeconds, {}, searchRadius);
+        int featureCount = 240;
+        readSurfaceTrackingArguments(env, info, mediaPath, corners, startSeconds, endSeconds, searchRadius, featureCount);
+        const std::vector<pmt::SurfaceTrackingSample> samples = pmt::trackSurface(mediaPath, corners, startSeconds, endSeconds, {}, searchRadius, featureCount);
         addon_value result = nullptr;
         Check(UxpAddonApis.uxp_addon_create_array_with_length(env, samples.size(), &result));
         for (std::size_t index = 0; index < samples.size(); index += 1) {
@@ -402,7 +410,8 @@ addon_value startSurfaceTracking(addon_env env, addon_callback_info info) {
         double startSeconds = 0.0;
         double endSeconds = 0.0;
         int searchRadius = 10;
-        readSurfaceTrackingArguments(env, info, mediaPath, corners, startSeconds, endSeconds, searchRadius);
+        int featureCount = 240;
+        readSurfaceTrackingArguments(env, info, mediaPath, corners, startSeconds, endSeconds, searchRadius, featureCount);
         const std::string taskId = "surface-tracking-" + std::to_string(nextTrackingTaskId.fetch_add(1));
         const auto task = std::make_shared<TrackingTask>();
         task->isSurface = true;
@@ -410,7 +419,7 @@ addon_value startSurfaceTracking(addon_env env, addon_callback_info info) {
             std::lock_guard<std::mutex> lock(trackingTasksMutex);
             trackingTasks.emplace(taskId, task);
         }
-        task->worker = std::thread([task, mediaPath, corners, startSeconds, endSeconds, searchRadius]() {
+        task->worker = std::thread([task, mediaPath, corners, startSeconds, endSeconds, searchRadius, featureCount]() {
             try {
                 pmt::trackSurface(mediaPath, corners, startSeconds, endSeconds, [task](const pmt::SurfaceTrackingSample& sample) {
                     if (task->cancelRequested.load()) {
@@ -420,7 +429,7 @@ addon_value startSurfaceTracking(addon_env env, addon_callback_info info) {
                     std::lock_guard<std::mutex> lock(task->mutex);
                     task->surfaceSamples.push_back(sample);
                     return true;
-                }, searchRadius);
+                }, searchRadius, featureCount);
             } catch (const std::exception& error) {
                 std::lock_guard<std::mutex> lock(task->mutex);
                 if (task->cancelRequested.load()) {

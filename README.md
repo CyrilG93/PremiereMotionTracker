@@ -7,10 +7,11 @@ Use Point mode to transfer position movement to a logo, title, image, or video. 
 ## Compatibility
 
 - macOS on Apple Silicon (M-series Macs)
+- Windows x64
 - Adobe Premiere Pro 25.6 or later
 - Adobe Creative Cloud Desktop
 
-The current macOS package does not support Intel Macs or Windows.
+Intel Macs are not supported.
 
 ## Install
 
@@ -62,7 +63,6 @@ The preview contains every tracked frame in the selected range. On long clips, g
 - Enable **Skip preview generation** before or during analysis to keep the tracking result without exporting preview images.
 - Use **Skip preview** while images are being generated to stop the remaining preview export.
 - For more than 600 images, the plugin asks for confirmation before using temporary storage for the full preview.
-- Enable **Light smoothing when applying** to reduce small position jitters, or disable it to apply the raw motion.
 
 ## Formats, Privacy, and Limitations
 

@@ -93,15 +93,17 @@ test("tracking review scrubs through Spectrum and can replace only the corrected
   assert.doesNotMatch(uiSource, /type="range"/);
 });
 
-test("validation exposes confidence markers, OpenCV search-area tuning, and optional smoothing", () => {
+test("validation exposes confidence markers, visible search-area tuning, and Surface detail", () => {
   assert.match(uiSource, /pmt-confidence-threshold/);
   assert.match(uiSource, /pmt-search-radius/);
   assert.match(uiSource, /pmt-next-uncertain/);
   assert.match(uiSource, /pmt-uncertain-marker/);
-  assert.match(uiSource, /smoothTrackingSamples/);
+  assert.match(uiSource, /pmt-surface-feature-count/);
+  assert.match(uiSource, /surfaceFeatureCount/);
   assert.match(uiSource, /state\.searchRadius/);
   assert.match(nativeSource, /Number\(searchRadius\) \|\| 10/);
   assert.match(styles, /\.pmt-search-area\s*\{[^}]*pointer-events:\s*none;/s);
+  assert.match(styles, /\.pmt-search-area\s*\{[^}]*min-width:\s*24px;/s);
   assert.match(styles, /\.pmt-uncertain-markers\s*\{[^}]*position:\s*relative;/s);
 });
 
@@ -145,6 +147,7 @@ test("surface mode collects four corners and applies the tracked plane through C
   assert.doesNotMatch(uiSource, /pmt-surface-application-motion/);
   assert.match(nativeSource, /addon\.trackSurface/);
   assert.match(nativeSource, /addon\.startSurfaceTracking/);
+  assert.match(nativeSource, /Number\(featureCount\) \|\| 240/);
   assert.match(premiereSource, /createCornerPinComponent/);
   assert.match(premiereSource, /applySurfaceTracking/);
   assert.match(premiereSource, /getTargetMotionGeometry/);

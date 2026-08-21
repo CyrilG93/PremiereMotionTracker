@@ -4,7 +4,7 @@
 
 Le projet utilise un panneau UXP pour l’interface et l’intégration Premiere, complété par un module UXP Hybrid C++ pour le décodage vidéo et OpenCV. La V1 suit un point dans le média du clip source sélectionné. Une fois le tracking validé, l’utilisateur sélectionne un ou plusieurs clips de destination et leur applique le déplacement sous forme de keyframes Position sur un effet Transform.
 
-Premiere Pro 26.2 ou plus récent est la cible minimale. Windows x64 est validé en premier, puis macOS ARM64 et Intel.
+Premiere Pro 26.2 ou plus récent est la cible minimale. Windows x64 et macOS ARM64 sont les plateformes prises en charge ; macOS Intel n’est pas prévu.
 
 ## Phase 1 — Prototype de faisabilité
 
@@ -44,7 +44,7 @@ Critère de validation : la trajectoire détectée dans le média déplace réel
 - Tester 1080p, 4K, 25/30/50/60 i/s et les codecs usuels.
 - Mesurer mémoire et temps de calcul sur des plages longues.
 - Refuser clairement les cas non pris en charge, notamment le remappage temporel complexe.
-- Construire le paquet Windows, puis signer et notariser les binaires macOS.
+- Construire le paquet Windows, puis signer et notariser les binaires macOS ARM64.
 
 ## Phase 6 — Rendu composite de séquence
 
@@ -70,7 +70,7 @@ Critère de validation : la trajectoire détectée dans le média déplace réel
 - Ajout de Transform et de deux keyframes Position validé dans Premiere sur un clip de destination sélectionné après la préparation du tracking.
 - Modèle de session et calcul des offsets couverts par des tests automatisés.
 - SDK Adobe UXP Hybrid disponible localement ; manifeste v6 et bootstrap C++ relié au panneau avec un autotest natif.
-- Visual Studio Build Tools 2019 et son CMake intégré permettent le build Windows x64. Les binaires macOS resteront construits sur macOS pour Intel et Apple Silicon.
+- Visual Studio Build Tools 2019 et son CMake intégré permettent le build Windows x64. Les binaires macOS sont construits sur macOS ARM64.
 - OpenCV est relié statiquement au module Hybrid Windows pour inspecter un média via Media Foundation et calculer un suivi Lucas-Kanade avec contrôle aller-retour sur une plage bornée ; l’application crée maintenant une clé Position par image valide sur chaque clip de destination, y compris les médias redimensionnés et les Graphics Layers.
 - Validé dans Premiere : la trajectoire suit correctement le point et son application fonctionne sur un ou plusieurs clips sélectionnés.
 - Implémenté au jalon 0.3.1 : un unique élément vidéo UXP muet affiche le média source, tandis que l’addon publie les positions calculées par lots et que le panneau ne déplace que son point superposé. Une validation dans Premiere reste nécessaire sur macOS et Windows, notamment avec les codecs usuels.
@@ -82,7 +82,7 @@ Critère de validation : la trajectoire détectée dans le média déplace réel
 - Implémenté au jalon 0.3.7 : une réglette Spectrum permet d’aller directement à une image de contrôle. Après un clic de correction, le tracker relance seulement la portion qui suit cette image et fusionne la nouvelle trajectoire avec le préfixe validé.
 - Implémenté au jalon 0.3.8 : l’application utilise la première position réellement trackée comme ancre. Le clip de destination conserve donc sa position d’origine sur la première image, même si le point a été corrigé avant l’application.
 - Implémenté au jalon 0.3.9 : le panneau expose le seuil de confiance, les marqueurs de contrôle et un saut vers l’image douteuse suivante. La zone de recherche est transmise au moteur Lucas-Kanade (±5 à ±40 px). Un lissage centré léger est activé uniquement à l’application et peut être désactivé.
-- Implémenté au jalon 0.4.2 : mode Surface bêta avec sélection manuelle des quatre coins avant l’analyse, homographie RANSAC sur les features OpenCV de la zone, aperçu PNG des coins et application Corner Pin. Les coordonnées sont converties de la séquence vers le repère local Corner Pin du média cible.
+- Implémenté au jalon 0.4.2 : mode Surface avec sélection manuelle des quatre coins avant l’analyse, homographie RANSAC sur les features OpenCV de la zone, aperçu PNG des coins et application Corner Pin. Les coordonnées sont converties de la séquence vers le repère local Corner Pin du média cible.
 - Implémenté au jalon 0.4.3 : les quatre coins de surface peuvent être déplacés indépendamment avant l’analyse ; le panneau visualise le quadrilatère complet par un aplat translucide et un contour pointillé.
 - Implémenté au jalon 0.4.4 : le quadrilatère de l’aperçu Surface est actualisé à chaque image, en même temps que ses quatre poignées.
 - Implémenté au jalon 0.4.5 : packaging macOS ARM64 Developer ID avec horodatage et notarisation Apple du CCX ; les secrets de notarisation restent dans le Trousseau local.

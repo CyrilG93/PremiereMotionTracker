@@ -21,10 +21,8 @@
     correction: null,
     confidenceThreshold: 0.65,
     searchRadius: 10,
-    smoothingEnabled: true,
+    surfaceFeatureCount: 240,
     trackingMode: "point",
-    // Keep the experimental shape-preserving implementation dormant while Surface uses Corner Pin only.
-    surfaceApplication: "perspective",
     referencePoint: null,
     referenceCorners: [],
     tracking: null,
@@ -57,7 +55,7 @@
       sourceReady: "Selection confirmed. The OpenCV engine is the next milestone.",
       trackingMode: "Tracking mode",
       pointMode: "Point",
-      surfaceMode: "Surface (beta)",
+      surfaceMode: "Surface",
       surfaceHelp: "Click the four corners in order, then drag each blue handle independently to refine the surface.",
       resetSurface: "Reset corners",
       readyToAnalyze: "Ready to analyze the In/Out range.",
@@ -79,8 +77,7 @@
       retracking: "Re-tracking from the corrected frame…",
       confidenceThreshold: "Confidence alert threshold: {value}%",
       searchArea: "Search area: ±{value} px",
-      smoothing: "Light smoothing when applying",
-      rawTrajectory: "Raw trajectory",
+      surfaceDetail: "Surface detail: {value} points",
       uncertainFrames: "{count} uncertain image(s)",
       nextUncertain: "Next uncertain",
       uncertainMarker: "Uncertain image {current}",
@@ -99,7 +96,6 @@
       applyTitle: "3. Apply",
       applyHelp: "After tracking, select one or more destination clips. One Position keyframe will be created for every valid frame.",
       applySurfaceHelp: "After surface tracking, select one or more destination clips. Corner Pin will receive four keys for every sequence frame.",
-      surfaceApplication: "Surface application",
       surfaceMotion: "Preserve shape",
       surfacePerspective: "Match perspective",
       applySurfaceMotionHelp: "Use the surface as a movement reference. Transform will apply Position, Rotation and uniform Scale without warping the target.",
@@ -130,7 +126,7 @@
       sourceReady: "Sélection validée. Le moteur OpenCV constitue le prochain jalon.",
       trackingMode: "Mode de tracking",
       pointMode: "Point",
-      surfaceMode: "Surface (bêta)",
+      surfaceMode: "Surface",
       surfaceHelp: "Cliquez les quatre coins dans l’ordre, puis déplacez chaque poignée bleue indépendamment pour ajuster la surface.",
       resetSurface: "Réinitialiser les coins",
       readyToAnalyze: "Prêt à analyser la plage In/Out.",
@@ -152,8 +148,7 @@
       retracking: "Reprise du tracking depuis l’image corrigée…",
       confidenceThreshold: "Seuil d’alerte confiance : {value}%",
       searchArea: "Zone de recherche : ±{value} px",
-      smoothing: "Lissage léger à l’application",
-      rawTrajectory: "Trajectoire brute",
+      surfaceDetail: "Détail de surface : {value} points",
       uncertainFrames: "{count} image(s) incertaine(s)",
       nextUncertain: "Suivante incertaine",
       uncertainMarker: "Image incertaine {current}",
@@ -172,7 +167,6 @@
       applyTitle: "3. Application",
       applyHelp: "Après le tracking, sélectionnez un ou plusieurs clips de destination. Une clé Position sera créée pour chaque image valide.",
       applySurfaceHelp: "Après le suivi de surface, sélectionnez un ou plusieurs clips de destination. Corner Pin recevra quatre clés pour chaque image de la séquence.",
-      surfaceApplication: "Application de la surface",
       surfaceMotion: "Conserver la forme",
       surfacePerspective: "Suivre la perspective",
       applySurfaceMotionHelp: "Utilise la surface comme référence de mouvement. Transform applique Position, Rotation et Échelle uniforme sans déformer le média cible.",
@@ -208,19 +202,8 @@
 
   // Add a diagnostic line while keeping enough history for useful bug reports.
   function addLog(message) {
-    // Keep diagnostics in English whenever the panel is in English, including legacy Premiere bridge errors.
-    const rawMessage = String(message);
-    let englishMessage = state.language === "en"
-      ? rawMessage
-        .replace(/Sélectionnez au moins un clip de destination différent du clip source\./g, "Select at least one destination clip different from the source clip.")
-        .replace(/Le fichier de prévisualisation reste introuvable après attente\./g, "The preview file was not found before the timeout.")
-        .replace(/Aucun fichier détecté\./g, "No files detected.")
-      : rawMessage;
-    if (state.language === "en" && /[À-ÿ]|\b(Aucune|Aucun|Capturez|Cette|Impossible|Les|Le|La|Ouvrez|Sélectionnez)\b/.test(englishMessage)) {
-      // Native host errors can arrive in Premiere's French locale; never mix them into an English diagnostic.
-      englishMessage = "Premiere reported a localized error. Switch the panel to French for the original host message.";
-    }
-    state.log.push(englishMessage);
+    // Preserve the original host error: Premiere's UI locale can differ from the panel language.
+    state.log.push(String(message));
     state.log = state.log.slice(-100);
   }
 
@@ -471,6 +454,7 @@
       state.source && !state.media && nativeStatus.available ? '    <div class="pmt-label">' + escapeHtml(t("sourcePathUnavailable")) + '</div>' + buttonMarkup("pmt-choose-source-media", t("chooseSourceFile"), ["pmt-button-full"], state.busy) : '',
       state.source ? '    <div class="pmt-settings"><div class="pmt-label">' + escapeHtml(t("trackingMode")) + '</div><div class="pmt-actions">' + buttonMarkup("pmt-mode-point", t("pointMode"), [], !canPrepare || !surfaceMode) + buttonMarkup("pmt-mode-surface", t("surfaceMode"), [], !canPrepare || surfaceMode) + '</div></div>' : '',
       state.source ? '    <div class="pmt-settings"><div class="pmt-label">' + escapeHtml(t("searchArea", { value: state.searchRadius })) + '</div><sp-slider class="pmt-setting-slider" id="pmt-search-radius" min="5" max="40" step="1" value="' + String(state.searchRadius) + '"' + (canPrepare ? '' : ' disabled') + ' aria-label="' + escapeHtml(t("searchArea", { value: state.searchRadius })) + '"></sp-slider></div>' : '',
+      state.source && surfaceMode ? '    <div class="pmt-settings"><div class="pmt-label">' + escapeHtml(t("surfaceDetail", { value: state.surfaceFeatureCount })) + '</div><sp-slider class="pmt-setting-slider" id="pmt-surface-feature-count" min="80" max="400" step="20" value="' + String(state.surfaceFeatureCount) + '"' + (canPrepare ? '' : ' disabled') + ' aria-label="' + escapeHtml(t("surfaceDetail", { value: state.surfaceFeatureCount })) + '"></sp-slider></div>' : '',
       state.source ? '    <div class="pmt-settings"><div class="pmt-label">' + escapeHtml(t("confidenceThreshold", { value: Math.round(state.confidenceThreshold * 100) })) + '</div><sp-slider class="pmt-setting-slider" id="pmt-confidence-threshold" min="0.1" max="1" step="0.05" value="' + String(state.confidenceThreshold) + '"' + (canPrepare ? '' : ' disabled') + ' aria-label="' + escapeHtml(t("confidenceThreshold", { value: Math.round(state.confidenceThreshold * 100) })) + '"></sp-slider></div>' : '',
       '  </div>',
       '  <div class="pmt-card">',
@@ -497,7 +481,6 @@
       '    <h2 class="pmt-card-title">' + escapeHtml(t("applyTitle")) + '</h2>',
       '    <div class="pmt-label">' + escapeHtml(surfaceMode ? t("applySurfaceHelp") : t("applyHelp")) + '</div>',
       canApplyTracking ? '    <div class="pmt-label">' + escapeHtml(t("selectDestination")) + '</div>' : '',
-      !surfaceMode ? '    ' + checkboxMarkup("pmt-toggle-smoothing", state.smoothingEnabled ? t("smoothing") : t("rawTrajectory"), state.smoothingEnabled, !canPrepare) : '',
       '    ' + buttonMarkup("pmt-apply-tracking", surfaceMode ? t("applySurfacePerspective") : t("applyTrajectory"), ["pmt-button-full"], !canApplyTracking),
       '  </div>',
       '  <div class="pmt-card">',
@@ -1106,7 +1089,7 @@
       let samples;
       if (isSurfaceMode()) {
         // Use the cancellable worker for planar tracking as well as point tracking.
-        state.analysisTaskId = await root.PMT_NATIVE.startSurfaceTracking(state.source.mediaPath, state.referenceCorners, mediaRange.startSeconds, mediaRange.endSeconds, state.searchRadius);
+        state.analysisTaskId = await root.PMT_NATIVE.startSurfaceTracking(state.source.mediaPath, state.referenceCorners, mediaRange.startSeconds, mediaRange.endSeconds, state.searchRadius, state.surfaceFeatureCount);
         if (state.cancelRequested) {
           await root.PMT_NATIVE.cancelTracking(state.analysisTaskId);
           throw new Error("Tracking cancelled.");
@@ -1208,13 +1191,11 @@
         return;
       }
       // Anchor point trajectories to their first actual sample; surface trajectories retain their exact four-corner shape.
-      const trajectoryForApply = !surfaceMode && state.smoothingEnabled ? root.PMT_TRAJECTORY.smoothTrackingSamples(state.tracking) : state.tracking;
+      // Apply the exact reviewed point trajectory; users can now rely on their visible corrections directly.
+      const trajectoryForApply = state.tracking;
       const keyframes = surfaceMode ? root.PMT_TRAJECTORY.buildSurfaceKeyframes(trajectoryForApply) : root.PMT_TRAJECTORY.buildPositionKeyframes(trajectoryForApply);
       const results = surfaceMode ? await root.PMT_PREMIERE.applySurfaceTracking(keyframes) : await root.PMT_PREMIERE.applyTracking(keyframes);
       addLog((surfaceMode ? "Surface perspective" : "Trajectory") + " applied to " + results.length + " selected clip(s). " + keyframes.length + " keyframes per clip.");
-      if (!surfaceMode) {
-        addLog("Applied trajectory: " + (state.smoothingEnabled ? "light smoothing." : "raw tracking."));
-      }
       results.forEach((result) => {
         if (surfaceMode) {
           addLog(result.clipName + ": " + result.keyframeCount + " Corner Pin keys · " + result.matchName + ".");
@@ -1347,10 +1328,6 @@
     });
     bindButton(rootNode, "pmt-next-uncertain", () => showNextUncertainPreview(rootNode));
     bindButton(rootNode, "pmt-retrack-from-here", () => retrackFromCorrection(rootNode));
-    bindButton(rootNode, "pmt-toggle-smoothing", () => {
-      state.smoothingEnabled = !state.smoothingEnabled;
-      render(rootNode);
-    });
     bindButton(rootNode, "pmt-apply-tracking", () => applyTracking(rootNode));
     bindButton(rootNode, "pmt-copy-log", () => copyDiagnostics(rootNode));
     const preview = rootNode.querySelector("#pmt-preview");
@@ -1370,6 +1347,16 @@
       };
       searchRadiusSlider.addEventListener("input", updateSearchRadius);
       searchRadiusSlider.addEventListener("change", updateSearchRadius);
+    }
+    const surfaceFeatureCountSlider = rootNode.querySelector("#pmt-surface-feature-count");
+    if (surfaceFeatureCountSlider && !state.busy) {
+      // Let Surface mode retain more texture points on long or detailed 4K shots.
+      const updateSurfaceFeatureCount = (event) => {
+        state.surfaceFeatureCount = Math.min(400, Math.max(80, Math.round((Number(event.target.value) || 240) / 20) * 20));
+        render(rootNode);
+      };
+      surfaceFeatureCountSlider.addEventListener("input", updateSurfaceFeatureCount);
+      surfaceFeatureCountSlider.addEventListener("change", updateSurfaceFeatureCount);
     }
     const confidenceSlider = rootNode.querySelector("#pmt-confidence-threshold");
     if (confidenceSlider && !state.busy) {

@@ -99,12 +99,20 @@ test("validation exposes confidence markers, visible search-area tuning, and Sur
   assert.match(uiSource, /pmt-next-uncertain/);
   assert.match(uiSource, /pmt-uncertain-marker/);
   assert.match(uiSource, /pmt-surface-feature-count/);
+  assert.match(uiSource, /pmt-surface-feature-count-label/);
   assert.match(uiSource, /surfaceFeatureCount/);
   assert.match(uiSource, /state\.searchRadius/);
+  assert.match(uiSource, /updateSearchAreaSize/);
+  assert.match(uiSource, /frameRatesAreCompatible/);
   assert.match(nativeSource, /Number\(searchRadius\) \|\| 10/);
   assert.match(styles, /\.pmt-search-area\s*\{[^}]*pointer-events:\s*none;/s);
   assert.match(styles, /\.pmt-search-area\s*\{[^}]*min-width:\s*24px;/s);
   assert.match(styles, /\.pmt-uncertain-markers\s*\{[^}]*position:\s*relative;/s);
+});
+
+test("the internal extension name stays concise while the panel retains its Motion Tracker label", () => {
+  assert.equal(manifest.name, "Motion Tracker");
+  assert.equal(manifest.entrypoints[0].label.default, "Motion Tracker");
 });
 
 test("the direct Premiere preview uses its bundled muted H.264 preset", () => {

@@ -80,6 +80,7 @@
       searchArea: "Search area: ±{value} px",
       surfaceDetail: "Surface tracking points: {value}",
       surfaceDetailHelp: "More points can improve recovery on detailed surfaces, but take longer to analyze.",
+      frameRateWarning: "The source is {mediaFps} fps and the sequence is {sequenceFps} fps. This mismatch can cause jitter in the applied tracking.",
       uncertainFrames: "{count} uncertain image(s)",
       nextUncertain: "Next uncertain",
       uncertainMarker: "Uncertain image {current}",
@@ -152,6 +153,7 @@
       searchArea: "Zone de recherche : ±{value} px",
       surfaceDetail: "Points analysés sur la surface : {value}",
       surfaceDetailHelp: "Davantage de points peuvent mieux récupérer une surface détaillée, mais rallongent l’analyse.",
+      frameRateWarning: "La source est à {mediaFps} i/s et la séquence à {sequenceFps} i/s. Cette différence peut provoquer un tremblement du tracking appliqué.",
       uncertainFrames: "{count} image(s) incertaine(s)",
       nextUncertain: "Suivante incertaine",
       uncertainMarker: "Image incertaine {current}",
@@ -262,6 +264,52 @@
     const frameRateLabel = frameRate > 0 ? frameRate.toFixed(3).replace(/\.0+$/, "") + " fps" : "unknown frame rate";
     const frameCountLabel = frameCount > 0 ? frameCount + " frames" : "unknown frame count";
     return size + " · " + frameRateLabel + " · " + frameCountLabel + " · " + String(media.backend || "unknown backend");
+  }
+
+  // Premiere's sequence timebase is expressed in ticks per frame; use it only when the host returned a valid value.
+  function getSequenceFrameRate() {
+    const timebase = Number(state.range && state.range.timebase);
+    const ticksPerSecond = 254016000000;
+    const framesPerSecond = ticksPerSecond / timebase;
+    return Number.isFinite(framesPerSecond) && framesPerSecond > 0 ? framesPerSecond : 0;
+  }
+
+  // Treat integer frame-rate multiples in either direction as safe for the frame-aligned keyframe workflow.
+  function frameRatesAreCompatible(mediaFramesPerSecond, sequenceFramesPerSecond) {
+    const mediaRate = Number(mediaFramesPerSecond);
+    const sequenceRate = Number(sequenceFramesPerSecond);
+    if (!Number.isFinite(mediaRate) || mediaRate <= 0 || !Number.isFinite(sequenceRate) || sequenceRate <= 0) {
+      return true;
+    }
+    const ratio = mediaRate / sequenceRate;
+    const inverseRatio = sequenceRate / mediaRate;
+    return Math.abs(ratio - Math.round(ratio)) < 0.02 || Math.abs(inverseRatio - Math.round(inverseRatio)) < 0.02;
+  }
+
+  // Warn before analysis when frames cannot be paired cleanly between the source media and the active sequence.
+  function getFrameRateWarning() {
+    const mediaRate = Number(state.media && state.media.framesPerSecond);
+    const sequenceRate = getSequenceFrameRate();
+    if (frameRatesAreCompatible(mediaRate, sequenceRate)) {
+      return "";
+    }
+    return t("frameRateWarning", {
+      mediaFps: mediaRate.toFixed(3).replace(/\.0+$/, ""),
+      sequenceFps: sequenceRate.toFixed(3).replace(/\.0+$/, "")
+    });
+  }
+
+  // Resize every visible search window during a slider drag without rebuilding the active Spectrum control.
+  function updateSearchAreaSize(rootNode) {
+    if (!rootNode || !state.media || !Number(state.media.width) || !Number(state.media.height)) {
+      return;
+    }
+    const width = Math.min(100, Math.max(1, Number(state.searchRadius) * 2 / Number(state.media.width) * 100));
+    const height = Math.min(100, Math.max(1, Number(state.searchRadius) * 2 / Number(state.media.height) * 100));
+    Array.prototype.forEach.call(rootNode.querySelectorAll(".pmt-search-area"), (searchArea) => {
+      searchArea.style.width = width.toFixed(3) + "%";
+      searchArea.style.height = height.toFixed(3) + "%";
+    });
   }
 
   // Intersect the visible sequence range with the source clip and convert it into source-media seconds.
@@ -455,11 +503,12 @@
       '      ' + buttonMarkup("pmt-capture-source", t("capturePrepare"), [], state.busy),
       '    </div>',
       state.source ? '    <div class="pmt-label">' + escapeHtml(t("video")) + ': ' + escapeHtml(mediaLabel(state.media)) + '</div>' : '',
+      getFrameRateWarning() ? '    <div class="pmt-rate-warning">' + escapeHtml(getFrameRateWarning()) + '</div>' : '',
       state.source && !state.media && nativeStatus.available ? '    <div class="pmt-label">' + escapeHtml(t("sourcePathUnavailable")) + '</div>' + buttonMarkup("pmt-choose-source-media", t("chooseSourceFile"), ["pmt-button-full"], state.busy) : '',
       state.source ? '    <div class="pmt-settings"><div class="pmt-label">' + escapeHtml(t("trackingMode")) + '</div><div class="pmt-actions">' + buttonMarkup("pmt-mode-point", t("pointMode"), [], !canPrepare || !surfaceMode) + buttonMarkup("pmt-mode-surface", t("surfaceMode"), [], !canPrepare || surfaceMode) + '</div></div>' : '',
-      state.source ? '    <div class="pmt-settings"><div class="pmt-label">' + escapeHtml(t("searchArea", { value: state.searchRadius })) + '</div><sp-slider class="pmt-setting-slider" id="pmt-search-radius" min="5" max="40" step="1" value="' + String(state.searchRadius) + '"' + (canPrepare ? '' : ' disabled') + ' aria-label="' + escapeHtml(t("searchArea", { value: state.searchRadius })) + '"></sp-slider></div>' : '',
-      state.source && surfaceMode ? '    <div class="pmt-settings"><div class="pmt-label">' + escapeHtml(t("surfaceDetail", { value: state.surfaceFeatureCount })) + '</div><sp-slider class="pmt-setting-slider" id="pmt-surface-feature-count" min="80" max="400" step="20" value="' + String(state.surfaceFeatureCount) + '"' + (canPrepare ? '' : ' disabled') + ' aria-label="' + escapeHtml(t("surfaceDetail", { value: state.surfaceFeatureCount })) + '"></sp-slider><div class="pmt-label">' + escapeHtml(t("surfaceDetailHelp")) + '</div></div>' : '',
-      state.source ? '    <div class="pmt-settings"><div class="pmt-label">' + escapeHtml(t("confidenceThreshold", { value: Math.round(state.confidenceThreshold * 100) })) + '</div><sp-slider class="pmt-setting-slider" id="pmt-confidence-threshold" min="0.1" max="1" step="0.05" value="' + String(state.confidenceThreshold) + '"' + (canPrepare ? '' : ' disabled') + ' aria-label="' + escapeHtml(t("confidenceThreshold", { value: Math.round(state.confidenceThreshold * 100) })) + '"></sp-slider></div>' : '',
+      state.source ? '    <div class="pmt-settings"><div class="pmt-label" id="pmt-search-radius-label">' + escapeHtml(t("searchArea", { value: state.searchRadius })) + '</div><sp-slider class="pmt-setting-slider" id="pmt-search-radius" min="5" max="40" step="1" value="' + String(state.searchRadius) + '"' + (canPrepare ? '' : ' disabled') + ' aria-label="' + escapeHtml(t("searchArea", { value: state.searchRadius })) + '"></sp-slider></div>' : '',
+      state.source && surfaceMode ? '    <div class="pmt-settings"><div class="pmt-label" id="pmt-surface-feature-count-label">' + escapeHtml(t("surfaceDetail", { value: state.surfaceFeatureCount })) + '</div><div class="pmt-label">' + escapeHtml(t("surfaceDetailHelp")) + '</div><sp-slider class="pmt-setting-slider" id="pmt-surface-feature-count" min="80" max="400" step="20" value="' + String(state.surfaceFeatureCount) + '"' + (canPrepare ? '' : ' disabled') + ' aria-label="' + escapeHtml(t("surfaceDetail", { value: state.surfaceFeatureCount })) + '"></sp-slider></div>' : '',
+      state.source ? '    <div class="pmt-settings"><div class="pmt-label" id="pmt-confidence-threshold-label">' + escapeHtml(t("confidenceThreshold", { value: Math.round(state.confidenceThreshold * 100) })) + '</div><sp-slider class="pmt-setting-slider" id="pmt-confidence-threshold" min="0.1" max="1" step="0.05" value="' + String(state.confidenceThreshold) + '"' + (canPrepare ? '' : ' disabled') + ' aria-label="' + escapeHtml(t("confidenceThreshold", { value: Math.round(state.confidenceThreshold * 100) })) + '"></sp-slider></div>' : '',
       '  </div>',
       '  <div class="pmt-card">',
       '    <h2 class="pmt-card-title">' + escapeHtml(t("previewTitle")) + '</h2>',
@@ -1379,6 +1428,9 @@
       // Keep the search radius within the range independently validated by the native OpenCV addon.
       const updateSearchRadius = (event, shouldRender) => {
         state.searchRadius = Math.min(40, Math.max(5, Math.round(Number(event.target.value) || 10)));
+        const label = rootNode.querySelector("#pmt-search-radius-label");
+        if (label) label.textContent = t("searchArea", { value: state.searchRadius });
+        updateSearchAreaSize(rootNode);
         if (shouldRender) render(rootNode);
       };
       searchRadiusSlider.addEventListener("input", (event) => updateSearchRadius(event, false));
@@ -1389,6 +1441,8 @@
       // Let Surface mode retain more texture points on long or detailed 4K shots.
       const updateSurfaceFeatureCount = (event, shouldRender) => {
         state.surfaceFeatureCount = Math.min(400, Math.max(80, Math.round((Number(event.target.value) || 240) / 20) * 20));
+        const label = rootNode.querySelector("#pmt-surface-feature-count-label");
+        if (label) label.textContent = t("surfaceDetail", { value: state.surfaceFeatureCount });
         if (shouldRender) render(rootNode);
       };
       surfaceFeatureCountSlider.addEventListener("input", (event) => updateSurfaceFeatureCount(event, false));
@@ -1399,6 +1453,8 @@
       // Recompute only the review classification; native tracking samples remain unchanged.
       const updateConfidenceThreshold = (event, shouldRender) => {
         state.confidenceThreshold = Math.min(1, Math.max(0.1, Number(event.target.value) || 0.65));
+        const label = rootNode.querySelector("#pmt-confidence-threshold-label");
+        if (label) label.textContent = t("confidenceThreshold", { value: Math.round(state.confidenceThreshold * 100) });
         if (shouldRender) render(rootNode);
       };
       confidenceSlider.addEventListener("input", (event) => updateConfidenceThreshold(event, false));

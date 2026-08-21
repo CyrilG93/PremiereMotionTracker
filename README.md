@@ -71,7 +71,7 @@ The preview contains every tracked frame in the selected range. On long clips, g
 - Reversed clips are not supported. Variable time remapping may not track accurately.
 - Fast movement, motion blur, poor lighting, or low-detail areas can reduce tracking accuracy.
 - The plugin requires local file access only to analyse the selected media and create temporary previews. It does not upload media anywhere.
-- The tracking may generate some stuttering if the source media is not in the same range of framerate (ex: Timeline 25 fps, media 30 fps. 25/50 works fine).
+- The panel warns when the source and sequence frame rates are not integer multiples (for example, 25 fps and 30 fps). This can cause stuttering in the applied tracking; pairs such as 25/50 or 30/60 are supported without a warning.
 
 Use the **FR** button in the panel header to switch the interface to French.
 

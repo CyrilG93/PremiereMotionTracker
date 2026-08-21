@@ -349,7 +349,7 @@
   }
 
   // Wait for a native or Premiere export to flush into UXP's private temporary folder.
-  async function resolveExportedFile(temporaryFolder, fileStem, extension, maxAttempts) {
+  async function resolveExportedFile(temporaryFolder, fileStem, extension, maxAttempts, shouldCancel) {
     const nativeFileSystem = require("fs");
     const expectedExtension = String(extension || "").toLowerCase();
     const expectedName = String(fileStem || "") + expectedExtension;
@@ -358,6 +358,10 @@
     // Premiere queues PNG frame exports and can flush a later frame several seconds after reporting success.
     const attempts = Math.max(1, Number(maxAttempts) || 150);
     for (let attempt = 0; attempt < attempts; attempt += 1) {
+      if (typeof shouldCancel === "function" && shouldCancel()) {
+        // Stop the short polling wait as soon as the panel requests preview cancellation.
+        throw new Error("Preview generation skipped.");
+      }
       try {
         // Probe the exact requested name first: scanning a growing temporary folder slows every later preview frame.
         if (typeof nativeFileSystem.stat === "function") {
@@ -393,8 +397,8 @@
   }
 
   // Preserve the existing Premiere PNG export call while sharing its robust filesystem wait.
-  function resolveExportedPreview(temporaryFolder, fileStem) {
-    return resolveExportedFile(temporaryFolder, fileStem, ".png");
+  function resolveExportedPreview(temporaryFolder, fileStem, shouldCancel) {
+    return resolveExportedFile(temporaryFolder, fileStem, ".png", undefined, shouldCancel);
   }
 
   // Wait longer for a direct Premiere video render while still keeping the panel responsive.
@@ -713,7 +717,7 @@
   }
 
   // Export one PNG at a tracked sample so the panel can replay Premiere-rendered images without HTML video.
-  async function exportTrackingPreviewFrame(mediaSeconds, frameIndex) {
+  async function exportTrackingPreviewFrame(mediaSeconds, frameIndex, shouldCancel) {
     if (!handles.source || !handles.source.sequence) {
       throw new Error("Capturez d’abord le clip source.");
     }
@@ -743,7 +747,7 @@
     if (!exported) {
       throw new Error("Premiere a refusé l’export d’une image pour l’aperçu animé.");
     }
-    const imageEntry = await resolveExportedPreview(temporaryFolder, fileStem);
+    const imageEntry = await resolveExportedPreview(temporaryFolder, fileStem, shouldCancel);
     return { url: imageEntry.url, fileName: imageEntry.name, width: dimensions.width, height: dimensions.height };
   }
 

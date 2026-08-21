@@ -2,5 +2,5 @@
   "use strict";
 
   // Expose one version constant so the panel can display its installed build.
-  root.PMT_VERSION = "0.5.0";
+  root.PMT_VERSION = "0.5.1";
 }(window));

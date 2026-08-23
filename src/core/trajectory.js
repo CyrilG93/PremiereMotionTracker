@@ -241,6 +241,15 @@
     return prefix.concat(corrected);
   }
 
+  // Keep the approved tail and replace only the samples leading up to a manually corrected reference frame.
+  function replaceTrackingHead(samples, replacement) {
+    const original = Array.isArray(samples) ? samples : [];
+    const corrected = (Array.isArray(replacement) ? replacement : []).filter((sample) => sample && Number.isFinite(Number(sample.seconds)));
+    if (!corrected.length) throw new Error("La reprise inverse du tracking n’a renvoyé aucune image exploitable.");
+    const restartSeconds = Number(corrected[corrected.length - 1].seconds);
+    return corrected.concat(original.filter((sample) => Number(sample && sample.seconds) > restartSeconds + 0.000001));
+  }
+
   return {
     computeRelativeOffsets,
     findUncertainSamples,
@@ -250,6 +259,7 @@
     buildSurfaceMotionKeyframes,
     computeTargetPositionScale,
     computeCornerPinPoint,
-    replaceTrackingTail
+    replaceTrackingTail,
+    replaceTrackingHead
   };
 }));

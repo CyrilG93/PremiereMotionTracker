@@ -28,6 +28,7 @@
     trackingMode: "point",
     referencePoint: null,
     referenceCorners: [],
+    referenceSeconds: 0,
     tracking: null,
     liveSamples: [],
     analysisTaskId: "",
@@ -80,6 +81,8 @@
       previewNavigation: "Browse the analyzed frames",
       correctionHelp: "Click the image to correct the point, then re-track from this frame.",
       retrackFromHere: "Re-track from this frame",
+      retrackBefore: "Re-track before this frame",
+      retrackAfter: "Re-track after this frame",
       retracking: "Re-tracking from the corrected frame…",
       confidenceThreshold: "Confidence alert threshold: {value}%",
       searchArea: "Search area: ±{value} px",
@@ -154,6 +157,8 @@
       previewNavigation: "Parcourir les images analysées",
       correctionHelp: "Cliquez dans l’image pour corriger le point, puis relancer le tracking depuis cette image.",
       retrackFromHere: "Relancer depuis cette image",
+      retrackBefore: "Relancer avant cette image",
+      retrackAfter: "Relancer après cette image",
       retracking: "Reprise du tracking depuis l’image corrigée…",
       confidenceThreshold: "Seuil d’alerte confiance : {value}%",
       searchArea: "Zone de recherche : ±{value} px",
@@ -222,7 +227,7 @@
 
   // Treat an original-file video and a Premiere-exported still as equivalent initial preview surfaces.
   function hasInitialPreview() {
-    return Boolean(state.previewVideo && !state.videoUnavailable) || Boolean(state.preview);
+    return Boolean(state.trackingPreview && state.trackingPreview.frames.length) || Boolean(state.previewVideo && !state.videoUnavailable) || Boolean(state.preview);
   }
 
   // Decode a panel-sized PNG from the original media so Premiere never has to export preview frames.
@@ -548,13 +553,14 @@
     const canPlayPreview = Boolean(!state.busy && ((state.previewVideo && !state.videoUnavailable) || (state.trackingPreview && state.trackingPreview.frames.length > 1)));
     const analyzeLabel = state.operation === "analysis" ? t("analyzing") : t("analyze");
     const playbackFrame = state.trackingPreview && state.trackingPreview.frames[state.previewFrameIndex];
-    const hasCorrection = Boolean(!surfaceMode && state.correction && playbackFrame && state.correction.frameIndex === state.previewFrameIndex);
+    const hasCorrection = Boolean(!surfaceMode && state.tracking && state.correction && playbackFrame && state.correction.frameIndex === state.previewFrameIndex);
     const displayedPoint = hasCorrection ? state.correction.point : playbackFrame;
     const canRetrack = Boolean(!state.busy && hasCorrection && state.tracking && state.tracking.length > 1 && Number(playbackFrame.seconds) < Number(state.tracking[state.tracking.length - 1].seconds));
     const uncertainIndexes = getPreviewUncertainIndexes();
     const currentConfidence = confidencePercent(playbackFrame);
+    const previewSurfaceCorners = state.tracking && playbackFrame ? playbackFrame.corners : state.referenceCorners;
     const previewContent = playbackFrame
-      ? '<div class="pmt-preview-stage"><img class="pmt-preview-buffer pmt-preview-buffer-active" id="pmt-tracking-image-a" src="' + escapeHtml(playbackFrame.url) + '" alt="' + escapeHtml(t("trackingPreviewAlt")) + '"><img class="pmt-preview-buffer" id="pmt-tracking-image-b" alt=""></div>' + (surfaceMode ? (Array.isArray(playbackFrame.corners) ? playbackFrame.corners.map(searchAreaMarkup).join("") : "") + surfaceCornersMarkup(playbackFrame.corners, false) : searchAreaMarkup(displayedPoint) + '<div class="pmt-tracking-point" id="pmt-preview-point" style="left:' + (Number(displayedPoint.x) * 100).toFixed(3) + '%;top:' + (Number(displayedPoint.y) * 100).toFixed(3) + '%"></div>') + '<div class="pmt-preview-status" id="pmt-preview-status">' + escapeHtml(t("trackingPreview", { current: state.previewFrameIndex + 1, total: state.trackingPreview.frames.length, confidence: currentConfidence })) + '</div>'
+      ? '<div class="pmt-preview-stage"><img class="pmt-preview-buffer pmt-preview-buffer-active" id="pmt-tracking-image-a" src="' + escapeHtml(playbackFrame.url) + '" alt="' + escapeHtml(t("trackingPreviewAlt")) + '"><img class="pmt-preview-buffer" id="pmt-tracking-image-b" alt=""></div>' + (surfaceMode ? (Array.isArray(previewSurfaceCorners) ? previewSurfaceCorners.map(searchAreaMarkup).join("") : "") + surfaceCornersMarkup(previewSurfaceCorners, !state.tracking) : searchAreaMarkup(displayedPoint) + '<div class="pmt-tracking-point" id="pmt-preview-point" style="left:' + (Number(displayedPoint.x) * 100).toFixed(3) + '%;top:' + (Number(displayedPoint.y) * 100).toFixed(3) + '%"></div>') + '<div class="pmt-preview-status" id="pmt-preview-status">' + escapeHtml(t("trackingPreview", { current: state.previewFrameIndex + 1, total: state.trackingPreview.frames.length, confidence: currentConfidence })) + '</div>'
       : state.previewVideo && !state.videoUnavailable
       ? '<video class="pmt-preview-video" id="pmt-preview-video" src="' + escapeHtml(state.previewVideo.url) + '" muted playsinline preload="metadata"></video>' + (surfaceMode
         ? state.referenceCorners.map(searchAreaMarkup).join("") + surfaceCornersMarkup(state.referenceCorners, true)
@@ -603,7 +609,7 @@
       playbackFrame ? '      ' + buttonMarkup("pmt-next-uncertain", t("nextUncertain"), [], !uncertainIndexes.length || state.busy) : '',
       '    </div>',
       state.previewGenerationDeferred ? '    <div class="pmt-label">' + escapeHtml(t("longPreviewWarning", { count: state.previewBuildTotal })) + '</div>' + buttonMarkup("pmt-generate-long-preview", t("generatePreview"), ["pmt-button-full", "pmt-button-primary"], state.busy) : '',
-      playbackFrame && !surfaceMode ? '    ' + buttonMarkup("pmt-retrack-from-here", t("retrackFromHere"), ["pmt-button-full", "pmt-button-primary"], !canRetrack) : '',
+      playbackFrame && !surfaceMode ? '    <div class="pmt-actions">' + buttonMarkup("pmt-retrack-before", t("retrackBefore"), [], !hasCorrection || state.previewFrameIndex <= 0) + buttonMarkup("pmt-retrack-from-here", t("retrackAfter"), ["pmt-button-primary"], !canRetrack) + '</div>' : '',
       '  </div>',
       '  <div class="pmt-card">',
       '    <h2 class="pmt-card-title">' + escapeHtml(t("applyTitle")) + '</h2>',
@@ -686,6 +692,10 @@
         activeImage.classList.remove("pmt-preview-buffer-active");
         state.previewActiveBuffer = nextBuffer;
         state.previewFrameIndex = requestedIndex;
+        if (!state.tracking) {
+          // Before analysis, this slider chooses the exact source frame that anchors both tracking directions.
+          state.referenceSeconds = Number(frame.seconds);
+        }
         const correction = state.correction && state.correction.frameIndex === requestedIndex ? state.correction.point : frame;
         const point = rootNode.querySelector("#pmt-preview-point");
         const searchArea = rootNode.querySelector(".pmt-search-area");
@@ -937,6 +947,18 @@
       if (!previewRange) throw new Error("The source media range is unavailable.");
       state.preview = await renderNativePreviewFrame(previewRange.startSeconds);
       addLog("Native original-media preview ready. Premiere PNG export bypassed.");
+      // Decode the range sequentially once so the reference-frame slider is immediate rather than seeking the source on every move.
+      const previewFolder = await prepareNativePreviewCache(previewRange.startSeconds, previewRange.endSeconds);
+      state.liveSamples = [];
+      state.analysisSampleIndex = 0;
+      state.analysisTaskId = await root.PMT_NATIVE.startPreviewCache(state.source.mediaPath, previewRange.startSeconds, previewRange.endSeconds, previewFolder);
+      addLog("Native reference preview cache in progress…");
+      const cachedFrames = await collectLiveTracking(rootNode, state.analysisTaskId);
+      state.analysisTaskId = "";
+      state.trackingPreview = { frames: cachedFrames.map((sample) => ({ url: String(sample.previewUrl || ""), width: state.preview.width, height: state.preview.height, frame: Number(sample.frame), seconds: Number(sample.seconds), x: 0.5, y: 0.5, confidence: 1, valid: true })) };
+      state.previewFrameIndex = 0;
+      state.referenceSeconds = Number(state.trackingPreview.frames[0] && state.trackingPreview.frames[0].seconds || previewRange.startSeconds);
+      addLog("Native reference preview ready: " + state.trackingPreview.frames.length + " frames. Choose a frame, then place the tracking reference.");
     } catch (nativePreviewError) {
       state.preview = null;
       addLog("Native source preview unavailable: " + (nativePreviewError && nativePreviewError.message ? nativePreviewError.message : String(nativePreviewError)) + ". Trying Premiere still image fallback.");
@@ -1067,7 +1089,8 @@
     }
     state.tracking = null;
     state.liveSamples = [];
-    clearTrackingPreview();
+    // Keep the prepared frame cache mounted while the user refines the reference point or surface.
+    state.correction = null;
     render(rootNode);
   }
 
@@ -1101,7 +1124,7 @@
 
   // Drag an existing blue handle with plain mouse events, which remain reliable in Premiere UXP panels.
   function beginSurfaceCornerDrag(rootNode, cornerIndex, event) {
-    if (state.busy || !isSurfaceMode() || state.trackingPreview || !state.preview || !state.referenceCorners[cornerIndex]) {
+    if (state.busy || !isSurfaceMode() || state.tracking || !hasInitialPreview() || !state.referenceCorners[cornerIndex]) {
       return;
     }
     event.preventDefault();
@@ -1348,7 +1371,8 @@
     state.tracking = null;
     state.liveSamples = [];
     state.analysisSampleIndex = 0;
-    clearTrackingPreview();
+    // The pre-analysis cache is also the reverse-tracking source, so do not discard it here.
+    state.correction = null;
     addLog("OpenCV analysis in progress…");
     render(rootNode);
     try {
@@ -1366,23 +1390,48 @@
       state.analysisTotalFrames = Math.max(1, Math.ceil((mediaRange.endSeconds - mediaRange.startSeconds) * Number(state.media && state.media.framesPerSecond || 0)) + 1);
       let samples;
       if (isSurfaceMode()) {
-        // Use the cancellable worker for planar tracking as well as point tracking.
-        state.analysisTaskId = await root.PMT_NATIVE.startSurfaceTracking(state.source.mediaPath, state.referenceCorners, mediaRange.startSeconds, mediaRange.endSeconds, state.searchRadius, state.surfaceFeatureCount);
+        const previewFolder = state.nativePreview && state.nativePreview.folder && state.nativePreview.folder.nativePath;
+        const referenceSeconds = Math.min(mediaRange.endSeconds, Math.max(mediaRange.startSeconds, Number(state.referenceSeconds) || mediaRange.startSeconds));
+        let beforeSamples = [];
+        if (referenceSeconds > mediaRange.startSeconds + 0.000001) {
+          state.analysisTaskId = await root.PMT_NATIVE.startSurfaceTrackingReverse(state.source.mediaPath, state.referenceCorners, mediaRange.startSeconds, referenceSeconds, state.searchRadius, state.surfaceFeatureCount, previewFolder);
+          beforeSamples = await collectLiveTracking(rootNode, state.analysisTaskId);
+          state.analysisTaskId = "";
+        }
+        state.liveSamples = [];
+        state.analysisSampleIndex = 0;
+        // Track from the same selected reference frame to Out after the inverse pass has filled the In side.
+        state.analysisTaskId = await root.PMT_NATIVE.startSurfaceTracking(state.source.mediaPath, state.referenceCorners, referenceSeconds, mediaRange.endSeconds, state.searchRadius, state.surfaceFeatureCount);
         if (state.cancelRequested) {
           await root.PMT_NATIVE.cancelTracking(state.analysisTaskId);
           throw new Error("Tracking cancelled.");
         }
-        samples = await collectLiveTracking(rootNode, state.analysisTaskId);
+        const afterSamples = await collectLiveTracking(rootNode, state.analysisTaskId);
         state.analysisTaskId = "";
+        samples = beforeSamples.concat(afterSamples.filter((sample) => !beforeSamples.length || Number(sample.seconds) > Number(beforeSamples[beforeSamples.length - 1].seconds) + 0.000001));
+        addLog("Surface reference: " + referenceSeconds.toFixed(3) + " s · backwards " + beforeSamples.length + " frames · forwards " + afterSamples.length + " frames.");
       } else {
-        const previewFolder = await prepareNativePreviewCache(mediaRange.startSeconds, mediaRange.endSeconds);
-        state.analysisTaskId = await root.PMT_NATIVE.startTracking(state.source.mediaPath, state.referencePoint, mediaRange.startSeconds, mediaRange.endSeconds, state.searchRadius, previewFolder);
+        const previewFolder = state.nativePreview && state.nativePreview.folder && state.nativePreview.folder.nativePath;
+        const referenceSeconds = Math.min(mediaRange.endSeconds, Math.max(mediaRange.startSeconds, Number(state.referenceSeconds) || mediaRange.startSeconds));
+        let beforeSamples = [];
+        if (referenceSeconds > mediaRange.startSeconds + 0.000001) {
+          // The cache has already been decoded in chronological order, allowing optical flow to follow the chosen point back to In.
+          state.analysisTaskId = await root.PMT_NATIVE.startTrackingReverse(state.source.mediaPath, state.referencePoint, mediaRange.startSeconds, referenceSeconds, state.searchRadius, previewFolder);
+          beforeSamples = await collectLiveTracking(rootNode, state.analysisTaskId);
+          state.analysisTaskId = "";
+        }
+        state.liveSamples = [];
+        state.analysisSampleIndex = 0;
+        state.analysisTaskId = await root.PMT_NATIVE.startTracking(state.source.mediaPath, state.referencePoint, referenceSeconds, mediaRange.endSeconds, state.searchRadius, previewFolder);
         if (state.cancelRequested) {
           await root.PMT_NATIVE.cancelTracking(state.analysisTaskId);
           throw new Error("Tracking cancelled.");
         }
-        samples = await collectLiveTracking(rootNode, state.analysisTaskId);
+        const afterSamples = await collectLiveTracking(rootNode, state.analysisTaskId);
         state.analysisTaskId = "";
+        // Both workers include the reference frame; preserve a single chronological copy for Premiere keyframes.
+        samples = beforeSamples.concat(afterSamples.filter((sample) => !beforeSamples.length || Number(sample.seconds) > Number(beforeSamples[beforeSamples.length - 1].seconds) + 0.000001));
+        addLog("Tracking reference: " + referenceSeconds.toFixed(3) + " s · backwards " + beforeSamples.length + " frames · forwards " + afterSamples.length + " frames.");
       }
       state.tracking = samples;
       const invalidCount = root.PMT_TRAJECTORY.findUncertainSamples(state.tracking, state.confidenceThreshold).length;
@@ -1408,7 +1457,7 @@
   }
 
   // Re-run only the unapproved tail of the trajectory from a manually corrected preview image.
-  async function retrackFromCorrection(rootNode) {
+  async function retrackFromCorrection(rootNode, direction) {
     const correction = state.correction;
     const previousTracking = state.tracking ? state.tracking.slice() : [];
     if (!correction || !previousTracking.length) {
@@ -1419,7 +1468,7 @@
     state.liveSamples = [];
     state.analysisSampleIndex = 0;
     clearTrackingPreview();
-    addLog("Re-tracking from source frame " + correction.frame + ".");
+    addLog("Re-tracking " + (direction === "before" ? "before" : "after") + " source frame " + correction.frame + ".");
     render(rootNode);
     try {
       await waitForPanelPaint();
@@ -1427,17 +1476,21 @@
         throw new Error("Tracking cancelled.");
       }
       const mediaRange = getTrackingMediaRange();
-      if (Number(correction.seconds) >= Number(mediaRange.endSeconds)) {
-        throw new Error("The correction must be before the end of the tracking range.");
+      const previewFolder = state.nativePreview && state.nativePreview.folder && state.nativePreview.folder.nativePath;
+      if (direction === "before") {
+        if (Number(correction.seconds) <= Number(mediaRange.startSeconds)) throw new Error("The correction must be after the start of the tracking range.");
+        state.analysisTaskId = await root.PMT_NATIVE.startTrackingReverse(state.source.mediaPath, correction.point, mediaRange.startSeconds, correction.seconds, state.searchRadius, previewFolder);
+      } else {
+        if (Number(correction.seconds) >= Number(mediaRange.endSeconds)) throw new Error("The correction must be before the end of the tracking range.");
+        state.analysisTaskId = await root.PMT_NATIVE.startTracking(state.source.mediaPath, correction.point, correction.seconds, mediaRange.endSeconds, state.searchRadius, previewFolder);
       }
-      state.analysisTaskId = await root.PMT_NATIVE.startTracking(state.source.mediaPath, correction.point, correction.seconds, mediaRange.endSeconds, state.searchRadius);
       if (state.cancelRequested) {
         await root.PMT_NATIVE.cancelTracking(state.analysisTaskId);
         throw new Error("Tracking cancelled.");
       }
       const replacement = await collectLiveTracking(rootNode, state.analysisTaskId);
       state.analysisTaskId = "";
-      state.tracking = root.PMT_TRAJECTORY.replaceTrackingTail(previousTracking, replacement);
+      state.tracking = direction === "before" ? root.PMT_TRAJECTORY.replaceTrackingHead(previousTracking, replacement) : root.PMT_TRAJECTORY.replaceTrackingTail(previousTracking, replacement);
       const invalidCount = root.PMT_TRAJECTORY.findUncertainSamples(state.tracking, state.confidenceThreshold).length;
       addLog("Correction merged: " + replacement.length + " re-tracked frames from source frame " + correction.frame + ".");
       addLog("Uncertain frames: " + invalidCount + ".");
@@ -1577,17 +1630,19 @@
     bindButton(rootNode, "pmt-capture-source", () => captureAndPrepare(rootNode));
     bindButton(rootNode, "pmt-choose-source-media", () => chooseSourceMedia(rootNode));
     bindButton(rootNode, "pmt-mode-point", () => {
+      const hadTracking = Boolean(state.tracking);
       state.trackingMode = "point";
       state.tracking = null;
-      clearTrackingPreview();
+      if (hadTracking) clearTrackingPreview();
       addLog("Tracking mode: point.");
       render(rootNode);
     });
     bindButton(rootNode, "pmt-mode-surface", () => {
+      const hadTracking = Boolean(state.tracking);
       state.trackingMode = "surface";
       state.referenceCorners = [];
       state.tracking = null;
-      clearTrackingPreview();
+      if (hadTracking) clearTrackingPreview();
       addLog("Tracking mode: surface. Select 4 corners before Analyze.");
       render(rootNode);
     });
@@ -1607,6 +1662,7 @@
     });
     bindButton(rootNode, "pmt-next-uncertain", () => showNextUncertainPreview(rootNode));
     bindButton(rootNode, "pmt-retrack-from-here", () => retrackFromCorrection(rootNode));
+    bindButton(rootNode, "pmt-retrack-before", () => retrackFromCorrection(rootNode, "before"));
     bindButton(rootNode, "pmt-apply-tracking", () => applyTracking(rootNode));
     bindButton(rootNode, "pmt-copy-log", () => copyDiagnostics(rootNode));
     const preview = rootNode.querySelector("#pmt-preview");
@@ -1616,6 +1672,12 @@
       const scrubPreview = (event) => {
         const requestedIndex = Number(event.target.value);
         const isFinalValue = event.type === "change";
+        if (!state.tracking && requestedIndex !== state.previewFrameIndex && (state.referencePoint || state.referenceCorners.length)) {
+          // A reference belongs to one source frame only; require a fresh placement after the user selects another frame.
+          state.referencePoint = null;
+          state.referenceCorners = [];
+          addLog("Reference selection cleared after changing the source frame.");
+        }
         if (previewScrubTimer) clearTimeout(previewScrubTimer);
         // Coalesce Spectrum input events so a drag does not queue dozens of obsolete image swaps.
         previewScrubTimer = setTimeout(() => {
@@ -1681,7 +1743,7 @@
       cornerElement.addEventListener("mousedown", (event) => beginSurfaceCornerDrag(rootNode, cornerIndex, event));
       cornerElement.addEventListener("keydown", (event) => nudgeSurfaceCorner(rootNode, cornerIndex, event));
     });
-    if (preview && state.trackingPreview && !state.busy && !isSurfaceMode()) {
+    if (preview && state.trackingPreview && state.tracking && !state.busy && !isSurfaceMode()) {
       preview.addEventListener("click", (event) => chooseCorrectionPoint(rootNode, event));
     } else if (preview && hasInitialPreview() && !state.busy) {
       preview.addEventListener("click", (event) => {

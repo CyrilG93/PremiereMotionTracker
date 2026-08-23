@@ -13,7 +13,7 @@
     if (!candidate) {
       return names;
     }
-    ["getVersion", "runSelfTest", "inspectMedia", "renderPreviewFrame", "trackMedia", "trackSurface", "startTracking", "startSurfaceTracking", "pollTracking", "cancelTracking"].forEach((name) => {
+    ["getVersion", "runSelfTest", "inspectMedia", "renderPreviewFrame", "trackMedia", "trackSurface", "startPreviewCache", "startTracking", "startTrackingReverse", "startSurfaceTracking", "startSurfaceTrackingReverse", "pollTracking", "cancelTracking"].forEach((name) => {
       if (typeof candidate[name] === "function") {
         names.push(name);
       }
@@ -41,7 +41,7 @@
     if (!loadPromise) {
       loadPromise = (async () => {
         try {
-      const loadedAddon = await require("premiere-motion-tracker-0.5.8.uxpaddon");
+      const loadedAddon = await require("premiere-motion-tracker-0.5.9.uxpaddon");
           exportNames = collectExportNames(loadedAddon);
           if (!loadedAddon || typeof loadedAddon.getVersion !== "function") {
             throw new Error("The addon does not provide getVersion() (" + describeExports(loadedAddon) + ").");
@@ -141,6 +141,23 @@
     ));
   }
 
+  // Populate every selection frame once so the pre-analysis slider never triggers a fresh source seek.
+  async function startPreviewCache(mediaPath, startSeconds, endSeconds, previewFolder) {
+    if (!addon || typeof addon.startPreviewCache !== "function") {
+      throw new Error(loadError || "The native addon does not provide startPreviewCache().");
+    }
+    return String(addon.startPreviewCache(String(mediaPath || ""), Number(startSeconds), Number(endSeconds), String(previewFolder || "")));
+  }
+
+  // Follow a point back from the selected reference frame through the native sequential preview cache.
+  async function startTrackingReverse(mediaPath, normalizedPoint, startSeconds, endSeconds, searchRadius, previewFolder) {
+    if (!addon || typeof addon.startTrackingReverse !== "function") {
+      throw new Error(loadError || "The native addon does not provide startTrackingReverse().");
+    }
+    const point = normalizedPoint || {};
+    return String(addon.startTrackingReverse(String(mediaPath || ""), Number(point.x), Number(point.y), Number(startSeconds), Number(endSeconds), Number(searchRadius) || 10, String(previewFolder || "")));
+  }
+
   // Start planar tracking asynchronously so Surface mode can publish progress and honour cancellation.
   async function startSurfaceTracking(mediaPath, normalizedCorners, startSeconds, endSeconds, searchRadius, featureCount) {
     if (!addon || typeof addon.startSurfaceTracking !== "function") {
@@ -158,6 +175,15 @@
       Number(searchRadius) || 10,
       Number(featureCount) || 240
     ));
+  }
+
+  // Follow a four-corner reference backwards through the prepared cache before tracking the remaining forward range.
+  async function startSurfaceTrackingReverse(mediaPath, normalizedCorners, startSeconds, endSeconds, searchRadius, featureCount, previewFolder) {
+    if (!addon || typeof addon.startSurfaceTrackingReverse !== "function") {
+      throw new Error(loadError || "The native addon does not provide startSurfaceTrackingReverse().");
+    }
+    const corners = Array.isArray(normalizedCorners) ? normalizedCorners.map((corner) => ({ x: Number(corner && corner.x), y: Number(corner && corner.y) })) : [];
+    return String(addon.startSurfaceTrackingReverse(String(mediaPath || ""), corners, Number(startSeconds), Number(endSeconds), Number(searchRadius) || 10, Number(featureCount) || 240, String(previewFolder || "")));
   }
 
   // Fetch only new primitive samples from the worker to avoid copying a whole long trajectory on every refresh.
@@ -183,8 +209,11 @@
     renderPreviewFrame,
     trackMedia,
     trackSurface,
+    startPreviewCache,
     startTracking,
+    startTrackingReverse,
     startSurfaceTracking,
+    startSurfaceTrackingReverse,
     pollTracking,
     cancelTracking
   };

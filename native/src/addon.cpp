@@ -99,12 +99,13 @@ void readSurfaceTrackingArguments(
     double& startSeconds,
     double& endSeconds,
     int& searchRadius,
-    int& featureCount
+    int& featureCount,
+    std::string& previewFolder
 ) {
-    addon_value arguments[6] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
-    std::size_t argumentCount = 6;
+    addon_value arguments[7] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
+    std::size_t argumentCount = 7;
     Check(UxpAddonApis.uxp_addon_get_cb_info(env, info, &argumentCount, arguments, nullptr, nullptr));
-    if (argumentCount != 4 && argumentCount != 5 && argumentCount != 6) {
+    if (argumentCount != 4 && argumentCount != 5 && argumentCount != 6 && argumentCount != 7) {
         throw std::invalid_argument("Surface tracking requires media, four corners, and a range.");
     }
     std::size_t byteCount = 0;
@@ -141,10 +142,18 @@ void readSurfaceTrackingArguments(
         searchRadius = static_cast<int>(std::lround(requestedSearchRadius));
     }
     featureCount = 240;
-    if (argumentCount == 6) {
+    if (argumentCount >= 6) {
         double requestedFeatureCount = 240.0;
         Check(UxpAddonApis.uxp_addon_get_value_double(env, arguments[5], &requestedFeatureCount));
         featureCount = static_cast<int>(std::lround(requestedFeatureCount));
+    }
+    if (argumentCount == 7) {
+        std::size_t previewByteCount = 0;
+        Check(UxpAddonApis.uxp_addon_get_value_string_utf8(env, arguments[6], nullptr, 0, &previewByteCount));
+        std::vector<char> previewBuffer(previewByteCount + 1, '\0');
+        std::size_t copiedPreviewByteCount = 0;
+        if (previewByteCount > 0) Check(UxpAddonApis.uxp_addon_get_value_string_utf8(env, arguments[6], previewBuffer.data(), previewBuffer.size(), &copiedPreviewByteCount));
+        previewFolder.assign(previewBuffer.data(), copiedPreviewByteCount);
     }
 }
 
@@ -308,6 +317,26 @@ addon_value inspectMedia(addon_env env, addon_callback_info info) {
     }
 }
 
+// Read the bounded source range and the UXP-owned folder used by the preparatory preview cache worker.
+void readPreviewCacheArguments(addon_env env, addon_callback_info info, std::string& mediaPath, double& startSeconds, double& endSeconds, std::string& previewFolder) {
+    addon_value arguments[4] = { nullptr, nullptr, nullptr, nullptr };
+    std::size_t argumentCount = 4;
+    Check(UxpAddonApis.uxp_addon_get_cb_info(env, info, &argumentCount, arguments, nullptr, nullptr));
+    if (argumentCount != 4) throw std::invalid_argument("Le cache de prévisualisation requiert le média, la plage et le dossier.");
+    const auto readString = [&env](addon_value value) {
+        std::size_t byteCount = 0;
+        Check(UxpAddonApis.uxp_addon_get_value_string_utf8(env, value, nullptr, 0, &byteCount));
+        std::vector<char> buffer(byteCount + 1, '\0');
+        std::size_t copiedByteCount = 0;
+        if (byteCount > 0) Check(UxpAddonApis.uxp_addon_get_value_string_utf8(env, value, buffer.data(), buffer.size(), &copiedByteCount));
+        return std::string(buffer.data(), copiedByteCount);
+    };
+    mediaPath = readString(arguments[0]);
+    Check(UxpAddonApis.uxp_addon_get_value_double(env, arguments[1], &startSeconds));
+    Check(UxpAddonApis.uxp_addon_get_value_double(env, arguments[2], &endSeconds));
+    previewFolder = readString(arguments[3]);
+}
+
 // Decode one source frame to a UXP-owned PNG path so the panel avoids Premiere's slow frame exporter.
 addon_value renderPreviewFrame(addon_env env, addon_callback_info info) {
     try {
@@ -388,7 +417,8 @@ addon_value trackSurface(addon_env env, addon_callback_info info) {
         double endSeconds = 0.0;
         int searchRadius = 10;
         int featureCount = 240;
-        readSurfaceTrackingArguments(env, info, mediaPath, corners, startSeconds, endSeconds, searchRadius, featureCount);
+        std::string previewFolder;
+        readSurfaceTrackingArguments(env, info, mediaPath, corners, startSeconds, endSeconds, searchRadius, featureCount, previewFolder);
         const std::vector<pmt::SurfaceTrackingSample> samples = pmt::trackSurface(mediaPath, corners, startSeconds, endSeconds, {}, searchRadius, featureCount);
         addon_value result = nullptr;
         Check(UxpAddonApis.uxp_addon_create_array_with_length(env, samples.size(), &result));
@@ -454,6 +484,89 @@ addon_value startTracking(addon_env env, addon_callback_info info) {
     }
 }
 
+// Decode the selected range once before point placement so UXP can scrub without one expensive media seek per slider event.
+addon_value startPreviewCache(addon_env env, addon_callback_info info) {
+    try {
+#if defined(PMT_WITH_OPENCV)
+        std::string mediaPath;
+        std::string previewFolder;
+        double startSeconds = 0.0;
+        double endSeconds = 0.0;
+        readPreviewCacheArguments(env, info, mediaPath, startSeconds, endSeconds, previewFolder);
+        const std::string taskId = "preview-cache-" + std::to_string(nextTrackingTaskId.fetch_add(1));
+        const auto task = std::make_shared<TrackingTask>();
+        {
+            std::lock_guard<std::mutex> lock(trackingTasksMutex);
+            trackingTasks.emplace(taskId, task);
+        }
+        task->worker = std::thread([task, mediaPath, startSeconds, endSeconds, previewFolder]() {
+            try {
+                pmt::cacheMediaPreview(mediaPath, startSeconds, endSeconds, [task](const pmt::MediaTrackingSample& sample) {
+                    if (task->cancelRequested.load()) return false;
+                    std::lock_guard<std::mutex> lock(task->mutex);
+                    task->samples.push_back(sample);
+                    return true;
+                }, previewFolder);
+            } catch (const std::exception& error) {
+                std::lock_guard<std::mutex> lock(task->mutex);
+                if (task->cancelRequested.load()) task->cancelled.store(true);
+                else task->error = error.what();
+            }
+            task->done.store(true);
+        });
+        return createString(env, taskId);
+#else
+        (void)info;
+        throw std::runtime_error("The addon was built without OpenCV.");
+#endif
+    } catch (...) {
+        return CreateErrorFromException(env);
+    }
+}
+
+// Track from a corrected or user-selected point back to the In point using the sequentially prepared image cache.
+addon_value startTrackingReverse(addon_env env, addon_callback_info info) {
+    try {
+#if defined(PMT_WITH_OPENCV)
+        std::string mediaPath;
+        double normalizedX = 0.0;
+        double normalizedY = 0.0;
+        double startSeconds = 0.0;
+        double endSeconds = 0.0;
+        int searchRadius = 10;
+        std::string previewFolder;
+        readTrackingArguments(env, info, mediaPath, normalizedX, normalizedY, startSeconds, endSeconds, searchRadius, previewFolder);
+        const std::string taskId = "reverse-tracking-" + std::to_string(nextTrackingTaskId.fetch_add(1));
+        const auto task = std::make_shared<TrackingTask>();
+        {
+            std::lock_guard<std::mutex> lock(trackingTasksMutex);
+            trackingTasks.emplace(taskId, task);
+        }
+        task->worker = std::thread([task, mediaPath, normalizedX, normalizedY, startSeconds, endSeconds, searchRadius, previewFolder]() {
+            try {
+                pmt::trackMediaReverseFromPreview(mediaPath, normalizedX, normalizedY, startSeconds, endSeconds, [task](const pmt::MediaTrackingSample& sample) {
+                    if (task->cancelRequested.load()) return false;
+                    std::lock_guard<std::mutex> lock(task->mutex);
+                    task->samples.push_back(sample);
+                    return true;
+                }, searchRadius, previewFolder);
+            } catch (const std::exception& error) {
+                std::lock_guard<std::mutex> lock(task->mutex);
+                if (task->cancelRequested.load()) task->cancelled.store(true);
+                else task->error = error.what();
+            }
+            task->done.store(true);
+        });
+        return createString(env, taskId);
+#else
+        (void)info;
+        throw std::runtime_error("The addon was built without OpenCV.");
+#endif
+    } catch (...) {
+        return CreateErrorFromException(env);
+    }
+}
+
 // Start planar tracking on the same cancellable worker path used by point tracking.
 addon_value startSurfaceTracking(addon_env env, addon_callback_info info) {
     try {
@@ -464,7 +577,8 @@ addon_value startSurfaceTracking(addon_env env, addon_callback_info info) {
         double endSeconds = 0.0;
         int searchRadius = 10;
         int featureCount = 240;
-        readSurfaceTrackingArguments(env, info, mediaPath, corners, startSeconds, endSeconds, searchRadius, featureCount);
+        std::string previewFolder;
+        readSurfaceTrackingArguments(env, info, mediaPath, corners, startSeconds, endSeconds, searchRadius, featureCount, previewFolder);
         const std::string taskId = "surface-tracking-" + std::to_string(nextTrackingTaskId.fetch_add(1));
         const auto task = std::make_shared<TrackingTask>();
         task->isSurface = true;
@@ -490,6 +604,50 @@ addon_value startSurfaceTracking(addon_env env, addon_callback_info info) {
                 } else {
                     task->error = error.what();
                 }
+            }
+            task->done.store(true);
+        });
+        return createString(env, taskId);
+#else
+        (void)info;
+        throw std::runtime_error("The addon was built without OpenCV.");
+#endif
+    } catch (...) {
+        return CreateErrorFromException(env);
+    }
+}
+
+// Follow the selected planar surface back to In from an arbitrary reference frame using the prepared PNG cache.
+addon_value startSurfaceTrackingReverse(addon_env env, addon_callback_info info) {
+    try {
+#if defined(PMT_WITH_OPENCV)
+        std::string mediaPath;
+        std::array<std::array<double, 2>, 4> corners {};
+        double startSeconds = 0.0;
+        double endSeconds = 0.0;
+        int searchRadius = 10;
+        int featureCount = 240;
+        std::string previewFolder;
+        readSurfaceTrackingArguments(env, info, mediaPath, corners, startSeconds, endSeconds, searchRadius, featureCount, previewFolder);
+        const std::string taskId = "reverse-surface-tracking-" + std::to_string(nextTrackingTaskId.fetch_add(1));
+        const auto task = std::make_shared<TrackingTask>();
+        task->isSurface = true;
+        {
+            std::lock_guard<std::mutex> lock(trackingTasksMutex);
+            trackingTasks.emplace(taskId, task);
+        }
+        task->worker = std::thread([task, mediaPath, corners, startSeconds, endSeconds, searchRadius, featureCount, previewFolder]() {
+            try {
+                pmt::trackSurfaceReverseFromPreview(mediaPath, corners, startSeconds, endSeconds, [task](const pmt::SurfaceTrackingSample& sample) {
+                    if (task->cancelRequested.load()) return false;
+                    std::lock_guard<std::mutex> lock(task->mutex);
+                    task->surfaceSamples.push_back(sample);
+                    return true;
+                }, searchRadius, featureCount, previewFolder);
+            } catch (const std::exception& error) {
+                std::lock_guard<std::mutex> lock(task->mutex);
+                if (task->cancelRequested.load()) task->cancelled.store(true);
+                else task->error = error.what();
             }
             task->done.store(true);
         });
@@ -620,7 +778,10 @@ addon_value init(addon_env env, addon_value exports, const addon_apis& addonAPIs
     registerFunction(env, exports, "trackMedia", trackMedia, addonAPIs);
     registerFunction(env, exports, "trackSurface", trackSurface, addonAPIs);
     registerFunction(env, exports, "startTracking", startTracking, addonAPIs);
+    registerFunction(env, exports, "startPreviewCache", startPreviewCache, addonAPIs);
+    registerFunction(env, exports, "startTrackingReverse", startTrackingReverse, addonAPIs);
     registerFunction(env, exports, "startSurfaceTracking", startSurfaceTracking, addonAPIs);
+    registerFunction(env, exports, "startSurfaceTrackingReverse", startSurfaceTrackingReverse, addonAPIs);
     registerFunction(env, exports, "pollTracking", pollTracking, addonAPIs);
     registerFunction(env, exports, "cancelTracking", cancelTracking, addonAPIs);
     return exports;

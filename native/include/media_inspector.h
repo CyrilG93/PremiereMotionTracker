@@ -64,8 +64,29 @@ PreviewFrame renderPreviewFrame(
     int maximumWidth = 960
 );
 
+// Decode a bounded range once into compact panel PNGs so selection and reverse tracking avoid repeated media seeks.
+std::vector<MediaTrackingSample> cacheMediaPreview(
+    const std::string& mediaPath,
+    double startSeconds,
+    double endSeconds,
+    const TrackingProgressCallback& progressCallback = {},
+    const std::string& previewFolder = {}
+);
+
 // Track a normalized point across a bounded media interval with Lucas-Kanade and a forward-backward check.
 std::vector<MediaTrackingSample> trackMedia(
+    const std::string& mediaPath,
+    double normalizedX,
+    double normalizedY,
+    double startSeconds,
+    double endSeconds,
+    const TrackingProgressCallback& progressCallback = {},
+    int searchRadius = 10,
+    const std::string& previewFolder = {}
+);
+
+// Follow a point backwards through the previously decoded panel cache, returning samples in chronological order.
+std::vector<MediaTrackingSample> trackMediaReverseFromPreview(
     const std::string& mediaPath,
     double normalizedX,
     double normalizedY,
@@ -85,6 +106,18 @@ std::vector<SurfaceTrackingSample> trackSurface(
     const SurfaceTrackingProgressCallback& progressCallback = {},
     int searchRadius = 10,
     int featureCount = 240
+);
+
+// Follow a four-corner surface backwards through the prepared PNG cache, returning chronological samples.
+std::vector<SurfaceTrackingSample> trackSurfaceReverseFromPreview(
+    const std::string& mediaPath,
+    const std::array<std::array<double, 2>, 4>& normalizedCorners,
+    double startSeconds,
+    double endSeconds,
+    const SurfaceTrackingProgressCallback& progressCallback = {},
+    int searchRadius = 10,
+    int featureCount = 240,
+    const std::string& previewFolder = {}
 );
 
 } // namespace pmt

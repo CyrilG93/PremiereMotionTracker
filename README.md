@@ -34,12 +34,12 @@ The source and destination clips must be in the same sequence.
 ## Track a Point
 
 1. Select the source clip, add in/out and click **Capture and prepare**.
-2. Click the preview image to place the tracking point.
+2. Use Play or the frame slider to choose the source frame that best shows the point, then click it to place the tracking point.
 3. Adjust **Search area** if the point moves quickly.
 4. Click **Analyze**.
 5. During analysis, use **Cancel analysis** if you need to stop. No partial tracking data is kept.
 6. After tracking, review the result with **Play**, the frame slider, or the yellow confidence markers.
-7. To fix a drift, select the affected frame, click the correct point, then click **Re-track from here**.
+7. To fix a drift, select the affected frame, click the correct point, then choose whether to re-track **before** or **after** that frame.
 8. Select one or more destination clips in the timeline.
 9. Click **Apply trajectory**.
 
@@ -49,7 +49,7 @@ The plugin adds a Transform effect and Position keyframes to every selected dest
 
 1. Set In/Out, then capture and prepare a source clip.
 2. Choose **Surface**.
-3. Click the four corners of the surface in this order: top-left, top-right, bottom-right, bottom-left.
+3. Use Play or the frame slider to choose the best reference frame, then click the four corners of the surface in this order: top-left, top-right, bottom-right, bottom-left.
 4. Drag the numbered handles to refine the selection.
 5. Click **Analyze**.
 6. Use **Cancel analysis** if needed, then select the destination clip and click **Apply perspective**.
@@ -58,7 +58,7 @@ Surface mode works best with flat, textured, clearly visible surfaces. It can be
 
 ## Preview Options
 
-The preview now decodes the original source media file directly with its native engine. While tracking is already decoding the selected range, it builds a compact local preview cache; Play follows the source frame rate and the frame slider reads that cache instantly. This avoids Premiere's slow preview generation and the black HTML-video surface in UXP.
+The preview decodes the original source media file directly with its native engine. During preparation, it builds a compact local preview cache for the selected In/Out range; use it to select any reference frame before tracking. The tracker follows that reference both backwards to In and forwards to Out. Play follows the source frame rate and the frame slider reads the cache instantly.
 
 - The original-file preview only supports the selected source media; it does not include timeline effects, titles, or other clips composited in the sequence.
 - The Diagnostics log records the decoded source frame, source time, dimensions, and decoding time. Copy it after a failed test.

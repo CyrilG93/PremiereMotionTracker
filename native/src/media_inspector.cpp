@@ -173,6 +173,98 @@ PreviewFrame renderPreviewFrame(const std::string& mediaPath, double seconds, co
     return { previewFrame.cols, previewFrame.rows, frameIndex, static_cast<double>(frameIndex) / framesPerSecond };
 }
 
+std::vector<MediaTrackingSample> cacheMediaPreview(
+    const std::string& mediaPath,
+    double startSeconds,
+    double endSeconds,
+    const TrackingProgressCallback& progressCallback,
+    const std::string& previewFolder
+) {
+    if (previewFolder.empty() || !std::isfinite(startSeconds) || !std::isfinite(endSeconds) || startSeconds < 0.0 || endSeconds <= startSeconds) {
+        throw std::invalid_argument("La plage ou le dossier de cache de prévisualisation est invalide.");
+    }
+    cv::VideoCapture capture(mediaPath, cv::CAP_ANY);
+    if (!capture.isOpened()) {
+        throw std::runtime_error("Impossible d’ouvrir le média pour le cache de prévisualisation.");
+    }
+    const double framesPerSecond = capture.get(cv::CAP_PROP_FPS);
+    const std::int64_t firstFrame = std::max<std::int64_t>(0, static_cast<std::int64_t>(std::floor(startSeconds * framesPerSecond)));
+    const std::int64_t lastFrame = static_cast<std::int64_t>(std::ceil(endSeconds * framesPerSecond));
+    if (!std::isfinite(framesPerSecond) || framesPerSecond <= 0.0 || lastFrame - firstFrame + 1 > maximumTrackedFrames) {
+        throw std::runtime_error("La plage de cache de prévisualisation est invalide ou trop longue.");
+    }
+    if (!capture.set(cv::CAP_PROP_POS_FRAMES, static_cast<double>(firstFrame))) {
+        throw std::runtime_error("OpenCV ne peut pas atteindre le début du cache de prévisualisation.");
+    }
+    std::vector<MediaTrackingSample> samples;
+    cv::Mat decodedFrame;
+    for (std::int64_t frame = firstFrame; frame <= lastFrame && capture.read(decodedFrame); frame += 1) {
+        MediaTrackingSample sample { frame, static_cast<double>(frame) / framesPerSecond, 0.0, 0.0, 1.0, true, cachePreviewFrame(decodedFrame, previewFolder, frame) };
+        samples.push_back(sample);
+        if (progressCallback && !progressCallback(sample)) {
+            throw std::runtime_error("Tracking cancelled.");
+        }
+    }
+    return samples;
+}
+
+std::vector<MediaTrackingSample> trackMediaReverseFromPreview(
+    const std::string& mediaPath,
+    double normalizedX,
+    double normalizedY,
+    double startSeconds,
+    double endSeconds,
+    const TrackingProgressCallback& progressCallback,
+    int searchRadius,
+    const std::string& previewFolder
+) {
+    if (previewFolder.empty() || !std::isfinite(normalizedX) || !std::isfinite(normalizedY) || normalizedX < 0.0 || normalizedX > 1.0 || normalizedY < 0.0 || normalizedY > 1.0 || !std::isfinite(startSeconds) || !std::isfinite(endSeconds) || startSeconds < 0.0 || endSeconds <= startSeconds || searchRadius < 5 || searchRadius > 40) {
+        throw std::invalid_argument("Les paramètres du tracking inverse sont invalides.");
+    }
+    const MediaInspection media = inspectMedia(mediaPath);
+    const double framesPerSecond = media.framesPerSecond;
+    const std::int64_t firstFrame = std::max<std::int64_t>(0, static_cast<std::int64_t>(std::floor(startSeconds * framesPerSecond)));
+    const std::int64_t lastFrame = static_cast<std::int64_t>(std::ceil(endSeconds * framesPerSecond));
+    const auto readCachedFrame = [&previewFolder](std::int64_t frame) {
+        const cv::Mat image = cv::imread(previewFolder + "/pmt-native-track-" + std::to_string(frame) + ".png", cv::IMREAD_COLOR);
+        if (image.empty()) throw std::runtime_error("Une image du cache inverse est introuvable.");
+        return image;
+    };
+    cv::Mat previousGray = toGray(readCachedFrame(lastFrame));
+    cv::Point2f trackedPoint(static_cast<float>(normalizedX * static_cast<double>(previousGray.cols - 1)), static_cast<float>(normalizedY * static_cast<double>(previousGray.rows - 1)));
+    std::vector<MediaTrackingSample> samples;
+    samples.push_back({ lastFrame, static_cast<double>(lastFrame) / framesPerSecond, normalizedX, normalizedY, 1.0, true, "pmt-native-track-" + std::to_string(lastFrame) + ".png" });
+    const cv::Size searchWindow(searchRadius * 2 + 1, searchRadius * 2 + 1);
+    for (std::int64_t frame = lastFrame - 1; frame >= firstFrame; frame -= 1) {
+        cv::Mat currentGray = toGray(readCachedFrame(frame));
+        std::vector<cv::Point2f> forwardPoint;
+        std::vector<unsigned char> forwardStatus;
+        std::vector<float> forwardError;
+        cv::calcOpticalFlowPyrLK(previousGray, currentGray, std::vector<cv::Point2f> { trackedPoint }, forwardPoint, forwardStatus, forwardError, searchWindow, 3);
+        std::vector<cv::Point2f> backwardPoint;
+        std::vector<unsigned char> backwardStatus;
+        std::vector<float> backwardError;
+        if (!forwardPoint.empty() && !forwardStatus.empty() && forwardStatus[0]) {
+            cv::calcOpticalFlowPyrLK(currentGray, previousGray, forwardPoint, backwardPoint, backwardStatus, backwardError, searchWindow, 3);
+        }
+        double confidence = 0.0;
+        bool valid = !forwardPoint.empty() && !forwardStatus.empty() && forwardStatus[0] && !backwardPoint.empty() && !backwardStatus.empty() && backwardStatus[0];
+        if (valid) {
+            const double backwardDistance = cv::norm(backwardPoint[0] - trackedPoint);
+            confidence = std::clamp(1.0 - backwardDistance / 2.0, 0.0, 1.0);
+            valid = backwardDistance <= 1.5;
+            if (valid) trackedPoint = forwardPoint[0];
+        }
+        samples.push_back({ frame, static_cast<double>(frame) / framesPerSecond, std::clamp(static_cast<double>(trackedPoint.x) / static_cast<double>(currentGray.cols - 1), 0.0, 1.0), std::clamp(static_cast<double>(trackedPoint.y) / static_cast<double>(currentGray.rows - 1), 0.0, 1.0), confidence, valid, "pmt-native-track-" + std::to_string(frame) + ".png" });
+        previousGray = std::move(currentGray);
+    }
+    std::reverse(samples.begin(), samples.end());
+    for (const MediaTrackingSample& sample : samples) {
+        if (progressCallback && !progressCallback(sample)) throw std::runtime_error("Tracking cancelled.");
+    }
+    return samples;
+}
+
 std::vector<MediaTrackingSample> trackMedia(
     const std::string& mediaPath,
     double normalizedX,
@@ -401,6 +493,84 @@ std::vector<SurfaceTrackingSample> trackSurface(
         }
         previousGray = std::move(currentGray);
     }
+    return samples;
+}
+
+std::vector<SurfaceTrackingSample> trackSurfaceReverseFromPreview(
+    const std::string& mediaPath,
+    const std::array<std::array<double, 2>, 4>& normalizedCorners,
+    double startSeconds,
+    double endSeconds,
+    const SurfaceTrackingProgressCallback& progressCallback,
+    int searchRadius,
+    int featureCount,
+    const std::string& previewFolder
+) {
+    if (previewFolder.empty() || !std::isfinite(startSeconds) || !std::isfinite(endSeconds) || startSeconds < 0.0 || endSeconds <= startSeconds || searchRadius < 5 || searchRadius > 40 || featureCount < 80 || featureCount > 400) {
+        throw std::invalid_argument("Les paramètres du tracking inverse de surface sont invalides.");
+    }
+    const MediaInspection media = inspectMedia(mediaPath);
+    const double framesPerSecond = media.framesPerSecond;
+    const std::int64_t firstFrame = std::max<std::int64_t>(0, static_cast<std::int64_t>(std::floor(startSeconds * framesPerSecond)));
+    const std::int64_t lastFrame = static_cast<std::int64_t>(std::ceil(endSeconds * framesPerSecond));
+    const auto readCached = [&previewFolder](std::int64_t frame) {
+        const cv::Mat image = cv::imread(previewFolder + "/pmt-native-track-" + std::to_string(frame) + ".png", cv::IMREAD_COLOR);
+        if (image.empty()) throw std::runtime_error("Une image du cache inverse de surface est introuvable.");
+        return image;
+    };
+    cv::Mat previousGray = toGray(readCached(lastFrame));
+    std::vector<cv::Point2f> surfaceCorners = makeSurfaceCorners(normalizedCorners, previousGray.cols, previousGray.rows);
+    const auto reseed = [&surfaceCorners, featureCount](const cv::Mat& gray) {
+        cv::Mat mask(gray.size(), CV_8UC1, cv::Scalar(0));
+        std::vector<cv::Point> polygon;
+        for (const cv::Point2f& corner : surfaceCorners) polygon.emplace_back(cvRound(corner.x), cvRound(corner.y));
+        cv::fillConvexPoly(mask, polygon, cv::Scalar(255));
+        std::vector<cv::Point2f> features;
+        cv::goodFeaturesToTrack(gray, features, featureCount, 0.01, 5.0, mask, 3, false, 0.04);
+        return features;
+    };
+    std::vector<cv::Point2f> trackedFeatures = reseed(previousGray);
+    if (trackedFeatures.size() < 8) throw std::runtime_error("La surface de référence ne contient pas assez de détails.");
+    std::vector<SurfaceTrackingSample> samples;
+    samples.push_back(makeSurfaceSample(lastFrame, framesPerSecond, surfaceCorners, previousGray.cols, previousGray.rows, 1.0, true));
+    const cv::Size window(searchRadius * 2 + 1, searchRadius * 2 + 1);
+    for (std::int64_t frame = lastFrame - 1; frame >= firstFrame; frame -= 1) {
+        cv::Mat currentGray = toGray(readCached(frame));
+        std::vector<cv::Point2f> forward, backward, source, destination;
+        std::vector<unsigned char> forwardStatus, backwardStatus;
+        std::vector<float> forwardError, backwardError;
+        cv::calcOpticalFlowPyrLK(previousGray, currentGray, trackedFeatures, forward, forwardStatus, forwardError, window, 3);
+        cv::calcOpticalFlowPyrLK(currentGray, previousGray, forward, backward, backwardStatus, backwardError, window, 3);
+        double backwardSum = 0.0;
+        for (std::size_t index = 0; index < trackedFeatures.size(); index += 1) {
+            if (index >= forward.size() || index >= backward.size() || index >= forwardStatus.size() || index >= backwardStatus.size() || !forwardStatus[index] || !backwardStatus[index]) continue;
+            const double distance = cv::norm(backward[index] - trackedFeatures[index]);
+            if (distance > 1.5) continue;
+            source.push_back(trackedFeatures[index]);
+            destination.push_back(forward[index]);
+            backwardSum += distance;
+        }
+        bool valid = source.size() >= 8;
+        double confidence = 0.0;
+        if (valid) {
+            cv::Mat mask;
+            const cv::Mat homography = cv::findHomography(source, destination, cv::RANSAC, 3.0, mask);
+            const int inlierCount = mask.empty() ? 0 : cv::countNonZero(mask);
+            valid = !homography.empty() && inlierCount >= 6;
+            if (valid) {
+                cv::perspectiveTransform(surfaceCorners, surfaceCorners, homography);
+                std::vector<cv::Point2f> retained;
+                for (int index = 0; index < mask.rows; index += 1) if (mask.at<unsigned char>(index)) retained.push_back(destination.at(static_cast<std::size_t>(index)));
+                trackedFeatures = std::move(retained);
+                confidence = std::clamp((static_cast<double>(source.size()) / std::max<std::size_t>(1, forward.size())) * (static_cast<double>(inlierCount) / source.size()) * (1.0 - (backwardSum / source.size()) / 1.5), 0.0, 1.0);
+            }
+        }
+        samples.push_back(makeSurfaceSample(frame, framesPerSecond, surfaceCorners, currentGray.cols, currentGray.rows, confidence, valid));
+        if (!valid || trackedFeatures.size() < 8) trackedFeatures = reseed(currentGray);
+        previousGray = std::move(currentGray);
+    }
+    std::reverse(samples.begin(), samples.end());
+    for (const SurfaceTrackingSample& sample : samples) if (progressCallback && !progressCallback(sample)) throw std::runtime_error("Tracking cancelled.");
     return samples;
 }
 

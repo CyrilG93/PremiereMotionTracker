@@ -77,7 +77,8 @@ Windows installers include the FFmpeg decoder and its LGPL licence automatically
 - The plugin requires local file access only to analyse the selected media and create temporary previews. It does not upload media anywhere.
 - The panel warns when the source and sequence frame rates are not integer multiples (for example, 25 fps and 30 fps). This can cause stuttering in the applied tracking; pairs such as 25/50 or 30/60 are supported without a warning.
 
-Use the **FR** button in the panel header to switch the interface to French.
+The header language button shows the active language: **EN** for English and **FR** for French. Click it to switch.
+Click the version badge beside **Motion Tracker** to open the product page in your default browser.
 
 ## Changelog
 

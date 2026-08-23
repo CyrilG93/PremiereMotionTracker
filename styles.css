@@ -69,12 +69,21 @@ input {
   font-weight: 600;
 }
 
+/* Keep the title and its product-page version badge on the same side of the header. */
+.pmt-title-line {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
 .pmt-version {
   color: var(--pmt-muted);
   font-size: 11px;
+  cursor: pointer;
 }
 
-/* Keep the compact language switch beside the version without relying on native UXP header controls. */
+/* Keep the compact language switch on the opposite side without relying on native UXP header controls. */
 .pmt-header-tools {
   display: flex;
   align-items: center;

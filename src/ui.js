@@ -41,6 +41,8 @@
   };
   let previewPlaybackTimer = null;
   let previewScrubTimer = null;
+  // Keep the product URL in one place so the header badge always opens the public Motion Tracker page.
+  const productPageUrl = "https://www.cyrilplugin.com/motion-tracker";
 
   // Keep the visible panel wording separate from technical diagnostics and default to English.
   const translations = {
@@ -118,7 +120,7 @@
       diagnostics: "Diagnostics",
       copy: "Copy",
       nativeEngine: "Native engine",
-      languageButton: "FR"
+      languageButton: "EN"
     },
     fr: {
       noClip: "Aucun clip source",
@@ -194,7 +196,7 @@
       diagnostics: "Diagnostic",
       copy: "Copier",
       nativeEngine: "Moteur natif",
-      languageButton: "EN"
+      languageButton: "FR"
     }
   };
 
@@ -512,6 +514,31 @@
     return '<div class="' + classes + '" id="' + id + '" role="button" aria-disabled="' + String(Boolean(disabled)) + '" data-disabled="' + String(Boolean(disabled)) + '" tabindex="' + (disabled ? "-1" : "0") + '">' + escapeHtml(label) + '</div>';
   }
 
+  // Open the product page through the UXP shell and leave the link on the clipboard if the host blocks it.
+  async function openProductPage(rootNode) {
+    addLog("Opening Motion Tracker product page: " + productPageUrl + ".");
+    try {
+      const uxp = typeof require === "function" ? require("uxp") : null;
+      if (!uxp || !uxp.shell || typeof uxp.shell.openExternal !== "function") {
+        throw new Error("UXP shell.openExternal is unavailable.");
+      }
+      const result = await uxp.shell.openExternal(productPageUrl, "Open the Motion Tracker product page.");
+      if (result) {
+        throw new Error(String(result));
+      }
+      addLog("Motion Tracker product page opened in the default browser.");
+    } catch (error) {
+      // Retain a useful way to reach the page if this Premiere host denies external processes.
+      try {
+        await writeClipboardText(productPageUrl);
+        addLog("Could not open the product page; its URL was copied to the clipboard. " + (error && error.message ? error.message : String(error)));
+      } catch (clipboardError) {
+        addLog("Could not open or copy the product page URL. " + (clipboardError && clipboardError.message ? clipboardError.message : String(clipboardError)));
+      }
+    }
+    render(rootNode);
+  }
+
   // Render an accessible skin-free checkbox because native UXP control styling varies by host version.
   function checkboxMarkup(id, label, checked, disabled) {
     return '<div class="pmt-checkbox" id="' + id + '" role="checkbox" aria-checked="' + String(Boolean(checked)) + '" aria-disabled="' + String(Boolean(disabled)) + '" data-disabled="' + String(Boolean(disabled)) + '" tabindex="' + (disabled ? "-1" : "0") + '"><span class="pmt-checkbox-box" aria-hidden="true">' + (checked ? "✓" : "") + '</span><span>' + escapeHtml(label) + '</span></div>';
@@ -579,8 +606,8 @@
     rootNode.innerHTML = [
       '<div class="pmt-shell">',
       '  <div class="pmt-header">',
-      '    <h1 class="pmt-title">Motion Tracker</h1>',
-      '    <div class="pmt-header-tools">' + buttonMarkup("pmt-toggle-language", t("languageButton"), ["pmt-button-compact"], false) + '<span class="pmt-version">v' + escapeHtml(root.PMT_VERSION) + '</span></div>',
+      '    <div class="pmt-title-line"><h1 class="pmt-title">Motion Tracker</h1>' + buttonMarkup("pmt-open-product-page", "v" + root.PMT_VERSION, ["pmt-version"], false) + '</div>',
+      '    <div class="pmt-header-tools">' + buttonMarkup("pmt-toggle-language", t("languageButton"), ["pmt-button-compact"], false) + '</div>',
       '  </div>',
       '  <div class="pmt-banner" data-tone="' + banner.tone + '">' + escapeHtml(banner.text) + '</div>',
       '  <div class="pmt-card">',
@@ -620,7 +647,7 @@
       '    <h2 class="pmt-card-title">' + escapeHtml(t("applyTitle")) + '</h2>',
       '    <div class="pmt-label">' + escapeHtml(surfaceMode ? t("applySurfaceHelp") : t("applyHelp")) + '</div>',
       canApplyTracking ? '    <div class="pmt-label">' + escapeHtml(t("selectDestination")) + '</div>' : '',
-      '    ' + buttonMarkup("pmt-apply-tracking", surfaceMode ? t("applySurfacePerspective") : t("applyTrajectory"), ["pmt-button-full"], !canApplyTracking),
+      '    ' + buttonMarkup("pmt-apply-tracking", surfaceMode ? t("applySurfacePerspective") : t("applyTrajectory"), canApplyTracking ? ["pmt-button-full", "pmt-button-primary"] : ["pmt-button-full"], !canApplyTracking),
       '  </div>',
       '  <div class="pmt-card">',
       '    <div class="pmt-card-header"><h2 class="pmt-card-title">' + escapeHtml(t("diagnostics")) + '</h2>' + buttonMarkup("pmt-copy-log", t("copy"), ["pmt-button-compact"], false) + '</div>',
@@ -1632,6 +1659,7 @@
 
   // Connect the freshly rendered controls to their Premiere diagnostics.
   function bindEvents(rootNode) {
+    bindButton(rootNode, "pmt-open-product-page", () => openProductPage(rootNode));
     bindButton(rootNode, "pmt-toggle-language", () => {
       state.language = state.language === "en" ? "fr" : "en";
       render(rootNode);

@@ -223,9 +223,16 @@ test("point tracking exposes a real native cancellation control while analysis i
   assert.match(nativeSource, /async function cancelTracking/);
 });
 
-test("English is the default panel language and a compact French switch remains available", () => {
+test("the header exposes the active language, product page badge, and enabled apply emphasis", () => {
   assert.match(uiSource, /language: "en"/);
+  assert.match(uiSource, /languageButton: "EN"/);
   assert.match(uiSource, /languageButton: "FR"/);
   assert.match(uiSource, /pmt-toggle-language/);
+  assert.match(uiSource, /pmt-open-product-page/);
+  assert.match(uiSource, /https:\/\/www\.cyrilplugin\.com\/motion-tracker/);
+  assert.match(uiSource, /shell\.openExternal/);
+  assert.match(uiSource, /canApplyTracking \? \["pmt-button-full", "pmt-button-primary"\]/);
+  assert.equal(manifest.requiredPermissions.launchProcess.schemes[0], "https");
+  assert.match(styles, /\.pmt-title-line\s*\{[^}]*display:\s*flex;/s);
   assert.match(styles, /\.pmt-header-tools\s*\{[^}]*display:\s*flex;/s);
 });

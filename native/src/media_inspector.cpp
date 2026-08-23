@@ -36,6 +36,21 @@ cv::Mat toGray(const cv::Mat& frame) {
 // Limit the first synchronous addon iteration so an accidental long range cannot freeze the panel indefinitely.
 constexpr std::int64_t maximumTrackedFrames = 3600;
 
+// Save a compact original-media frame while OpenCV already owns the sequential decoder position.
+std::string cachePreviewFrame(const cv::Mat& decodedFrame, const std::string& previewFolder, std::int64_t frameIndex) {
+    if (previewFolder.empty()) return {};
+    cv::Mat preview = decodedFrame;
+    if (decodedFrame.cols > 960) {
+        const double scale = 960.0 / static_cast<double>(decodedFrame.cols);
+        cv::resize(decodedFrame, preview, cv::Size(960, std::max(1, static_cast<int>(std::lround(decodedFrame.rows * scale)))), 0.0, 0.0, cv::INTER_AREA);
+    }
+    const std::string fileName = "pmt-native-track-" + std::to_string(frameIndex) + ".png";
+    if (!cv::imwrite(previewFolder + "/" + fileName, preview)) {
+        throw std::runtime_error("OpenCV ne peut pas écrire une image du cache de prévisualisation.");
+    }
+    return fileName;
+}
+
 // Turn the panel's normalized selection into a safe OpenCV polygon for feature detection.
 std::vector<cv::Point2f> makeSurfaceCorners(const std::array<std::array<double, 2>, 4>& normalizedCorners, int width, int height) {
     std::vector<cv::Point2f> corners;
@@ -165,7 +180,8 @@ std::vector<MediaTrackingSample> trackMedia(
     double startSeconds,
     double endSeconds,
     const TrackingProgressCallback& progressCallback,
-    int searchRadius
+    int searchRadius,
+    const std::string& previewFolder
 ) {
     if (!std::isfinite(normalizedX) || !std::isfinite(normalizedY) || normalizedX < 0.0 || normalizedX > 1.0 || normalizedY < 0.0 || normalizedY > 1.0) {
         throw std::invalid_argument("Le point de tracking doit être normalisé entre 0 et 1.");
@@ -206,7 +222,7 @@ std::vector<MediaTrackingSample> trackMedia(
     );
 
     std::vector<MediaTrackingSample> samples;
-    samples.push_back({ firstFrame, static_cast<double>(firstFrame) / framesPerSecond, normalizedX, normalizedY, 1.0, true });
+    samples.push_back({ firstFrame, static_cast<double>(firstFrame) / framesPerSecond, normalizedX, normalizedY, 1.0, true, cachePreviewFrame(decodedFrame, previewFolder, firstFrame) });
     // Stop decoding promptly when the UI cancels an asynchronous tracking task.
     if (progressCallback && !progressCallback(samples.back())) {
         throw std::runtime_error("Tracking cancelled.");
@@ -243,7 +259,7 @@ std::vector<MediaTrackingSample> trackMedia(
 
         const double pointX = std::clamp(static_cast<double>(trackedPoint.x) / static_cast<double>(currentGray.cols - 1), 0.0, 1.0);
         const double pointY = std::clamp(static_cast<double>(trackedPoint.y) / static_cast<double>(currentGray.rows - 1), 0.0, 1.0);
-        samples.push_back({ frame, static_cast<double>(frame) / framesPerSecond, pointX, pointY, confidence, valid });
+        samples.push_back({ frame, static_cast<double>(frame) / framesPerSecond, pointX, pointY, confidence, valid, cachePreviewFrame(decodedFrame, previewFolder, frame) });
         // Publish one plain-data sample at a time so the panel can update the overlay while tracking runs.
         if (progressCallback && !progressCallback(samples.back())) {
             throw std::runtime_error("Tracking cancelled.");

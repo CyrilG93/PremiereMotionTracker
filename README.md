@@ -58,7 +58,7 @@ Surface mode works best with flat, textured, clearly visible surfaces. It can be
 
 ## Preview Options
 
-The preview now decodes the original source media file directly with its native engine. It renders only the image currently needed by the panel, without asking Premiere to export a frame sequence. This avoids Premiere's slow preview generation and the black HTML-video surface in UXP.
+The preview now decodes the original source media file directly with its native engine. While tracking is already decoding the selected range, it builds a compact local preview cache; Play and the frame slider then read that cache instantly. This avoids Premiere's slow preview generation and the black HTML-video surface in UXP.
 
 - The original-file preview only supports the selected source media; it does not include timeline effects, titles, or other clips composited in the sequence.
 - The Diagnostics log records the decoded source frame, source time, dimensions, and decoding time. Copy it after a failed test.

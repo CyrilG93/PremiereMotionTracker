@@ -242,6 +242,21 @@
     return { url: file.url, fileName, width: Number(decoded.width), height: Number(decoded.height), seconds: Number(decoded.seconds) };
   }
 
+  // Pre-create UXP file entries so native sequential tracking can fill them without per-frame seek or panel work.
+  async function prepareNativePreviewCache(startSeconds, endSeconds) {
+    if (!state.nativePreview || !state.media || !Number(state.media.framesPerSecond)) return "";
+    const framesPerSecond = Number(state.media.framesPerSecond);
+    const firstFrame = Math.max(0, Math.floor(Number(startSeconds) * framesPerSecond));
+    const lastFrame = Math.ceil(Number(endSeconds) * framesPerSecond);
+    state.nativePreview.cache = {};
+    for (let frame = firstFrame; frame <= lastFrame; frame += 1) {
+      const fileName = "pmt-native-track-" + frame + ".png";
+      state.nativePreview.cache[fileName] = await state.nativePreview.folder.createFile(fileName, { overwrite: true });
+    }
+    addLog("Native preview cache reserved: " + (lastFrame - firstFrame + 1) + " frames.");
+    return state.nativePreview.folder.nativePath;
+  }
+
   // Discard progress data that belongs to an earlier source, range, or tracking point.
   function clearTrackingPreview() {
     if (previewPlaybackTimer) {
@@ -636,7 +651,7 @@
       return Promise.resolve(false);
     }
     const requestedIndex = Math.min(frames.length - 1, Math.max(0, Math.round(Number(frameIndex) || 0)));
-    if (state.nativePreview && !nativeFrameReady) {
+    if (state.nativePreview && !nativeFrameReady && !frames[requestedIndex].url) {
       // Decode only the requested original-media frame, avoiding a slow pre-rendered sequence.
       return renderNativePreviewFrame(Number(frames[requestedIndex].seconds)).then((preview) => {
         frames[requestedIndex].url = preview.url;
@@ -742,7 +757,7 @@
   async function buildTrackingPreview(rootNode) {
     const samples = Array.isArray(state.tracking) ? state.tracking.slice() : [];
     if (state.nativePreview) {
-      state.trackingPreview = { frames: samples.map((sample) => ({ url: state.preview.url, width: state.preview.width, height: state.preview.height, frame: Number(sample.frame), seconds: Number(sample.seconds), x: Number(sample.x), y: Number(sample.y), corners: Array.isArray(sample.corners) ? sample.corners.map((corner) => ({ x: Number(corner.x), y: Number(corner.y) })) : null, confidence: Number(sample.confidence), valid: sample.valid !== false })) };
+      state.trackingPreview = { frames: samples.map((sample) => ({ url: String(sample.previewUrl || state.preview.url), width: state.preview.width, height: state.preview.height, frame: Number(sample.frame), seconds: Number(sample.seconds), x: Number(sample.x), y: Number(sample.y), corners: Array.isArray(sample.corners) ? sample.corners.map((corner) => ({ x: Number(corner.x), y: Number(corner.y) })) : null, confidence: Number(sample.confidence), valid: sample.valid !== false })) };
       state.previewFrameIndex = 0;
       addLog("Native source preview ready: " + samples.length + " tracking samples available without Premiere PNG export.");
       return true;
@@ -1281,7 +1296,12 @@
       const progress = await root.PMT_NATIVE.pollTracking(taskId, state.analysisSampleIndex);
       const newSamples = Array.prototype.slice.call(progress.samples || []);
       if (newSamples.length) {
-        state.liveSamples = state.liveSamples.concat(newSamples);
+        const cachedSamples = newSamples.map((sample) => {
+          const cache = state.nativePreview && state.nativePreview.cache;
+          const entry = cache && cache[String(sample.previewFileName || "")];
+          return entry ? Object.assign({}, sample, { previewUrl: entry.url }) : sample;
+        });
+        state.liveSamples = state.liveSamples.concat(cachedSamples);
         state.analysisSampleIndex = Number(progress.nextIndex || state.liveSamples.length);
         updateVideoPreview(rootNode);
         updateAnalysisProgress(rootNode);
@@ -1333,7 +1353,8 @@
         samples = await collectLiveTracking(rootNode, state.analysisTaskId);
         state.analysisTaskId = "";
       } else {
-        state.analysisTaskId = await root.PMT_NATIVE.startTracking(state.source.mediaPath, state.referencePoint, mediaRange.startSeconds, mediaRange.endSeconds, state.searchRadius);
+        const previewFolder = await prepareNativePreviewCache(mediaRange.startSeconds, mediaRange.endSeconds);
+        state.analysisTaskId = await root.PMT_NATIVE.startTracking(state.source.mediaPath, state.referencePoint, mediaRange.startSeconds, mediaRange.endSeconds, state.searchRadius, previewFolder);
         if (state.cancelRequested) {
           await root.PMT_NATIVE.cancelTracking(state.analysisTaskId);
           throw new Error("Tracking cancelled.");

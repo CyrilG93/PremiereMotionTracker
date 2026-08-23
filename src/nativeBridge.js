@@ -41,7 +41,7 @@
     if (!loadPromise) {
       loadPromise = (async () => {
         try {
-      const loadedAddon = await require("premiere-motion-tracker-0.5.6.uxpaddon");
+      const loadedAddon = await require("premiere-motion-tracker-0.5.7.uxpaddon");
           exportNames = collectExportNames(loadedAddon);
           if (!loadedAddon || typeof loadedAddon.getVersion !== "function") {
             throw new Error("The addon does not provide getVersion() (" + describeExports(loadedAddon) + ").");
@@ -125,7 +125,7 @@
   }
 
   // Start a native worker and return immediately so UXP can keep the video preview responsive.
-  async function startTracking(mediaPath, normalizedPoint, startSeconds, endSeconds, searchRadius) {
+  async function startTracking(mediaPath, normalizedPoint, startSeconds, endSeconds, searchRadius, previewFolder) {
     if (!addon || typeof addon.startTracking !== "function") {
       throw new Error(loadError || "The native addon does not provide startTracking().");
     }
@@ -136,7 +136,8 @@
       Number(point.y),
       Number(startSeconds),
       Number(endSeconds),
-      Number(searchRadius) || 10
+      Number(searchRadius) || 10,
+      String(previewFolder || "")
     ));
   }
 

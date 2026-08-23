@@ -53,12 +53,13 @@ void readTrackingArguments(
     double& normalizedY,
     double& startSeconds,
     double& endSeconds,
-    int& searchRadius
+    int& searchRadius,
+    std::string& previewFolder
 ) {
-    addon_value arguments[6] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
-    std::size_t argumentCount = 6;
+    addon_value arguments[7] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
+    std::size_t argumentCount = 7;
     Check(UxpAddonApis.uxp_addon_get_cb_info(env, info, &argumentCount, arguments, nullptr, nullptr));
-    if (argumentCount != 5 && argumentCount != 6) {
+    if (argumentCount != 5 && argumentCount != 6 && argumentCount != 7) {
         throw std::invalid_argument("Tracking requires media, a point, and a range.");
     }
     std::size_t byteCount = 0;
@@ -74,10 +75,18 @@ void readTrackingArguments(
     Check(UxpAddonApis.uxp_addon_get_value_double(env, arguments[3], &startSeconds));
     Check(UxpAddonApis.uxp_addon_get_value_double(env, arguments[4], &endSeconds));
     searchRadius = 10;
-    if (argumentCount == 6) {
+    if (argumentCount >= 6) {
         double requestedSearchRadius = 10.0;
         Check(UxpAddonApis.uxp_addon_get_value_double(env, arguments[5], &requestedSearchRadius));
         searchRadius = static_cast<int>(std::lround(requestedSearchRadius));
+    }
+    if (argumentCount == 7) {
+        std::size_t previewByteCount = 0;
+        Check(UxpAddonApis.uxp_addon_get_value_string_utf8(env, arguments[6], nullptr, 0, &previewByteCount));
+        std::vector<char> previewBuffer(previewByteCount + 1, '\0');
+        std::size_t copiedPreviewByteCount = 0;
+        if (previewByteCount > 0) Check(UxpAddonApis.uxp_addon_get_value_string_utf8(env, arguments[6], previewBuffer.data(), previewBuffer.size(), &copiedPreviewByteCount));
+        previewFolder.assign(previewBuffer.data(), copiedPreviewByteCount);
     }
 }
 
@@ -168,6 +177,7 @@ addon_value createTrackingSample(addon_env env, const pmt::MediaTrackingSample& 
     setNumberProperty(env, item, "y", sample.y);
     setNumberProperty(env, item, "confidence", sample.confidence);
     setBooleanProperty(env, item, "valid", sample.valid);
+    setStringProperty(env, item, "previewFileName", sample.previewFileName);
     return item;
 }
 
@@ -349,7 +359,8 @@ addon_value trackMedia(addon_env env, addon_callback_info info) {
         double startSeconds = 0.0;
         double endSeconds = 0.0;
         int searchRadius = 10;
-        readTrackingArguments(env, info, mediaPath, normalizedX, normalizedY, startSeconds, endSeconds, searchRadius);
+        std::string previewFolder;
+        readTrackingArguments(env, info, mediaPath, normalizedX, normalizedY, startSeconds, endSeconds, searchRadius, previewFolder);
         const std::vector<pmt::MediaTrackingSample> samples = pmt::trackMedia(mediaPath, normalizedX, normalizedY, startSeconds, endSeconds, {}, searchRadius);
         addon_value result = nullptr;
         Check(UxpAddonApis.uxp_addon_create_array_with_length(env, samples.size(), &result));
@@ -404,14 +415,15 @@ addon_value startTracking(addon_env env, addon_callback_info info) {
         double startSeconds = 0.0;
         double endSeconds = 0.0;
         int searchRadius = 10;
-        readTrackingArguments(env, info, mediaPath, normalizedX, normalizedY, startSeconds, endSeconds, searchRadius);
+        std::string previewFolder;
+        readTrackingArguments(env, info, mediaPath, normalizedX, normalizedY, startSeconds, endSeconds, searchRadius, previewFolder);
         const std::string taskId = "tracking-" + std::to_string(nextTrackingTaskId.fetch_add(1));
         const auto task = std::make_shared<TrackingTask>();
         {
             std::lock_guard<std::mutex> lock(trackingTasksMutex);
             trackingTasks.emplace(taskId, task);
         }
-        task->worker = std::thread([task, mediaPath, normalizedX, normalizedY, startSeconds, endSeconds, searchRadius]() {
+        task->worker = std::thread([task, mediaPath, normalizedX, normalizedY, startSeconds, endSeconds, searchRadius, previewFolder]() {
             try {
                 pmt::trackMedia(mediaPath, normalizedX, normalizedY, startSeconds, endSeconds, [task](const pmt::MediaTrackingSample& sample) {
                     if (task->cancelRequested.load()) {
@@ -421,7 +433,7 @@ addon_value startTracking(addon_env env, addon_callback_info info) {
                     std::lock_guard<std::mutex> lock(task->mutex);
                     task->samples.push_back(sample);
                     return true;
-                }, searchRadius);
+                }, searchRadius, previewFolder);
             } catch (const std::exception& error) {
                 std::lock_guard<std::mutex> lock(task->mutex);
                 if (task->cancelRequested.load()) {

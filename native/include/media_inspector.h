@@ -35,6 +35,7 @@ struct MediaTrackingSample {
     double y = 0.0;
     double confidence = 0.0;
     bool valid = false;
+    std::string previewFileName;
 };
 
 // Preserve four normalized corners of a planar surface for one decoded frame.
@@ -71,7 +72,8 @@ std::vector<MediaTrackingSample> trackMedia(
     double startSeconds,
     double endSeconds,
     const TrackingProgressCallback& progressCallback = {},
-    int searchRadius = 10
+    int searchRadius = 10,
+    const std::string& previewFolder = {}
 );
 
 // Track textured features inside a four-corner planar selection and estimate its homography per frame.

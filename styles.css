@@ -264,6 +264,15 @@ input {
   height: auto;
 }
 
+/* Keep the original source video on the same responsive surface as the PNG fallback. */
+.pmt-preview-video {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 460px;
+  background: #000000;
+}
+
 /* Stack two exported PNGs so the next review frame is loaded before it replaces the visible frame. */
 .pmt-preview-stage {
   position: relative;

@@ -412,13 +412,14 @@
     return folder + (/[\\/]$/.test(folder) ? "" : "/") + String(fileName || "");
   }
 
-  // Convert a native path to UXP's documented file:/ URL form for HTML media elements.
+  // Convert a native path to a file URL without letting # or ? turn into a URL fragment/query.
   function createUxpFileUrl(nativePath) {
     const normalizedPath = String(nativePath || "").replace(/\\/g, "/");
     if (!normalizedPath) {
-      throw new Error("Le proxy vidéo ne fournit pas de chemin local.");
+      throw new Error("Le média source ne fournit pas de chemin local.");
     }
-    return normalizedPath.startsWith("/") ? "file:" + encodeURI(normalizedPath) : "file:/" + encodeURI(normalizedPath);
+    const encodedPath = encodeURI(normalizedPath).replace(/#/g, "%23").replace(/\?/g, "%3F");
+    return normalizedPath.startsWith("/") ? "file:" + encodedPath : "file:/" + encodedPath;
   }
 
   // Build an explicit PointF because UXP constructors can ignore positional arguments.
@@ -643,6 +644,22 @@
     handles.source.descriptor.mediaPath = String(entry.nativePath);
     handles.source.descriptor.mediaPathOrigin = "manual";
     return { mediaPath: handles.source.descriptor.mediaPath, fileName: String(entry.name || "selected media") };
+  }
+
+  // Expose the original file URL directly so the panel can avoid re-encoding a temporary preview movie.
+  async function getSourcePreviewVideo() {
+    if (!handles.source || !handles.source.descriptor) {
+      throw new Error("Capture a source clip before opening its preview video.");
+    }
+    const descriptor = handles.source.descriptor;
+    if (!descriptor.mediaPath) {
+      throw new Error("Premiere did not expose a local source media path.");
+    }
+    return {
+      url: createUxpFileUrl(descriptor.mediaPath),
+      fileName: getPathName(descriptor.mediaPath),
+      origin: String(descriptor.mediaPathOrigin || "unknown")
+    };
   }
 
   // Read the active sequence range so the tracker can later intersect it with the source clip.
@@ -1182,6 +1199,7 @@
   root.PMT_PREMIERE = {
     captureSelectedClip,
     chooseSourceMediaFile,
+    getSourcePreviewVideo,
     getActiveRange,
     exportPreviewFrame,
     exportTrackingPreviewFrame,

@@ -58,11 +58,11 @@ Surface mode works best with flat, textured, clearly visible surfaces. It can be
 
 ## Preview Options
 
-The preview contains every tracked frame in the selected range. On long clips, generating it can take time.
+The preview now reads the original source media file directly whenever Premiere exposes its local path. The tracking overlay follows that video without generating a temporary image sequence, so it starts immediately. If Premiere UXP cannot display the video, the panel automatically falls back to a single exported still image and records the cause in Diagnostics.
 
-- Enable **Skip preview generation** before or during analysis to keep the tracking result without exporting preview images.
-- Use **Skip preview** while images are being generated to stop the remaining preview export.
-- For more than 600 images, the plugin asks for confirmation before using temporary storage for the full preview.
+- The original-file preview only supports the selected source media; it does not include timeline effects, titles, or other clips composited in the sequence.
+- The Diagnostics log records the video URL scheme, media events, dimensions, duration, selected source range, seeks, and playback failures. Copy it after a failed test.
+- The older image review remains available automatically if direct video playback fails.
 
 ## Formats, Privacy, and Limitations
 

@@ -122,6 +122,17 @@ test("the direct Premiere preview uses its bundled muted H.264 preset", () => {
   assert.match(previewPreset, /<ParamIdentifier>ADBEVideoCodec<\/ParamIdentifier>/);
 });
 
+test("the preview prefers the original source file and retains an instrumented still-image fallback", () => {
+  assert.match(uiSource, /<video class="pmt-preview-video" id="pmt-preview-video"/);
+  assert.match(uiSource, /getSourcePreviewVideo\(\)/);
+  assert.match(uiSource, /"loadedmetadata"/);
+  assert.match(uiSource, /"stalled"/);
+  assert.match(uiSource, /Premiere still-image fallback requested/);
+  assert.match(uiSource, /PNG frame export bypassed for immediate preview/);
+  assert.match(premiereSource, /function getSourcePreviewVideo\(\)/);
+  assert.match(premiereSource, /replace\(\/#\/g, "%23"\)/);
+});
+
 test("Transform Position falls back to a direct value read for proxy variants", () => {
   assert.match(premiereSource, /positionParam\.getValueAtTime\(inPoint\)/);
 });

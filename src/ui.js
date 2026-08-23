@@ -7,6 +7,8 @@
     media: null,
     range: null,
     preview: null,
+    previewVideo: null,
+    videoUnavailable: false,
     trackingPreview: null,
     previewFrameIndex: 0,
     previewActiveBuffer: "a",
@@ -53,6 +55,7 @@
       liveProgress: "Analyzing {count} frames…",
       analysisReady: "{count} frames analyzed · {uncertain} uncertain. Review them before applying.",
       inImageLoaded: "In-point image loaded. Click the image to place the tracking point.",
+      directVideoLoaded: "Original source video ready. Click the video to place the tracking point.",
       sourceReady: "Selection confirmed. The OpenCV engine is the next milestone.",
       trackingMode: "Tracking mode",
       pointMode: "Point",
@@ -126,6 +129,7 @@
       liveProgress: "Analyse de {count} images…",
       analysisReady: "{count} images analysées · {uncertain} incertaines. Vérifiez-les avant l’application.",
       inImageLoaded: "Image du point In chargée. Cliquez dans l’image pour placer le point de tracking.",
+      directVideoLoaded: "Vidéo source originale prête. Cliquez dans la vidéo pour placer le point de tracking.",
       sourceReady: "Sélection validée. Le moteur OpenCV constitue le prochain jalon.",
       trackingMode: "Mode de tracking",
       pointMode: "Point",
@@ -205,11 +209,18 @@
       .replace(/'/g, "&#039;");
   }
 
-  // Add a diagnostic line while keeping enough history for useful bug reports.
+  // Add timestamped diagnostics while retaining a generous support-report history.
   function addLog(message) {
     // Preserve the original host error: Premiere's UI locale can differ from the panel language.
-    state.log.push(String(message));
-    state.log = state.log.slice(-100);
+    const now = new Date();
+    const timestamp = [now.getHours(), now.getMinutes(), now.getSeconds()].map((value) => String(value).padStart(2, "0")).join(":") + "." + String(now.getMilliseconds()).padStart(3, "0");
+    state.log.push("[" + timestamp + "] " + String(message));
+    state.log = state.log.slice(-500);
+  }
+
+  // Treat an original-file video and a Premiere-exported still as equivalent initial preview surfaces.
+  function hasInitialPreview() {
+    return Boolean(state.previewVideo && !state.videoUnavailable) || Boolean(state.preview);
   }
 
   // Discard progress data that belongs to an earlier source, range, or tracking point.
@@ -340,6 +351,23 @@
     };
   }
 
+  // Convert the visible sequence window to the original-file clock before a reference point has been chosen.
+  function getPreviewVideoRange() {
+    if (!state.source || !state.range) {
+      return null;
+    }
+    const speed = Number(state.source.speed) === 100 ? 1 : Number(state.source.speed);
+    const sequenceStart = Math.max(Number(state.range.inPoint.seconds), Number(state.source.start.seconds));
+    const sequenceEnd = Math.min(Number(state.range.outPoint.seconds), Number(state.source.end.seconds));
+    if (state.source.reversed || !Number.isFinite(speed) || speed <= 0 || !Number.isFinite(sequenceStart) || !Number.isFinite(sequenceEnd) || sequenceEnd <= sequenceStart) {
+      return null;
+    }
+    return {
+      startSeconds: Number(state.source.inPoint.seconds) + (sequenceStart - Number(state.source.start.seconds)) * speed,
+      endSeconds: Number(state.source.inPoint.seconds) + (sequenceEnd - Number(state.source.start.seconds)) * speed
+    };
+  }
+
   // Select the latest known sample at the video playhead without forcing UXP to repaint the video image itself.
   function getSampleAtVideoTime(seconds) {
     const samples = state.tracking || state.liveSamples;
@@ -453,12 +481,12 @@
     if (!state.source) {
       return { tone: "warning", text: t("selectCapture") };
     }
-    if (state.preview) {
+    if (hasInitialPreview()) {
       if (state.tracking) {
         const uncertain = root.PMT_TRAJECTORY.findUncertainSamples(state.tracking, state.confidenceThreshold).length;
         return { tone: "success", text: t("analysisReady", { count: state.tracking.length, uncertain }) };
       }
-      return { tone: "success", text: t("inImageLoaded") };
+      return { tone: "success", text: state.previewVideo && !state.videoUnavailable ? t("directVideoLoaded") : t("inImageLoaded") };
     }
     if (!nativeStatus.available) {
       return { tone: "warning", text: t("sourceReady") };
@@ -475,9 +503,9 @@
       : (nativeStatus.loading ? t("loading") : t("unavailable"));
     const canPrepare = Boolean(state.source && !state.busy);
     const surfaceMode = isSurfaceMode();
-    const canAnalyze = Boolean(canPrepare && state.media && state.range && state.preview && hasTrackingReference());
+    const canAnalyze = Boolean(canPrepare && state.media && state.range && hasInitialPreview() && hasTrackingReference());
     const canApplyTracking = Boolean(canPrepare && state.tracking && state.tracking.length >= 2 && state.range && state.range.sequenceId === state.source.sequenceId);
-    const canPlayPreview = Boolean(!state.busy && state.trackingPreview && state.trackingPreview.frames.length > 1);
+    const canPlayPreview = Boolean(!state.busy && ((state.previewVideo && !state.videoUnavailable) || (state.trackingPreview && state.trackingPreview.frames.length > 1)));
     const analyzeLabel = state.operation === "analysis" ? t("analyzing") : t("analyze");
     const playbackFrame = state.trackingPreview && state.trackingPreview.frames[state.previewFrameIndex];
     const hasCorrection = Boolean(!surfaceMode && state.correction && playbackFrame && state.correction.frameIndex === state.previewFrameIndex);
@@ -487,6 +515,10 @@
     const currentConfidence = confidencePercent(playbackFrame);
     const previewContent = playbackFrame
       ? '<div class="pmt-preview-stage"><img class="pmt-preview-buffer pmt-preview-buffer-active" id="pmt-tracking-image-a" src="' + escapeHtml(playbackFrame.url) + '" alt="' + escapeHtml(t("trackingPreviewAlt")) + '"><img class="pmt-preview-buffer" id="pmt-tracking-image-b" alt=""></div>' + (surfaceMode ? (Array.isArray(playbackFrame.corners) ? playbackFrame.corners.map(searchAreaMarkup).join("") : "") + surfaceCornersMarkup(playbackFrame.corners, false) : searchAreaMarkup(displayedPoint) + '<div class="pmt-tracking-point" id="pmt-preview-point" style="left:' + (Number(displayedPoint.x) * 100).toFixed(3) + '%;top:' + (Number(displayedPoint.y) * 100).toFixed(3) + '%"></div>') + '<div class="pmt-preview-status" id="pmt-preview-status">' + escapeHtml(t("trackingPreview", { current: state.previewFrameIndex + 1, total: state.trackingPreview.frames.length, confidence: currentConfidence })) + '</div>'
+      : state.previewVideo && !state.videoUnavailable
+      ? '<video class="pmt-preview-video" id="pmt-preview-video" src="' + escapeHtml(state.previewVideo.url) + '" muted playsinline preload="metadata"></video>' + (surfaceMode
+        ? state.referenceCorners.map(searchAreaMarkup).join("") + surfaceCornersMarkup(state.referenceCorners, true)
+        : state.referencePoint ? searchAreaMarkup(state.referencePoint) + '<div class="pmt-tracking-point" id="pmt-preview-point" style="left:' + (state.referencePoint.x * 100).toFixed(3) + '%;top:' + (state.referencePoint.y * 100).toFixed(3) + '%"></div>' : "") + '<div class="pmt-preview-status" id="pmt-preview-status">' + escapeHtml(t("readyToAnalyze")) + '</div>'
       : state.preview
       ? '<img class="pmt-preview-image" src="' + escapeHtml(state.preview.url) + '" alt="' + escapeHtml(t("inImageAlt")) + '">' + (surfaceMode
         ? state.referenceCorners.map(searchAreaMarkup).join("") + surfaceCornersMarkup(state.referenceCorners, true)
@@ -515,11 +547,11 @@
       '  </div>',
       '  <div class="pmt-card">',
       '    <h2 class="pmt-card-title">' + escapeHtml(t("previewTitle")) + '</h2>',
-      '    <div class="pmt-preview" id="pmt-preview" data-ready="' + String(Boolean(state.preview || playbackFrame)) + '">' + previewContent + '</div>',
+       '    <div class="pmt-preview" id="pmt-preview" data-ready="' + String(Boolean(hasInitialPreview() || playbackFrame)) + '">' + previewContent + '</div>',
       playbackFrame ? '    <div class="pmt-preview-navigation"><div class="pmt-label">' + escapeHtml(t("previewNavigation")) + '</div><sp-slider class="pmt-preview-slider" id="pmt-preview-slider" min="0" max="' + String(Math.max(0, state.trackingPreview.frames.length - 1)) + '" step="1" value="' + String(state.previewFrameIndex) + '"' + (canPlayPreview ? '' : ' disabled') + ' aria-label="' + escapeHtml(t("previewNavigation")) + '"></sp-slider></div>' : '',
       playbackFrame ? '    <div class="pmt-uncertain-review">' + uncertainMarkersMarkup(uncertainIndexes, state.trackingPreview.frames.length) + '</div>' : '',
       playbackFrame && !surfaceMode ? '    <div class="pmt-label">' + escapeHtml(t("correctionHelp")) + '</div>' : '',
-      !playbackFrame && surfaceMode && state.preview ? '    <div class="pmt-label">' + escapeHtml(t("surfaceHelp")) + ' (' + String(state.referenceCorners.length) + '/4)</div>' : '',
+       !playbackFrame && surfaceMode && hasInitialPreview() ? '    <div class="pmt-label">' + escapeHtml(t("surfaceHelp")) + ' (' + String(state.referenceCorners.length) + '/4)</div>' : '',
       '    <div class="pmt-actions">',
       '      ' + buttonMarkup("pmt-analyze", analyzeLabel, ["pmt-button-primary"], !canAnalyze),
       state.operation === "analysis" ? '      ' + buttonMarkup("pmt-cancel-analysis", t("cancelAnalysis"), [], state.cancelRequested) : '',
@@ -547,6 +579,7 @@
       '</div>'
     ].join("");
     bindEvents(rootNode);
+    bindVideoPreview(rootNode);
     const logArea = rootNode.querySelector("#pmt-log");
     if (logArea) {
       // Keep the latest diagnostic visible while preserving manual text selection.
@@ -663,9 +696,13 @@
     }, 83);
   }
 
-  // Export every tracked frame so preview duration and navigation match the effective analyzed range.
+  // Keep the direct source video live by default; PNG review remains an opt-in fallback for hosts that cannot paint video.
   async function buildTrackingPreview(rootNode) {
     const samples = Array.isArray(state.tracking) ? state.tracking.slice() : [];
+    if (state.previewVideo && !state.videoUnavailable) {
+      addLog("Tracking overlay remains on the direct source video. PNG frame export bypassed for immediate preview.");
+      return false;
+    }
     if (state.previewGenerationSkipped) {
       // Honor the choice made before analysis completes without mounting or exporting preview PNGs.
       addLog("Tracking preview generation skipped by user.");
@@ -761,6 +798,21 @@
 
   // Toggle image playback without rebuilding the panel or its diagnostics section.
   function toggleTrackingPreview(rootNode) {
+    const video = rootNode.querySelector("#pmt-preview-video");
+    if (video && state.previewVideo && !state.videoUnavailable) {
+      if (video.paused) {
+        addLog("Source video play requested by user.");
+        state.previewPlaying = true;
+        Promise.resolve(video.play()).catch((error) => addLog("Source video play rejected: " + (error && error.message ? error.message : String(error))));
+      } else {
+        video.pause();
+        state.previewPlaying = false;
+        addLog("Source video paused by user.");
+      }
+      const button = rootNode.querySelector("#pmt-play-preview");
+      if (button) button.textContent = state.previewPlaying ? t("pause") : t("play");
+      return;
+    }
     state.previewPlaying = !state.previewPlaying;
     if (state.previewPlaying) {
       scheduleTrackingPreviewFrame(rootNode);
@@ -784,7 +836,7 @@
     showTrackingPreviewFrame(rootNode, nextIndex === undefined ? indexes[0] : nextIndex);
   }
 
-  // Read the sequence range and its In image before an optional image-sequence preview is generated after analysis.
+  // Read the sequence range and prefer its original media file over an exported still-image fallback.
   async function prepareSourceRange(rootNode) {
     state.range = await root.PMT_PREMIERE.getActiveRange();
     state.tracking = null;
@@ -794,15 +846,20 @@
     state.analysisTotalFrames = 0;
     clearTrackingPreview();
     addLog("Sequence range: " + state.range.inPoint.seconds.toFixed(3) + " s → " + state.range.outPoint.seconds.toFixed(3) + " s");
-    // Keep a usable centre-point default even when Premiere cannot export the optional still-image fallback.
+    // Keep a usable centre-point default even when the direct file preview is unavailable.
     state.referencePoint = { x: 0.5, y: 0.5 };
     state.referenceCorners = [];
     try {
-      state.preview = await root.PMT_PREMIERE.exportPreviewFrame();
-      addLog("In-point image loaded: " + state.preview.fileName + " · " + state.preview.width + " × " + state.preview.height + ".");
-    } catch (previewError) {
-      state.preview = null;
-      addLog("Image error: " + (previewError && previewError.message ? previewError.message : String(previewError)));
+      state.previewVideo = await root.PMT_PREMIERE.getSourcePreviewVideo();
+      state.videoUnavailable = false;
+      addLog("Direct source video prepared: " + state.previewVideo.fileName + " · origin " + state.previewVideo.origin + ". PNG preview export bypassed.");
+    } catch (videoError) {
+      state.previewVideo = null;
+      state.videoUnavailable = true;
+      addLog("Direct source video unavailable: " + (videoError && videoError.message ? videoError.message : String(videoError)) + ". Trying Premiere still image fallback.");
+    }
+    if (!state.previewVideo) {
+      await loadStillPreviewFallback(rootNode, "no direct source video URL");
     }
     const session = root.PMT_SESSION.createSession({
       sequenceId: state.range.sequenceId,
@@ -823,6 +880,8 @@
       state.media = null;
       state.range = null;
       state.preview = null;
+      state.previewVideo = null;
+      state.videoUnavailable = false;
       state.referencePoint = null;
       state.referenceCorners = [];
       state.tracking = null;
@@ -831,6 +890,7 @@
       state.analysisSampleIndex = 0;
       clearTrackingPreview();
       addLog("Source captured: " + clip.name);
+      addLog("Source descriptor: origin " + clip.mediaPathOrigin + " · proxy " + String(Boolean(clip.sourceDiagnostics && clip.sourceDiagnostics.hasProxy)) + " · offline " + String(Boolean(clip.sourceDiagnostics && clip.sourceDiagnostics.isOffline)) + " · speed " + String(clip.speed) + ".");
       if (!clip.mediaPath) {
         addLog("Warning: Premiere did not return a usable media path for this source (" + sourcePathDiagnostic(clip) + ").");
       } else {
@@ -880,6 +940,9 @@
       state.media = await root.PMT_NATIVE.inspectMedia(selected.mediaPath);
       addLog("Manual source file selected: " + selected.fileName + ".");
       addLog("OpenCV media: " + mediaLabel(state.media) + ".");
+      state.previewVideo = await root.PMT_PREMIERE.getSourcePreviewVideo();
+      state.videoUnavailable = false;
+      addLog("Direct source video updated after manual selection: " + state.previewVideo.fileName + ".");
     } catch (error) {
       addLog("Manual source error: " + (error && error.message ? error.message : String(error)));
     } finally {
@@ -1026,13 +1089,9 @@
     render(rootNode);
   }
 
-  // Convert a proxy-video playhead into the original media clock used by native tracking samples.
+  // The direct file URL keeps the HTML video clock in the same seconds as native tracking samples.
   function getPreviewVideoTrackingTime(video) {
-    if (!state.previewVideo) {
-      return Number(video.currentTime);
-    }
-    const mediaRange = getTrackingMediaRange();
-    return Number(mediaRange.startSeconds) + Number(video.currentTime);
+    return Number(video.currentTime);
   }
 
   // Move only the overlay and its label while the video decoder stays mounted and continues normal playback.
@@ -1057,33 +1116,77 @@
     }
   }
 
-  // Start the muted proxy just after its first frame so Premiere paints actual video instead of an empty zero-time surface.
+  // Capture every useful media event because Premiere UXP can decode video without painting it.
   function bindVideoPreview(rootNode) {
     const video = rootNode.querySelector("#pmt-preview-video");
     if (!video) {
       return;
     }
+    const describeVideo = () => "readyState=" + Number(video.readyState) + " networkState=" + Number(video.networkState) + " current=" + Number(video.currentTime).toFixed(3) + " duration=" + Number(video.duration).toFixed(3) + " paused=" + String(video.paused);
+    const logVideoEvent = (name) => addLog("Source video event " + name + ": " + describeVideo());
+    const previewRange = getPreviewVideoRange();
+    state.previewPlaying = false;
+    addLog("Source video mounted: " + String(state.previewVideo.fileName || "unknown") + " · origin " + String(state.previewVideo.origin || "unknown") + " · " + describeVideo());
+    const playButton = rootNode.querySelector("#pmt-play-preview");
+    if (playButton) playButton.textContent = t("play");
+    ["loadstart", "loadedmetadata", "loadeddata", "canplay", "canplaythrough", "play", "playing", "pause", "seeking", "seeked", "waiting", "stalled", "suspend", "ended", "abort", "emptied"].forEach((eventName) => {
+      video.addEventListener(eventName, () => logVideoEvent(eventName));
+    });
+    video.addEventListener("loadedmetadata", () => {
+      addLog("Source video metadata: " + Number(video.videoWidth) + " × " + Number(video.videoHeight) + " · duration " + Number(video.duration).toFixed(3) + " s · target range " + (previewRange ? previewRange.startSeconds.toFixed(3) + " → " + previewRange.endSeconds.toFixed(3) + " s" : "unavailable") + ".");
+      if (previewRange && Number.isFinite(Number(video.duration)) && previewRange.startSeconds >= 0 && previewRange.startSeconds < Number(video.duration)) {
+        video.currentTime = previewRange.startSeconds;
+        addLog("Source video seek requested: " + previewRange.startSeconds.toFixed(3) + " s.");
+      }
+    });
     video.addEventListener("loadeddata", () => {
-      addLog("Preview video decoded: " + Number(video.videoWidth) + " × " + Number(video.videoHeight) + " · " + Number(video.duration).toFixed(3) + " s.");
-      video.currentTime = Number(video.duration) > 0.05 ? 0.04 : 0;
       updateVideoPreview(rootNode);
-      // UXP's play() reports errors through the error event, so retain that listener as the failure path.
-      Promise.resolve(video.play()).catch(() => {});
+    });
+    video.addEventListener("play", () => {
+      state.previewPlaying = true;
+      const button = rootNode.querySelector("#pmt-play-preview");
+      if (button) button.textContent = t("pause");
+    });
+    video.addEventListener("pause", () => {
+      state.previewPlaying = false;
+      const button = rootNode.querySelector("#pmt-play-preview");
+      if (button) button.textContent = t("play");
     });
     video.addEventListener("timeupdate", () => {
+      if (previewRange && Number(video.currentTime) >= previewRange.endSeconds) {
+        video.pause();
+        video.currentTime = previewRange.startSeconds;
+        addLog("Source video looped at the selected Out point.");
+      }
       updateVideoPreview(rootNode);
     });
     video.addEventListener("error", () => {
       state.videoUnavailable = true;
       const mediaError = video.error;
-      const errorCode = mediaError && mediaError.code ? " (code " + mediaError.code + ")" : "";
-      addLog(t("videoUnavailable") + errorCode + " URL: " + String(video.currentSrc || video.src || "unknown"));
-      render(rootNode);
+      const errorCode = mediaError && mediaError.code ? "code " + mediaError.code : "no MediaError code";
+      addLog("Source video error: " + errorCode + " · " + describeVideo() + " · URL scheme " + String(video.currentSrc || video.src || "unknown").split(":")[0] + ". Falling back to the Premiere still image.");
+      loadStillPreviewFallback(rootNode, "source video failed to load");
     });
     // Explicitly begin loading after listeners are attached so the diagnostic captures every UXP event.
     if (typeof video.load === "function") {
       video.load();
     }
+  }
+
+  // Export one still only after the direct original-file path failed, preserving a usable fallback in Premiere UXP.
+  async function loadStillPreviewFallback(rootNode, reason) {
+    if (state.preview || !state.source) {
+      render(rootNode);
+      return;
+    }
+    addLog("Premiere still-image fallback requested: " + reason + ".");
+    try {
+      state.preview = await root.PMT_PREMIERE.exportPreviewFrame();
+      addLog("In-point image fallback loaded: " + state.preview.fileName + " · " + state.preview.width + " × " + state.preview.height + ".");
+    } catch (fallbackError) {
+      addLog("In-point image fallback failed: " + (fallbackError && fallbackError.message ? fallbackError.message : String(fallbackError)));
+    }
+    render(rootNode);
   }
 
   // Wait briefly between progress polls so UXP keeps repainting while OpenCV decodes in its worker thread.
@@ -1480,10 +1583,10 @@
     });
     if (preview && state.trackingPreview && !state.busy && !isSurfaceMode()) {
       preview.addEventListener("click", (event) => chooseCorrectionPoint(rootNode, event));
-    } else if (preview && state.preview && !state.busy) {
+    } else if (preview && hasInitialPreview() && !state.busy) {
       preview.addEventListener("click", (event) => {
-        // The initial still image remains the only place where a new full-range reference point is chosen.
-        if (!event.target || event.target.className === "pmt-preview-image") {
+        // The direct source video and still fallback use the same normalized reference-point coordinates.
+        if (!event.target || event.target.className === "pmt-preview-image" || event.target.id === "pmt-preview-video") {
           chooseReferencePoint(rootNode, event);
         }
       });

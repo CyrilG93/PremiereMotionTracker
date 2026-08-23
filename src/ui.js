@@ -641,6 +641,9 @@
       return renderNativePreviewFrame(Number(frames[requestedIndex].seconds)).then((preview) => {
         frames[requestedIndex].url = preview.url;
         return showTrackingPreviewFrame(rootNode, requestedIndex, true);
+      }).catch((error) => {
+        addLog("Native preview frame failed for slider index " + requestedIndex + ": " + (error && error.message ? error.message : String(error)));
+        return false;
       });
     }
     const nextBuffer = state.previewActiveBuffer === "a" ? "b" : "a";
@@ -706,20 +709,33 @@
         resolve(true);
       };
       nextImage.onload = swapWhenReady;
-      nextImage.onerror = () => resolve(false);
+      nextImage.onerror = () => {
+        addLog("Preview image paint failed for slider index " + requestedIndex + ".");
+        resolve(false);
+      };
+      // Leave an explicit breadcrumb if UXP decodes a PNG but does not dispatch its image completion event.
+      setTimeout(() => {
+        if (request === state.previewPaintRequest && state.previewFrameIndex !== requestedIndex) {
+          addLog("Preview image paint timeout for slider index " + requestedIndex + ".");
+          resolve(false);
+        }
+      }, 2500);
       nextImage.src = frames[requestedIndex].url;
     });
   }
 
-  // Advance cached images at a conservative cadence which Premiere UXP has previously rendered successfully.
+  // Advance original-media frames only after the previous native decode and UXP image paint completed.
   function scheduleTrackingPreviewFrame(rootNode) {
     previewPlaybackTimer = setTimeout(() => {
       if (!state.previewPlaying || !state.trackingPreview) {
         previewPlaybackTimer = null;
         return;
       }
-      showTrackingPreviewFrame(rootNode, (state.previewFrameIndex + 1) % state.trackingPreview.frames.length).then(() => scheduleTrackingPreviewFrame(rootNode));
-    }, 83);
+      showTrackingPreviewFrame(rootNode, (state.previewFrameIndex + 1) % state.trackingPreview.frames.length).then((painted) => {
+        if (!painted) addLog("Native preview playback stopped because the next frame was not painted.");
+        if (painted && state.previewPlaying) scheduleTrackingPreviewFrame(rootNode);
+      }).catch((error) => addLog("Native preview playback error: " + (error && error.message ? error.message : String(error))));
+    }, 120);
   }
 
   // Keep the direct source video live by default; PNG review remains an opt-in fallback for hosts that cannot paint video.
@@ -1554,7 +1570,13 @@
     const previewSlider = rootNode.querySelector("#pmt-preview-slider");
     if (previewSlider && state.trackingPreview && !state.busy) {
       // Spectrum's native UXP slider gives direct scrubbing without the unreliable HTML range control.
-      const scrubPreview = (event) => showTrackingPreviewFrame(rootNode, Number(event.target.value));
+      const scrubPreview = (event) => {
+        const requestedIndex = Number(event.target.value);
+        addLog("Preview slider requested index " + requestedIndex + ".");
+        showTrackingPreviewFrame(rootNode, requestedIndex).then((painted) => {
+          if (!painted) addLog("Preview slider did not paint index " + requestedIndex + ".");
+        });
+      };
       previewSlider.addEventListener("input", scrubPreview);
       previewSlider.addEventListener("change", scrubPreview);
     }

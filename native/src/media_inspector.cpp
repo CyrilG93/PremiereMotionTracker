@@ -63,8 +63,24 @@ bool decodePreviewCacheWithFfmpeg(const std::string& mediaPath, double startSeco
     const std::filesystem::path ffmpeg = bundledFfmpegPath();
     if (ffmpeg.empty() || !std::filesystem::exists(ffmpeg)) return false;
     const std::string outputPattern = (std::filesystem::path(previewFolder) / "pmt-native-track-%d.png").string();
-    const std::string command = "\"" + ffmpeg.string() + "\" -hide_banner -loglevel error -ss " + std::to_string(startSeconds) + " -t " + std::to_string(endSeconds - startSeconds) + " -i \"" + mediaPath + "\" -an -vf \"scale='min(960\\,iw)':-2\" -vsync 0 -start_number " + std::to_string(firstFrame) + " -y \"" + outputPattern + "\"";
+    const std::string command = "\"" + ffmpeg.string() + "\" -hide_banner -loglevel error -ss " + std::to_string(startSeconds) + " -t " + std::to_string(endSeconds - startSeconds) + " -i \"" + mediaPath + "\" -an -vf \"scale='min(960\\,iw)':-2\" -fps_mode passthrough -start_number " + std::to_string(firstFrame) + " -y \"" + outputPattern + "\"";
+#if defined(_WIN32)
+    STARTUPINFOA startupInfo {};
+    startupInfo.cb = sizeof(startupInfo);
+    PROCESS_INFORMATION processInfo {};
+    std::vector<char> mutableCommand(command.begin(), command.end());
+    mutableCommand.push_back('\0');
+    // Decode in a hidden background process so Premiere users never see a flashing command window.
+    if (!CreateProcessA(nullptr, mutableCommand.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &startupInfo, &processInfo)) return false;
+    WaitForSingleObject(processInfo.hProcess, INFINITE);
+    DWORD exitCode = 1;
+    GetExitCodeProcess(processInfo.hProcess, &exitCode);
+    CloseHandle(processInfo.hThread);
+    CloseHandle(processInfo.hProcess);
+    return exitCode == 0;
+#else
     return std::system(command.c_str()) == 0;
+#endif
 }
 
 // Reopen compact cached PNGs as an image sequence so the established OpenCV trackers can run after an FFmpeg fallback.

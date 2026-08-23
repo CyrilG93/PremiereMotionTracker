@@ -365,7 +365,7 @@ std::vector<MediaTrackingSample> trackMedia(
     if (lastFrame - firstFrame + 1 > maximumTrackedFrames) {
         throw std::runtime_error("La plage dépasse 3600 images ; réduisez les In/Out avant l’analyse.");
     }
-    if (!capture.set(cv::CAP_PROP_POS_FRAMES, static_cast<double>(firstFrame))) {
+    if (!capture.set(cv::CAP_PROP_POS_FRAMES, static_cast<double>(firstFrame)) && !openCachedImageSequence(capture, previewFolder, firstFrame)) {
         throw std::runtime_error("OpenCV ne peut pas atteindre le début de la plage demandée.");
     }
 
@@ -459,7 +459,7 @@ std::vector<SurfaceTrackingSample> trackSurface(
     if (lastFrame - firstFrame + 1 > maximumTrackedFrames) {
         throw std::runtime_error("La plage dépasse 3600 images ; réduisez les In/Out avant l’analyse.");
     }
-    if (!capture.set(cv::CAP_PROP_POS_FRAMES, static_cast<double>(firstFrame))) {
+    if (!capture.set(cv::CAP_PROP_POS_FRAMES, static_cast<double>(firstFrame)) && !openCachedImageSequence(capture, previewFolder, firstFrame)) {
         throw std::runtime_error("OpenCV ne peut pas atteindre le début de la plage demandée.");
     }
     cv::Mat decodedFrame;

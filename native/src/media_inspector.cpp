@@ -34,11 +34,19 @@ cv::Mat toGray(const cv::Mat& frame) {
     if (frame.empty()) {
         throw std::runtime_error("OpenCV a renvoyé une image vidéo vide.");
     }
-    if (frame.channels() == 1) {
-        return frame.clone();
-    }
     cv::Mat gray;
-    cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
+    if (frame.channels() == 1) {
+        gray = frame.clone();
+    } else {
+        cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
+    }
+    if (gray.depth() != CV_8U) {
+        // FFmpeg can preserve a ProRes 10-bit/16-bit PNG depth, while Lucas-Kanade accepts only 8-bit luma frames.
+        cv::Mat eightBitGray;
+        const double scale = gray.depth() == CV_16U ? 1.0 / 256.0 : 255.0;
+        gray.convertTo(eightBitGray, CV_8U, scale);
+        return eightBitGray;
+    }
     return gray;
 }
 

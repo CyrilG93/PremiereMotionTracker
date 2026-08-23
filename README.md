@@ -58,11 +58,12 @@ Surface mode works best with flat, textured, clearly visible surfaces. It can be
 
 ## Preview Options
 
-The preview now decodes the original source media file directly with its native engine. While tracking is already decoding the selected range, it builds a compact local preview cache; Play and the frame slider then read that cache instantly. This avoids Premiere's slow preview generation and the black HTML-video surface in UXP.
+The preview now decodes the original source media file directly with its native engine. While tracking is already decoding the selected range, it builds a compact local preview cache; Play follows the source frame rate and the frame slider reads that cache instantly. This avoids Premiere's slow preview generation and the black HTML-video surface in UXP.
 
 - The original-file preview only supports the selected source media; it does not include timeline effects, titles, or other clips composited in the sequence.
 - The Diagnostics log records the decoded source frame, source time, dimensions, and decoding time. Copy it after a failed test.
 - A single Premiere still image remains available automatically if native media decoding fails.
+- Preparing an initial frame can take longer when the In point is far into a long-GOP H.264/HEVC file, because Windows must seek and decode from a nearby keyframe. This delay is independent of the selected In/Out duration.
 
 ## Formats, Privacy, and Limitations
 

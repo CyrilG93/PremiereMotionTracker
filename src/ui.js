@@ -39,6 +39,7 @@
     log: ["Prototype ready. Capture the source clip first."]
   };
   let previewPlaybackTimer = null;
+  let previewScrubTimer = null;
 
   // Keep the visible panel wording separate from technical diagnostics and default to English.
   const translations = {
@@ -262,6 +263,11 @@
     if (previewPlaybackTimer) {
       clearTimeout(previewPlaybackTimer);
       previewPlaybackTimer = null;
+    }
+    if (previewScrubTimer) {
+      // Cancel a queued slider repaint when its preview is no longer valid.
+      clearTimeout(previewScrubTimer);
+      previewScrubTimer = null;
     }
     state.trackingPreview = null;
     state.previewFrameIndex = 0;
@@ -739,18 +745,31 @@
     });
   }
 
-  // Advance original-media frames only after the previous native decode and UXP image paint completed.
-  function scheduleTrackingPreviewFrame(rootNode) {
+  // Match the source frame rate while retaining a conservative fallback for incomplete media metadata.
+  function getTrackingPreviewFrameDelay() {
+    const framesPerSecond = Number(state.media && state.media.framesPerSecond);
+    return Number.isFinite(framesPerSecond) && framesPerSecond > 0
+      ? Math.max(16, Math.round(1000 / framesPerSecond))
+      : 83;
+  }
+
+  // Advance cached original-media frames on the source clock, subtracting image paint time from the next wait.
+  function scheduleTrackingPreviewFrame(rootNode, delayMilliseconds) {
+    const requestedDelay = Number.isFinite(delayMilliseconds) ? Math.max(0, delayMilliseconds) : getTrackingPreviewFrameDelay();
     previewPlaybackTimer = setTimeout(() => {
       if (!state.previewPlaying || !state.trackingPreview) {
         previewPlaybackTimer = null;
         return;
       }
+      const paintStartedAt = Date.now();
       showTrackingPreviewFrame(rootNode, (state.previewFrameIndex + 1) % state.trackingPreview.frames.length).then((painted) => {
         if (!painted) addLog("Native preview playback stopped because the next frame was not painted.");
-        if (painted && state.previewPlaying) scheduleTrackingPreviewFrame(rootNode);
+        if (painted && state.previewPlaying) {
+          // Keep the frame-to-frame cadence close to the original media even when UXP spends time swapping PNG buffers.
+          scheduleTrackingPreviewFrame(rootNode, getTrackingPreviewFrameDelay() - (Date.now() - paintStartedAt));
+        }
       }).catch((error) => addLog("Native preview playback error: " + (error && error.message ? error.message : String(error))));
-    }, 120);
+    }, requestedDelay);
   }
 
   // Keep the direct source video live by default; PNG review remains an opt-in fallback for hosts that cannot paint video.
@@ -874,7 +893,10 @@
     }
     state.previewPlaying = !state.previewPlaying;
     if (state.previewPlaying) {
-      scheduleTrackingPreviewFrame(rootNode);
+      const frameDelay = getTrackingPreviewFrameDelay();
+      const framesPerSecond = Number(state.media && state.media.framesPerSecond);
+      addLog("Native preview playback: target " + (Number.isFinite(framesPerSecond) && framesPerSecond > 0 ? framesPerSecond.toFixed(3) : "12.000") + " fps · " + frameDelay + " ms/frame.");
+      scheduleTrackingPreviewFrame(rootNode, 0);
     } else if (previewPlaybackTimer) {
       clearTimeout(previewPlaybackTimer);
       previewPlaybackTimer = null;
@@ -1593,10 +1615,16 @@
       // Spectrum's native UXP slider gives direct scrubbing without the unreliable HTML range control.
       const scrubPreview = (event) => {
         const requestedIndex = Number(event.target.value);
-        addLog("Preview slider requested index " + requestedIndex + ".");
-        showTrackingPreviewFrame(rootNode, requestedIndex).then((painted) => {
-          if (!painted) addLog("Preview slider did not paint index " + requestedIndex + ".");
-        });
+        const isFinalValue = event.type === "change";
+        if (previewScrubTimer) clearTimeout(previewScrubTimer);
+        // Coalesce Spectrum input events so a drag does not queue dozens of obsolete image swaps.
+        previewScrubTimer = setTimeout(() => {
+          previewScrubTimer = null;
+          addLog("Preview slider applied index " + requestedIndex + ".");
+          showTrackingPreviewFrame(rootNode, requestedIndex).then((painted) => {
+            if (!painted) addLog("Preview slider did not paint index " + requestedIndex + ".");
+          });
+        }, isFinalValue ? 0 : 50);
       };
       previewSlider.addEventListener("input", scrubPreview);
       previewSlider.addEventListener("change", scrubPreview);

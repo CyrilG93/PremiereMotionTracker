@@ -73,6 +73,8 @@ test("tracking preview replays Premiere-rendered image frames without replacing 
   assert.match(uiSource, /pmt-tracking-image-b/);
   assert.match(uiSource, /updatePreviewBuildStatus/);
   assert.match(uiSource, /scheduleTrackingPreviewFrame/);
+  assert.match(uiSource, /getTrackingPreviewFrameDelay/);
+  assert.doesNotMatch(uiSource, /\}, 120\);/);
   assert.match(uiSource, /pmt-skip-preview/);
   assert.match(uiSource, /startTracking/);
   assert.match(uiSource, /pollTracking/);
@@ -89,6 +91,7 @@ test("tracking review scrubs through Spectrum and can replace only the corrected
   assert.match(uiSource, /chooseCorrectionPoint/);
   assert.match(uiSource, /replaceTrackingTail\(previousTracking, replacement\)/);
   assert.match(uiSource, /previewSlider\.addEventListener\("input", scrubPreview\)/);
+  assert.match(uiSource, /Preview slider applied index/);
   assert.match(styles, /\.pmt-preview-slider\s*\{[^}]*width:\s*100%;/s);
   assert.doesNotMatch(uiSource, /type="range"/);
 });

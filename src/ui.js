@@ -606,11 +606,10 @@
       !playbackFrame && surfaceMode ? '      ' + buttonMarkup("pmt-reset-surface", t("resetSurface"), [], !state.referenceCorners.length || state.busy) : '',
       state.operation === "preview" ? '      ' + buttonMarkup("pmt-skip-preview", t("skipPreview"), [], state.previewSkipRequested) : '',
       !playbackFrame && state.preview && (state.operation === "" || state.operation === "analysis") ? '      ' + buttonMarkup("pmt-toggle-preview-generation", state.previewGenerationSkipped ? t("previewSkippedBefore") : t("skipPreviewBefore"), state.previewGenerationSkipped ? ["pmt-button-primary"] : [], false) : '',
-      playbackFrame ? '      ' + buttonMarkup("pmt-preview-reset", t("start"), [], !canPlayPreview) : '',
       playbackFrame ? '      ' + buttonMarkup("pmt-next-uncertain", t("nextUncertain"), [], !uncertainIndexes.length || state.busy) : '',
       '    </div>',
       state.previewGenerationDeferred ? '    <div class="pmt-label">' + escapeHtml(t("longPreviewWarning", { count: state.previewBuildTotal })) + '</div>' + buttonMarkup("pmt-generate-long-preview", t("generatePreview"), ["pmt-button-full", "pmt-button-primary"], state.busy) : '',
-      playbackFrame && !surfaceMode ? '    <div class="pmt-actions">' + buttonMarkup("pmt-retrack-before", t("retrackBefore"), [], !hasCorrection || state.previewFrameIndex <= 0) + buttonMarkup("pmt-retrack-from-here", t("retrackAfter"), ["pmt-button-primary"], !canRetrack) + '</div>' : '',
+      playbackFrame && !surfaceMode ? '    <div class="pmt-actions">' + buttonMarkup("pmt-retrack-before", t("retrackBefore"), [], !hasCorrection || state.previewFrameIndex <= 0) + buttonMarkup("pmt-retrack-from-here", t("retrackAfter"), [], !canRetrack) + '</div>' : '',
       '  </div>',
       '  <div class="pmt-card">',
       '    <h2 class="pmt-card-title">' + escapeHtml(t("applyTitle")) + '</h2>',
@@ -946,9 +945,7 @@
     try {
       const previewRange = getPreviewVideoRange();
       if (!previewRange) throw new Error("The source media range is unavailable.");
-      state.preview = await renderNativePreviewFrame(previewRange.startSeconds);
-      addLog("Native original-media preview ready. Premiere PNG export bypassed.");
-      // Decode the range sequentially once so the reference-frame slider is immediate rather than seeking the source on every move.
+      // Decode the range only once: its first cached frame also replaces the former separate, slow In-frame seek.
       const previewFolder = await prepareNativePreviewCache(previewRange.startSeconds, previewRange.endSeconds);
       state.liveSamples = [];
       state.analysisSampleIndex = 0;
@@ -956,7 +953,13 @@
       addLog("Native reference preview cache in progress…");
       const cachedFrames = await collectLiveTracking(rootNode, state.analysisTaskId);
       state.analysisTaskId = "";
-      state.trackingPreview = { frames: cachedFrames.map((sample) => ({ url: String(sample.previewUrl || ""), width: state.preview.width, height: state.preview.height, frame: Number(sample.frame), seconds: Number(sample.seconds), x: 0.5, y: 0.5, confidence: 1, valid: true })) };
+      const previewWidth = Math.min(960, Number(state.media && state.media.width) || 960);
+      const previewHeight = Math.max(1, Math.round((Number(state.media && state.media.height) || 540) * previewWidth / Math.max(1, Number(state.media && state.media.width) || 960)));
+      state.trackingPreview = { frames: cachedFrames.map((sample) => ({ url: String(sample.previewUrl || ""), width: previewWidth, height: previewHeight, frame: Number(sample.frame), seconds: Number(sample.seconds), x: 0.5, y: 0.5, confidence: 1, valid: true })) };
+      const firstCachedFrame = state.trackingPreview.frames[0];
+      if (!firstCachedFrame || !firstCachedFrame.url) throw new Error("The native preview cache did not provide an initial frame.");
+      // Keep one representative frame for native-review fallbacks without decoding the source a second time.
+      state.preview = { url: firstCachedFrame.url, fileName: "pmt-native-track-" + firstCachedFrame.frame + ".png", width: previewWidth, height: previewHeight, seconds: firstCachedFrame.seconds };
       state.previewFrameIndex = 0;
       state.referenceSeconds = Number(state.trackingPreview.frames[0] && state.trackingPreview.frames[0].seconds || previewRange.startSeconds);
       addLog("Native reference preview ready: " + state.trackingPreview.frames.length + " frames. Choose a frame, then place the tracking reference.");
@@ -1653,7 +1656,6 @@
     bindButton(rootNode, "pmt-skip-preview", () => skipTrackingPreview(rootNode));
     bindButton(rootNode, "pmt-toggle-preview-generation", () => togglePreviewGeneration(rootNode));
     bindButton(rootNode, "pmt-generate-long-preview", () => generateDeferredPreview(rootNode));
-    bindButton(rootNode, "pmt-preview-reset", () => showTrackingPreviewFrame(rootNode, 0));
     bindButton(rootNode, "pmt-reset-surface", () => {
       state.referenceCorners = [];
       state.tracking = null;

@@ -131,7 +131,8 @@ test("the preview prefers the original source file and retains an instrumented s
   assert.match(uiSource, /"loadedmetadata"/);
   assert.match(uiSource, /"stalled"/);
   assert.match(uiSource, /Premiere still-image fallback requested/);
-  assert.match(uiSource, /Native original-media preview ready/);
+  assert.match(uiSource, /Native reference preview ready/);
+  assert.doesNotMatch(uiSource, /state\.preview = await renderNativePreviewFrame/);
   assert.match(uiSource, /renderNativePreviewFrame/);
   assert.match(nativeSource, /renderPreviewFrame/);
   assert.match(premiereSource, /function getSourcePreviewVideo\(\)/);

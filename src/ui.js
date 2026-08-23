@@ -250,7 +250,12 @@
 
   // Pre-create UXP file entries so native sequential tracking can fill them without per-frame seek or panel work.
   async function prepareNativePreviewCache(startSeconds, endSeconds) {
-    if (!state.nativePreview || !state.media || !Number(state.media.framesPerSecond)) return "";
+    if (!state.media || !Number(state.media.framesPerSecond)) return "";
+    if (!state.nativePreview) {
+      // The cache must own its temporary folder even when preparation skips the former single-frame decoder.
+      const storage = require("uxp").storage.localFileSystem;
+      state.nativePreview = { folder: await storage.getTemporaryFolder(), serial: 0 };
+    }
     const framesPerSecond = Number(state.media.framesPerSecond);
     const firstFrame = Math.max(0, Math.floor(Number(startSeconds) * framesPerSecond));
     const lastFrame = Math.ceil(Number(endSeconds) * framesPerSecond);

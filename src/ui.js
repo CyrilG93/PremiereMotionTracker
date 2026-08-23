@@ -1747,8 +1747,9 @@
       preview.addEventListener("click", (event) => chooseCorrectionPoint(rootNode, event));
     } else if (preview && hasInitialPreview() && !state.busy) {
       preview.addEventListener("click", (event) => {
-        // The direct source video and still fallback use the same normalized reference-point coordinates.
-        if (!event.target || event.target.className === "pmt-preview-image" || event.target.id === "pmt-preview-video") {
+        // Accept the cache's double-buffer image as well as the legacy still and video preview surfaces.
+        const targetClass = String(event.target && event.target.className || "");
+        if (!event.target || targetClass.indexOf("pmt-preview-image") >= 0 || targetClass.indexOf("pmt-preview-buffer") >= 0 || event.target.id === "pmt-preview-video") {
           chooseReferencePoint(rootNode, event);
         }
       });

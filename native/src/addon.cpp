@@ -298,6 +298,47 @@ addon_value inspectMedia(addon_env env, addon_callback_info info) {
     }
 }
 
+// Decode one source frame to a UXP-owned PNG path so the panel avoids Premiere's slow frame exporter.
+addon_value renderPreviewFrame(addon_env env, addon_callback_info info) {
+    try {
+#if defined(PMT_WITH_OPENCV)
+        addon_value arguments[4] = { nullptr, nullptr, nullptr, nullptr };
+        std::size_t argumentCount = 4;
+        Check(UxpAddonApis.uxp_addon_get_cb_info(env, info, &argumentCount, arguments, nullptr, nullptr));
+        if (argumentCount != 4) {
+            throw std::invalid_argument("La prévisualisation requiert le média, le temps, le PNG de sortie et sa largeur.");
+        }
+        const auto readString = [&env](addon_value value) {
+            std::size_t byteCount = 0;
+            Check(UxpAddonApis.uxp_addon_get_value_string_utf8(env, value, nullptr, 0, &byteCount));
+            std::vector<char> buffer(byteCount + 1, '\0');
+            std::size_t copiedByteCount = 0;
+            if (byteCount > 0) Check(UxpAddonApis.uxp_addon_get_value_string_utf8(env, value, buffer.data(), buffer.size(), &copiedByteCount));
+            return std::string(buffer.data(), copiedByteCount);
+        };
+        const std::string mediaPath = readString(arguments[0]);
+        double seconds = 0.0;
+        double maximumWidth = 960.0;
+        Check(UxpAddonApis.uxp_addon_get_value_double(env, arguments[1], &seconds));
+        const std::string outputPath = readString(arguments[2]);
+        Check(UxpAddonApis.uxp_addon_get_value_double(env, arguments[3], &maximumWidth));
+        const pmt::PreviewFrame frame = pmt::renderPreviewFrame(mediaPath, seconds, outputPath, static_cast<int>(std::lround(maximumWidth)));
+        addon_value result = nullptr;
+        Check(UxpAddonApis.uxp_addon_create_object(env, &result));
+        setNumberProperty(env, result, "width", frame.width);
+        setNumberProperty(env, result, "height", frame.height);
+        setNumberProperty(env, result, "frame", static_cast<double>(frame.frame));
+        setNumberProperty(env, result, "seconds", frame.seconds);
+        return result;
+#else
+        (void)info;
+        throw std::runtime_error("The addon was built without OpenCV.");
+#endif
+    } catch (...) {
+        return CreateErrorFromException(env);
+    }
+}
+
 // Return native Lucas-Kanade samples as plain JavaScript values for the durable panel session.
 addon_value trackMedia(addon_env env, addon_callback_info info) {
     try {
@@ -563,6 +604,7 @@ addon_value init(addon_env env, addon_value exports, const addon_apis& addonAPIs
     registerFunction(env, exports, "getVersion", getVersion, addonAPIs);
     registerFunction(env, exports, "runSelfTest", runSelfTest, addonAPIs);
     registerFunction(env, exports, "inspectMedia", inspectMedia, addonAPIs);
+    registerFunction(env, exports, "renderPreviewFrame", renderPreviewFrame, addonAPIs);
     registerFunction(env, exports, "trackMedia", trackMedia, addonAPIs);
     registerFunction(env, exports, "trackSurface", trackSurface, addonAPIs);
     registerFunction(env, exports, "startTracking", startTracking, addonAPIs);

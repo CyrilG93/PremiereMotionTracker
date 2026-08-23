@@ -19,6 +19,14 @@ struct MediaInspection {
     double durationSeconds = 0.0;
 };
 
+// Describe one original-media frame rendered to a panel-sized PNG by the native decoder.
+struct PreviewFrame {
+    int width = 0;
+    int height = 0;
+    std::int64_t frame = 0;
+    double seconds = 0.0;
+};
+
 // Preserve one image-to-image result before it is converted into Premiere timeline keyframes.
 struct MediaTrackingSample {
     std::int64_t frame = 0;
@@ -46,6 +54,14 @@ using SurfaceTrackingProgressCallback = std::function<bool(const SurfaceTracking
 
 // Open a local video through OpenCV and return durable metadata for the tracking session.
 MediaInspection inspectMedia(const std::string& mediaPath);
+
+// Decode one original-media frame and write a compact PNG without asking Premiere to export it.
+PreviewFrame renderPreviewFrame(
+    const std::string& mediaPath,
+    double seconds,
+    const std::string& outputPath,
+    int maximumWidth = 960
+);
 
 // Track a normalized point across a bounded media interval with Lucas-Kanade and a forward-backward check.
 std::vector<MediaTrackingSample> trackMedia(

@@ -58,11 +58,11 @@ Surface mode works best with flat, textured, clearly visible surfaces. It can be
 
 ## Preview Options
 
-The preview now reads the original source media file directly whenever Premiere exposes its local path. The tracking overlay follows that video without generating a temporary image sequence, so it starts immediately. If Premiere UXP cannot display the video, the panel automatically falls back to a single exported still image and records the cause in Diagnostics.
+The preview now decodes the original source media file directly with its native engine. It renders only the image currently needed by the panel, without asking Premiere to export a frame sequence. This avoids Premiere's slow preview generation and the black HTML-video surface in UXP.
 
 - The original-file preview only supports the selected source media; it does not include timeline effects, titles, or other clips composited in the sequence.
-- The Diagnostics log records the video URL scheme, media events, dimensions, duration, selected source range, seeks, and playback failures. Copy it after a failed test.
-- The older image review remains available automatically if direct video playback fails.
+- The Diagnostics log records the decoded source frame, source time, dimensions, and decoding time. Copy it after a failed test.
+- A single Premiere still image remains available automatically if native media decoding fails.
 
 ## Formats, Privacy, and Limitations
 

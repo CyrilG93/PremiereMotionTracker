@@ -7,6 +7,7 @@
     media: null,
     range: null,
     preview: null,
+    nativePreview: null,
     previewVideo: null,
     videoUnavailable: false,
     trackingPreview: null,
@@ -221,6 +222,24 @@
   // Treat an original-file video and a Premiere-exported still as equivalent initial preview surfaces.
   function hasInitialPreview() {
     return Boolean(state.previewVideo && !state.videoUnavailable) || Boolean(state.preview);
+  }
+
+  // Decode a panel-sized PNG from the original media so Premiere never has to export preview frames.
+  async function renderNativePreviewFrame(seconds) {
+    if (!state.source || !state.source.mediaPath) {
+      throw new Error("A local source media path is required for the native preview.");
+    }
+    const startedAt = Date.now();
+    const storage = require("uxp").storage.localFileSystem;
+    if (!state.nativePreview) {
+      state.nativePreview = { folder: await storage.getTemporaryFolder(), serial: 0 };
+    }
+    const fileName = "pmt-native-preview-" + Date.now() + "-" + state.nativePreview.serial++ + ".png";
+    const file = await state.nativePreview.folder.createFile(fileName, { overwrite: true });
+    const decoded = await root.PMT_NATIVE.renderPreviewFrame(state.source.mediaPath, Number(seconds), file.nativePath, 960);
+    const elapsed = Date.now() - startedAt;
+    addLog("Native source frame: " + Number(decoded.frame) + " at " + Number(decoded.seconds).toFixed(3) + " s · " + Number(decoded.width) + " × " + Number(decoded.height) + " · " + elapsed + " ms.");
+    return { url: file.url, fileName, width: Number(decoded.width), height: Number(decoded.height), seconds: Number(decoded.seconds) };
   }
 
   // Discard progress data that belongs to an earlier source, range, or tracking point.
@@ -611,12 +630,19 @@
   }
 
   // Swap between two loaded PNG elements, keeping the last painted image visible until the next one is ready.
-  function showTrackingPreviewFrame(rootNode, frameIndex) {
+  function showTrackingPreviewFrame(rootNode, frameIndex, nativeFrameReady) {
     const frames = state.trackingPreview && state.trackingPreview.frames;
     if (!frames || !frames.length) {
       return Promise.resolve(false);
     }
     const requestedIndex = Math.min(frames.length - 1, Math.max(0, Math.round(Number(frameIndex) || 0)));
+    if (state.nativePreview && !nativeFrameReady) {
+      // Decode only the requested original-media frame, avoiding a slow pre-rendered sequence.
+      return renderNativePreviewFrame(Number(frames[requestedIndex].seconds)).then((preview) => {
+        frames[requestedIndex].url = preview.url;
+        return showTrackingPreviewFrame(rootNode, requestedIndex, true);
+      });
+    }
     const nextBuffer = state.previewActiveBuffer === "a" ? "b" : "a";
     const activeImage = rootNode.querySelector("#pmt-tracking-image-" + state.previewActiveBuffer);
     const nextImage = rootNode.querySelector("#pmt-tracking-image-" + nextBuffer);
@@ -699,9 +725,11 @@
   // Keep the direct source video live by default; PNG review remains an opt-in fallback for hosts that cannot paint video.
   async function buildTrackingPreview(rootNode) {
     const samples = Array.isArray(state.tracking) ? state.tracking.slice() : [];
-    if (state.previewVideo && !state.videoUnavailable) {
-      addLog("Tracking overlay remains on the direct source video. PNG frame export bypassed for immediate preview.");
-      return false;
+    if (state.nativePreview) {
+      state.trackingPreview = { frames: samples.map((sample) => ({ url: state.preview.url, width: state.preview.width, height: state.preview.height, frame: Number(sample.frame), seconds: Number(sample.seconds), x: Number(sample.x), y: Number(sample.y), corners: Array.isArray(sample.corners) ? sample.corners.map((corner) => ({ x: Number(corner.x), y: Number(corner.y) })) : null, confidence: Number(sample.confidence), valid: sample.valid !== false })) };
+      state.previewFrameIndex = 0;
+      addLog("Native source preview ready: " + samples.length + " tracking samples available without Premiere PNG export.");
+      return true;
     }
     if (state.previewGenerationSkipped) {
       // Honor the choice made before analysis completes without mounting or exporting preview PNGs.
@@ -849,16 +877,16 @@
     // Keep a usable centre-point default even when the direct file preview is unavailable.
     state.referencePoint = { x: 0.5, y: 0.5 };
     state.referenceCorners = [];
+    state.previewVideo = null;
+    state.videoUnavailable = true;
     try {
-      state.previewVideo = await root.PMT_PREMIERE.getSourcePreviewVideo();
-      state.videoUnavailable = false;
-      addLog("Direct source video prepared: " + state.previewVideo.fileName + " · origin " + state.previewVideo.origin + ". PNG preview export bypassed.");
-    } catch (videoError) {
-      state.previewVideo = null;
-      state.videoUnavailable = true;
-      addLog("Direct source video unavailable: " + (videoError && videoError.message ? videoError.message : String(videoError)) + ". Trying Premiere still image fallback.");
-    }
-    if (!state.previewVideo) {
+      const previewRange = getPreviewVideoRange();
+      if (!previewRange) throw new Error("The source media range is unavailable.");
+      state.preview = await renderNativePreviewFrame(previewRange.startSeconds);
+      addLog("Native original-media preview ready. Premiere PNG export bypassed.");
+    } catch (nativePreviewError) {
+      state.preview = null;
+      addLog("Native source preview unavailable: " + (nativePreviewError && nativePreviewError.message ? nativePreviewError.message : String(nativePreviewError)) + ". Trying Premiere still image fallback.");
       await loadStillPreviewFallback(rootNode, "no direct source video URL");
     }
     const session = root.PMT_SESSION.createSession({
@@ -880,6 +908,7 @@
       state.media = null;
       state.range = null;
       state.preview = null;
+      state.nativePreview = null;
       state.previewVideo = null;
       state.videoUnavailable = false;
       state.referencePoint = null;

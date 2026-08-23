@@ -123,6 +123,41 @@ MediaInspection inspectMedia(const std::string& mediaPath) {
     return result;
 }
 
+PreviewFrame renderPreviewFrame(const std::string& mediaPath, double seconds, const std::string& outputPath, int maximumWidth) {
+    if (mediaPath.empty() || outputPath.empty()) {
+        throw std::invalid_argument("Le média et le fichier PNG de prévisualisation sont requis.");
+    }
+    if (!std::isfinite(seconds) || seconds < 0.0 || maximumWidth < 32 || maximumWidth > 1920) {
+        throw std::invalid_argument("Les paramètres de prévisualisation du média sont invalides.");
+    }
+    // Decode the source with the same backend as tracking so preview pixels and tracking coordinates stay aligned.
+    cv::VideoCapture capture(mediaPath, cv::CAP_ANY);
+    if (!capture.isOpened()) {
+        throw std::runtime_error("Impossible d’ouvrir le média pour la prévisualisation : " + mediaPath);
+    }
+    const double framesPerSecond = capture.get(cv::CAP_PROP_FPS);
+    if (!std::isfinite(framesPerSecond) || framesPerSecond <= 0.0) {
+        throw std::runtime_error("Le média ne fournit pas de cadence image exploitable pour la prévisualisation.");
+    }
+    const std::int64_t frameIndex = std::max<std::int64_t>(0, static_cast<std::int64_t>(std::llround(seconds * framesPerSecond)));
+    if (!capture.set(cv::CAP_PROP_POS_FRAMES, static_cast<double>(frameIndex))) {
+        throw std::runtime_error("OpenCV ne peut pas atteindre l’image de prévisualisation demandée.");
+    }
+    cv::Mat decodedFrame;
+    if (!capture.read(decodedFrame) || decodedFrame.empty()) {
+        throw std::runtime_error("OpenCV ne peut pas lire l’image de prévisualisation demandée.");
+    }
+    cv::Mat previewFrame = decodedFrame;
+    if (decodedFrame.cols > maximumWidth) {
+        const double scale = static_cast<double>(maximumWidth) / static_cast<double>(decodedFrame.cols);
+        cv::resize(decodedFrame, previewFrame, cv::Size(maximumWidth, std::max(1, static_cast<int>(std::lround(decodedFrame.rows * scale)))), 0.0, 0.0, cv::INTER_AREA);
+    }
+    if (!cv::imwrite(outputPath, previewFrame)) {
+        throw std::runtime_error("OpenCV ne peut pas écrire le PNG de prévisualisation : " + outputPath);
+    }
+    return { previewFrame.cols, previewFrame.rows, frameIndex, static_cast<double>(frameIndex) / framesPerSecond };
+}
+
 std::vector<MediaTrackingSample> trackMedia(
     const std::string& mediaPath,
     double normalizedX,

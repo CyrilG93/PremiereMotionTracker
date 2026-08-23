@@ -128,7 +128,9 @@ test("the preview prefers the original source file and retains an instrumented s
   assert.match(uiSource, /"loadedmetadata"/);
   assert.match(uiSource, /"stalled"/);
   assert.match(uiSource, /Premiere still-image fallback requested/);
-  assert.match(uiSource, /PNG frame export bypassed for immediate preview/);
+  assert.match(uiSource, /Native original-media preview ready/);
+  assert.match(uiSource, /renderNativePreviewFrame/);
+  assert.match(nativeSource, /renderPreviewFrame/);
   assert.match(premiereSource, /function getSourcePreviewVideo\(\)/);
   assert.match(premiereSource, /replace\(\/#\/g, "%23"\)/);
 });

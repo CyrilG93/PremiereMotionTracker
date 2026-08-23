@@ -13,7 +13,7 @@
     if (!candidate) {
       return names;
     }
-    ["getVersion", "runSelfTest", "inspectMedia", "trackMedia", "trackSurface", "startTracking", "startSurfaceTracking", "pollTracking", "cancelTracking"].forEach((name) => {
+    ["getVersion", "runSelfTest", "inspectMedia", "renderPreviewFrame", "trackMedia", "trackSurface", "startTracking", "startSurfaceTracking", "pollTracking", "cancelTracking"].forEach((name) => {
       if (typeof candidate[name] === "function") {
         names.push(name);
       }
@@ -41,7 +41,7 @@
     if (!loadPromise) {
       loadPromise = (async () => {
         try {
-      const loadedAddon = await require("premiere-motion-tracker-0.5.4.uxpaddon");
+      const loadedAddon = await require("premiere-motion-tracker-0.5.5.uxpaddon");
           exportNames = collectExportNames(loadedAddon);
           if (!loadedAddon || typeof loadedAddon.getVersion !== "function") {
             throw new Error("The addon does not provide getVersion() (" + describeExports(loadedAddon) + ").");
@@ -79,6 +79,14 @@
       throw new Error(loadError || "The native addon does not provide inspectMedia().");
     }
     return addon.inspectMedia(String(mediaPath || ""));
+  }
+
+  // Ask OpenCV to decode a compact PNG from the original file, bypassing Premiere and HTML video painting.
+  async function renderPreviewFrame(mediaPath, seconds, outputPath, maximumWidth) {
+    if (!addon || typeof addon.renderPreviewFrame !== "function") {
+      throw new Error(loadError || "The native addon does not provide renderPreviewFrame().");
+    }
+    return addon.renderPreviewFrame(String(mediaPath || ""), Number(seconds), String(outputPath || ""), Number(maximumWidth) || 960);
   }
 
   // Delegate bounded Lucas-Kanade tracking to the addon without retaining native frame objects in UXP.
@@ -171,6 +179,7 @@
     initialize,
     probe,
     inspectMedia,
+    renderPreviewFrame,
     trackMedia,
     trackSurface,
     startTracking,

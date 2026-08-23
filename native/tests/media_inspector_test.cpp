@@ -47,6 +47,7 @@ int main() {
     const std::filesystem::path samplePath = std::filesystem::temp_directory_path() / "pmt-media-inspector-sample.avi";
     const std::filesystem::path recoveryPath = std::filesystem::temp_directory_path() / "pmt-surface-recovery-sample.avi";
     const std::filesystem::path imagePath = std::filesystem::temp_directory_path() / "pmt-media-inspector-target.png";
+    const std::filesystem::path previewPath = std::filesystem::temp_directory_path() / "pmt-media-inspector-preview.png";
     cv::VideoWriter writer(samplePath.string(), cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), 12.0, cv::Size(96, 64));
     passed &= expect(writer.isOpened(), "OpenCV should create the temporary motion-tracking sample");
     if (writer.isOpened()) {
@@ -74,6 +75,9 @@ int main() {
             passed &= expect(inspection.frameCount >= 1, "decoder should report at least one sample frame");
             passed &= expect(std::abs(inspection.framesPerSecond - 12.0) < 0.1, "decoder should recover the sample frame rate");
             passed &= expect(!inspection.backend.empty(), "decoder should report the selected video backend");
+            const pmt::PreviewFrame preview = pmt::renderPreviewFrame(samplePath.string(), 0.2, previewPath.string(), 48);
+            passed &= expect(preview.width == 48 && preview.height == 32, "native preview should resize the original decoded frame");
+            passed &= expect(std::filesystem::exists(previewPath), "native preview should write its PNG output");
             const std::vector<pmt::MediaTrackingSample> samples = pmt::trackMedia(samplePath.string(), 36.0 / 95.0, 31.0 / 63.0, 0.0, 0.3);
             passed &= expect(samples.size() >= 4, "tracker should return each frame in the requested sample range");
             const pmt::MediaTrackingSample& finalSample = samples.back();
@@ -165,6 +169,8 @@ int main() {
     passed &= expect(!removeError, "temporary Surface recovery media should be removable");
     std::filesystem::remove(imagePath, removeError);
     passed &= expect(!removeError, "temporary target image should be removable");
+    std::filesystem::remove(previewPath, removeError);
+    passed &= expect(!removeError, "temporary preview image should be removable");
 
     if (!passed) {
         return 1;

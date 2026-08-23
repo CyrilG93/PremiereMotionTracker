@@ -554,7 +554,8 @@
     const analyzeLabel = state.operation === "analysis" ? t("analyzing") : t("analyze");
     const playbackFrame = state.trackingPreview && state.trackingPreview.frames[state.previewFrameIndex];
     const hasCorrection = Boolean(!surfaceMode && state.tracking && state.correction && playbackFrame && state.correction.frameIndex === state.previewFrameIndex);
-    const displayedPoint = hasCorrection ? state.correction.point : playbackFrame;
+    // Before analysis, show the point selected on the current cache frame instead of the cache placeholder coordinates.
+    const displayedPoint = hasCorrection ? state.correction.point : (!state.tracking && state.referencePoint ? state.referencePoint : playbackFrame);
     const canRetrack = Boolean(!state.busy && hasCorrection && state.tracking && state.tracking.length > 1 && Number(playbackFrame.seconds) < Number(state.tracking[state.tracking.length - 1].seconds));
     const uncertainIndexes = getPreviewUncertainIndexes();
     const currentConfidence = confidencePercent(playbackFrame);

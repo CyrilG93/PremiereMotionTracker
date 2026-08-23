@@ -1,12 +1,13 @@
 {
   "name": "premiere-motion-tracker",
-  "version": "0.5.17",
+  "version": "0.5.18",
   "private": true,
   "description": "Adobe Premiere Pro UXP motion tracking plugin",
   "scripts": {
     "lint": "node scripts/lint.mjs",
     "test": "node --test tests/*.test.js",
-    "verify": "npm run lint && npm test"
+    "verify": "npm run lint && npm test",
+    "package:windows:test": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/package-test-windows.ps1"
   },
   "engines": {
     "node": ">=20"

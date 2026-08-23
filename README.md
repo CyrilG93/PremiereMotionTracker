@@ -66,6 +66,8 @@ The preview decodes the original source media file directly with its native engi
 - On Windows, the bundled LGPL FFmpeg decoder automatically handles codecs that Media Foundation cannot decode, including ProRes. It decodes only the selected In/Out range into temporary preview images; it does not re-encode your media.
 - Preparing an initial frame can take longer when the In point is far into a long-GOP H.264/HEVC file, because Windows must seek and decode from a nearby keyframe. This delay is independent of the selected In/Out duration.
 
+Windows installers include the FFmpeg decoder and its LGPL licence automatically; no separate FFmpeg installation is required.
+
 ## Formats, Privacy, and Limitations
 
 - Landscape, square, vertical, and ultra-wide sequence formats are supported; tracking is not limited to 16:9.

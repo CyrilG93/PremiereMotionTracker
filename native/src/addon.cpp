@@ -419,7 +419,7 @@ addon_value trackSurface(addon_env env, addon_callback_info info) {
         int featureCount = 240;
         std::string previewFolder;
         readSurfaceTrackingArguments(env, info, mediaPath, corners, startSeconds, endSeconds, searchRadius, featureCount, previewFolder);
-        const std::vector<pmt::SurfaceTrackingSample> samples = pmt::trackSurface(mediaPath, corners, startSeconds, endSeconds, {}, searchRadius, featureCount);
+        const std::vector<pmt::SurfaceTrackingSample> samples = pmt::trackSurface(mediaPath, corners, startSeconds, endSeconds, {}, searchRadius, featureCount, previewFolder);
         addon_value result = nullptr;
         Check(UxpAddonApis.uxp_addon_create_array_with_length(env, samples.size(), &result));
         for (std::size_t index = 0; index < samples.size(); index += 1) {
@@ -586,7 +586,7 @@ addon_value startSurfaceTracking(addon_env env, addon_callback_info info) {
             std::lock_guard<std::mutex> lock(trackingTasksMutex);
             trackingTasks.emplace(taskId, task);
         }
-        task->worker = std::thread([task, mediaPath, corners, startSeconds, endSeconds, searchRadius, featureCount]() {
+        task->worker = std::thread([task, mediaPath, corners, startSeconds, endSeconds, searchRadius, featureCount, previewFolder]() {
             try {
                 pmt::trackSurface(mediaPath, corners, startSeconds, endSeconds, [task](const pmt::SurfaceTrackingSample& sample) {
                     if (task->cancelRequested.load()) {
@@ -596,7 +596,7 @@ addon_value startSurfaceTracking(addon_env env, addon_callback_info info) {
                     std::lock_guard<std::mutex> lock(task->mutex);
                     task->surfaceSamples.push_back(sample);
                     return true;
-                }, searchRadius, featureCount);
+                }, searchRadius, featureCount, previewFolder);
             } catch (const std::exception& error) {
                 std::lock_guard<std::mutex> lock(task->mutex);
                 if (task->cancelRequested.load()) {

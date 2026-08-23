@@ -63,6 +63,7 @@ The preview decodes the original source media file directly with its native engi
 - The original-file preview only supports the selected source media; it does not include timeline effects, titles, or other clips composited in the sequence.
 - The Diagnostics log records the decoded source frame, source time, dimensions, and decoding time. Copy it after a failed test.
 - A single Premiere still image remains available automatically if native media decoding fails.
+- On Windows, the bundled LGPL FFmpeg decoder automatically handles codecs that Media Foundation cannot decode, including ProRes. It decodes only the selected In/Out range into temporary preview images; it does not re-encode your media.
 - Preparing an initial frame can take longer when the In point is far into a long-GOP H.264/HEVC file, because Windows must seek and decode from a nearby keyframe. This delay is independent of the selected In/Out duration.
 
 ## Formats, Privacy, and Limitations

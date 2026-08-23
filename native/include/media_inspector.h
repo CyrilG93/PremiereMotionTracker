@@ -105,7 +105,8 @@ std::vector<SurfaceTrackingSample> trackSurface(
     double endSeconds,
     const SurfaceTrackingProgressCallback& progressCallback = {},
     int searchRadius = 10,
-    int featureCount = 240
+    int featureCount = 240,
+    const std::string& previewFolder = {}
 );
 
 // Follow a four-corner surface backwards through the prepared PNG cache, returning chronological samples.

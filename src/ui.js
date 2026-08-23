@@ -1410,7 +1410,7 @@
         state.liveSamples = [];
         state.analysisSampleIndex = 0;
         // Track from the same selected reference frame to Out after the inverse pass has filled the In side.
-        state.analysisTaskId = await root.PMT_NATIVE.startSurfaceTracking(state.source.mediaPath, state.referenceCorners, referenceSeconds, mediaRange.endSeconds, state.searchRadius, state.surfaceFeatureCount);
+        state.analysisTaskId = await root.PMT_NATIVE.startSurfaceTracking(state.source.mediaPath, state.referenceCorners, referenceSeconds, mediaRange.endSeconds, state.searchRadius, state.surfaceFeatureCount, previewFolder);
         if (state.cancelRequested) {
           await root.PMT_NATIVE.cancelTracking(state.analysisTaskId);
           throw new Error("Tracking cancelled.");

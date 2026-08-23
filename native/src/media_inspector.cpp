@@ -14,7 +14,16 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
+#include <filesystem>
 #include <stdexcept>
+
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 
 namespace pmt {
 
@@ -35,6 +44,37 @@ cv::Mat toGray(const cv::Mat& frame) {
 
 // Limit the first synchronous addon iteration so an accidental long range cannot freeze the panel indefinitely.
 constexpr std::int64_t maximumTrackedFrames = 3600;
+
+// Locate the LGPL FFmpeg sidecar beside this versioned addon without requiring a user-wide installation.
+std::filesystem::path bundledFfmpegPath() {
+#if defined(_WIN32)
+    HMODULE module = nullptr;
+    if (!GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, reinterpret_cast<LPCSTR>(&bundledFfmpegPath), &module)) return {};
+    char modulePath[MAX_PATH] = {};
+    if (!GetModuleFileNameA(module, modulePath, MAX_PATH)) return {};
+    return std::filesystem::path(modulePath).parent_path() / "ffmpeg.exe";
+#else
+    return {};
+#endif
+}
+
+// Decode only the requested range to the existing cache numbering when Media Foundation reports metadata but cannot decode frames.
+bool decodePreviewCacheWithFfmpeg(const std::string& mediaPath, double startSeconds, double endSeconds, std::int64_t firstFrame, const std::string& previewFolder) {
+    const std::filesystem::path ffmpeg = bundledFfmpegPath();
+    if (ffmpeg.empty() || !std::filesystem::exists(ffmpeg)) return false;
+    const std::string outputPattern = (std::filesystem::path(previewFolder) / "pmt-native-track-%d.png").string();
+    const std::string command = "\"" + ffmpeg.string() + "\" -hide_banner -loglevel error -ss " + std::to_string(startSeconds) + " -t " + std::to_string(endSeconds - startSeconds) + " -i \"" + mediaPath + "\" -an -vf \"scale='min(960\\,iw)':-2\" -vsync 0 -start_number " + std::to_string(firstFrame) + " -y \"" + outputPattern + "\"";
+    return std::system(command.c_str()) == 0;
+}
+
+// Reopen compact cached PNGs as an image sequence so the established OpenCV trackers can run after an FFmpeg fallback.
+bool openCachedImageSequence(cv::VideoCapture& capture, const std::string& previewFolder, std::int64_t firstFrame) {
+    if (previewFolder.empty()) return false;
+    capture.release();
+    const std::string pattern = (std::filesystem::path(previewFolder) / "pmt-native-track-%d.png").string();
+    if (!capture.open(pattern, cv::CAP_IMAGES)) return false;
+    return capture.set(cv::CAP_PROP_POS_FRAMES, static_cast<double>(firstFrame));
+}
 
 // Save a compact original-media frame while OpenCV already owns the sequential decoder position.
 std::string cachePreviewFrame(const cv::Mat& decodedFrame, const std::string& previewFolder, std::int64_t frameIndex) {
@@ -205,6 +245,16 @@ std::vector<MediaTrackingSample> cacheMediaPreview(
             throw std::runtime_error("Tracking cancelled.");
         }
     }
+    if (samples.empty() && decodePreviewCacheWithFfmpeg(mediaPath, startSeconds, endSeconds, firstFrame, previewFolder)) {
+        // FFmpeg already wrote panel-sized PNGs; publish their original-media timing without an additional conversion pass.
+        for (std::int64_t frame = firstFrame; frame <= lastFrame; frame += 1) {
+            const std::string fileName = "pmt-native-track-" + std::to_string(frame) + ".png";
+            if (!std::filesystem::exists(std::filesystem::path(previewFolder) / fileName)) break;
+            MediaTrackingSample sample { frame, static_cast<double>(frame) / framesPerSecond, 0.0, 0.0, 1.0, true, fileName };
+            samples.push_back(sample);
+            if (progressCallback && !progressCallback(sample)) throw std::runtime_error("Tracking cancelled.");
+        }
+    }
     return samples;
 }
 
@@ -304,7 +354,7 @@ std::vector<MediaTrackingSample> trackMedia(
     }
 
     cv::Mat decodedFrame;
-    if (!capture.read(decodedFrame)) {
+    if (!capture.read(decodedFrame) && (!openCachedImageSequence(capture, previewFolder, firstFrame) || !capture.read(decodedFrame))) {
         throw std::runtime_error("OpenCV ne peut pas lire la première image de la plage demandée.");
     }
     cv::Mat previousGray = toGray(decodedFrame);
@@ -368,7 +418,8 @@ std::vector<SurfaceTrackingSample> trackSurface(
     double endSeconds,
     const SurfaceTrackingProgressCallback& progressCallback,
     int searchRadius,
-    int featureCount
+    int featureCount,
+    const std::string& previewFolder
 ) {
     if (!std::isfinite(startSeconds) || !std::isfinite(endSeconds) || startSeconds < 0.0 || endSeconds <= startSeconds) {
         throw std::invalid_argument("La plage média de surface tracking est invalide.");
@@ -396,7 +447,7 @@ std::vector<SurfaceTrackingSample> trackSurface(
         throw std::runtime_error("OpenCV ne peut pas atteindre le début de la plage demandée.");
     }
     cv::Mat decodedFrame;
-    if (!capture.read(decodedFrame)) {
+    if (!capture.read(decodedFrame) && (!openCachedImageSequence(capture, previewFolder, firstFrame) || !capture.read(decodedFrame))) {
         throw std::runtime_error("OpenCV ne peut pas lire la première image de la plage demandée.");
     }
     cv::Mat previousGray = toGray(decodedFrame);

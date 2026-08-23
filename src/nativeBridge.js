@@ -41,7 +41,7 @@
     if (!loadPromise) {
       loadPromise = (async () => {
         try {
-      const loadedAddon = await require("premiere-motion-tracker-0.5.13.uxpaddon");
+      const loadedAddon = await require("premiere-motion-tracker-0.5.14.uxpaddon");
           exportNames = collectExportNames(loadedAddon);
           if (!loadedAddon || typeof loadedAddon.getVersion !== "function") {
             throw new Error("The addon does not provide getVersion() (" + describeExports(loadedAddon) + ").");
@@ -159,7 +159,7 @@
   }
 
   // Start planar tracking asynchronously so Surface mode can publish progress and honour cancellation.
-  async function startSurfaceTracking(mediaPath, normalizedCorners, startSeconds, endSeconds, searchRadius, featureCount) {
+  async function startSurfaceTracking(mediaPath, normalizedCorners, startSeconds, endSeconds, searchRadius, featureCount, previewFolder) {
     if (!addon || typeof addon.startSurfaceTracking !== "function") {
       throw new Error(loadError || "The native addon does not provide startSurfaceTracking().");
     }
@@ -173,7 +173,8 @@
       Number(startSeconds),
       Number(endSeconds),
       Number(searchRadius) || 10,
-      Number(featureCount) || 240
+      Number(featureCount) || 240,
+      String(previewFolder || "")
     ));
   }
 

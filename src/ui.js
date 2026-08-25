@@ -384,11 +384,11 @@
 
   // Resize and offset one shared frame so the visual preview, its overlays, and click coordinates stay aligned in UXP.
   function updatePreviewTransform(rootNode) {
-    const content = rootNode && rootNode.querySelector("#pmt-preview-content");
-    if (content) {
-      content.style.width = (clampPreviewZoom(state.previewZoom) * 100).toFixed(3) + "%";
-      content.style.left = Number(state.previewPan.x).toFixed(1) + "px";
-      content.style.top = Number(state.previewPan.y).toFixed(1) + "px";
+    const stage = rootNode && rootNode.querySelector(".pmt-preview-stage");
+    if (stage) {
+      stage.style.width = (clampPreviewZoom(state.previewZoom) * 100).toFixed(3) + "%";
+      stage.style.left = Number(state.previewPan.x).toFixed(1) + "px";
+      stage.style.top = Number(state.previewPan.y).toFixed(1) + "px";
     }
   }
 
@@ -404,7 +404,8 @@
     const nextZoom = clampPreviewZoom(state.previewZoom * multiplier);
     if (nextZoom !== state.previewZoom) {
       state.previewZoom = nextZoom;
-      updatePreviewTransform(rootNode);
+      // Rebuild the direct preview overlays with the same visual coordinates as the resized media frame.
+      render(rootNode);
     }
   }
 
@@ -418,6 +419,15 @@
       return;
     }
     preview.style.height = Math.round(previewWidth * mediaHeight / mediaWidth) + "px";
+  }
+
+  // Convert a source-normalized point into its centered visual position for the current zoom level.
+  function getPreviewVisualPoint(point) {
+    const zoom = clampPreviewZoom(state.previewZoom);
+    return {
+      x: 0.5 + (Number(point.x) - 0.5) * zoom,
+      y: 0.5 + (Number(point.y) - 0.5) * zoom
+    };
   }
 
   // Resize every visible search window during a slider drag without rebuilding the active Spectrum control.
@@ -672,8 +682,10 @@
     const uncertainIndexes = getPreviewUncertainIndexes();
     const currentConfidence = confidencePercent(playbackFrame);
     const previewSurfaceCorners = surfaceMode ? surfaceCornersForPreview(playbackFrame) : (state.tracking && playbackFrame ? playbackFrame.corners : state.referenceCorners);
+    const visualSurfaceCorners = Array.isArray(previewSurfaceCorners) ? previewSurfaceCorners.map(getPreviewVisualPoint) : previewSurfaceCorners;
+    const visualDisplayedPoint = displayedPoint ? getPreviewVisualPoint(displayedPoint) : displayedPoint;
     const previewContent = playbackFrame
-      ? '<div class="pmt-preview-stage"><img class="pmt-preview-buffer pmt-preview-buffer-active" id="pmt-tracking-image-a" src="' + escapeHtml(playbackFrame.url) + '" alt="' + escapeHtml(t("trackingPreviewAlt")) + '"><img class="pmt-preview-buffer" id="pmt-tracking-image-b" alt=""></div>' + (surfaceMode ? (Array.isArray(previewSurfaceCorners) ? previewSurfaceCorners.map(searchAreaMarkup).join("") : "") + surfaceCornersMarkup(previewSurfaceCorners, true) : searchAreaMarkup(displayedPoint) + '<div class="pmt-tracking-point" id="pmt-preview-point" style="left:' + (Number(displayedPoint.x) * 100).toFixed(3) + '%;top:' + (Number(displayedPoint.y) * 100).toFixed(3) + '%"></div>')
+      ? '<div class="pmt-preview-stage" style="width:' + (clampPreviewZoom(state.previewZoom) * 100).toFixed(3) + '%;left:' + Number(state.previewPan.x).toFixed(1) + 'px;top:' + Number(state.previewPan.y).toFixed(1) + 'px"><img class="pmt-preview-buffer pmt-preview-buffer-active" id="pmt-tracking-image-a" src="' + escapeHtml(playbackFrame.url) + '" alt="' + escapeHtml(t("trackingPreviewAlt")) + '"><img class="pmt-preview-buffer" id="pmt-tracking-image-b" alt=""></div>' + (surfaceMode ? (Array.isArray(visualSurfaceCorners) ? visualSurfaceCorners.map(searchAreaMarkup).join("") : "") + surfaceCornersMarkup(visualSurfaceCorners, true) : searchAreaMarkup(visualDisplayedPoint) + '<div class="pmt-tracking-point" id="pmt-preview-point" style="left:' + (Number(visualDisplayedPoint.x) * 100).toFixed(3) + '%;top:' + (Number(visualDisplayedPoint.y) * 100).toFixed(3) + '%"></div>')
       : state.previewVideo && !state.videoUnavailable
       ? '<div class="pmt-preview-stage"><video class="pmt-preview-video" id="pmt-preview-video" src="' + escapeHtml(state.previewVideo.url) + '" muted playsinline preload="metadata"></video></div>' + (surfaceMode
         ? state.referenceCorners.map(searchAreaMarkup).join("") + surfaceCornersMarkup(state.referenceCorners, true)
@@ -713,7 +725,7 @@
       '  </div>',
       '  <div class="pmt-card">',
       '    <h2 class="pmt-card-title">' + escapeHtml(t("previewTitle")) + '</h2>',
-      '    <div class="pmt-preview" id="pmt-preview" data-ready="' + String(Boolean(hasInitialPreview() || playbackFrame)) + '"><div class="pmt-preview-content" id="pmt-preview-content" style="width:' + (clampPreviewZoom(state.previewZoom) * 100).toFixed(3) + '%;left:' + Number(state.previewPan.x).toFixed(1) + 'px;top:' + Number(state.previewPan.y).toFixed(1) + 'px">' + previewContent + '</div>' + previewStatus + (Boolean(hasInitialPreview() || playbackFrame) ? '<div class="pmt-preview-zoom-controls">' + buttonMarkup("pmt-preview-zoom-out", "−", ["pmt-preview-zoom-button"], state.previewZoom <= 1) + buttonMarkup("pmt-preview-zoom-in", "+", ["pmt-preview-zoom-button"], state.previewZoom >= 4) + '</div>' : '') + '</div>',
+      '    <div class="pmt-preview" id="pmt-preview" data-ready="' + String(Boolean(hasInitialPreview() || playbackFrame)) + '">' + previewContent + previewStatus + (Boolean(hasInitialPreview() || playbackFrame) ? '<div class="pmt-preview-zoom-controls">' + buttonMarkup("pmt-preview-zoom-out", "−", ["pmt-preview-zoom-button"], state.previewZoom <= 1) + buttonMarkup("pmt-preview-zoom-in", "+", ["pmt-preview-zoom-button"], state.previewZoom >= 4) + '</div>' : '') + '</div>',
       Boolean(hasInitialPreview() || playbackFrame) ? '    <div class="pmt-actions">' + buttonMarkup("pmt-reset-preview-view", t("resetPreviewView"), ["pmt-button-compact"], state.previewZoom <= 1 && state.previewPan.x === 0 && state.previewPan.y === 0) + '</div>' : '',
       playbackFrame ? '    <div class="pmt-preview-navigation"><div class="pmt-label">' + escapeHtml(t("previewNavigation")) + '</div><sp-slider class="pmt-preview-slider" id="pmt-preview-slider" min="0" max="' + String(Math.max(0, state.trackingPreview.frames.length - 1)) + '" step="1" value="' + String(state.previewFrameIndex) + '"' + (canPlayPreview ? '' : ' disabled') + ' aria-label="' + escapeHtml(t("previewNavigation")) + '"></sp-slider></div>' : '',
       playbackFrame ? '    <div class="pmt-uncertain-review">' + uncertainMarkersMarkup(uncertainIndexes, state.trackingPreview.frames.length) + '</div>' : '',
@@ -746,6 +758,8 @@
     ].join("");
     bindEvents(rootNode);
     syncPreviewViewport(rootNode);
+    // Premiere can report a zero preview width during its first panel layout pass, so lock the crop once more after paint.
+    setTimeout(() => syncPreviewViewport(rootNode), 30);
     bindVideoPreview(rootNode);
     const logArea = rootNode.querySelector("#pmt-log");
     if (logArea) {
@@ -1829,7 +1843,10 @@
     bindButton(rootNode, "pmt-skip-preview", () => skipTrackingPreview(rootNode));
     bindButton(rootNode, "pmt-toggle-preview-generation", () => togglePreviewGeneration(rootNode));
     bindButton(rootNode, "pmt-generate-long-preview", () => generateDeferredPreview(rootNode));
-    bindButton(rootNode, "pmt-reset-preview-view", () => resetPreviewView(rootNode));
+    bindButton(rootNode, "pmt-reset-preview-view", () => {
+      resetPreviewView(rootNode);
+      render(rootNode);
+    });
     bindButton(rootNode, "pmt-preview-zoom-out", (event) => {
       // Do not let the preview's correction click handler treat the zoom control as a tracking correction.
       event.stopPropagation();

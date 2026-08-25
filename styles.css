@@ -311,6 +311,7 @@ input {
 /* Stack two exported PNGs so the next review frame is loaded before it replaces the visible frame. */
 .pmt-preview-stage {
   position: relative;
+  flex: 0 0 auto;
   width: 100%;
   overflow: hidden;
   background: #000000;

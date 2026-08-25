@@ -38,7 +38,7 @@ The source and destination clips must be in the same sequence.
 3. Adjust **Search area** if the point moves quickly.
 4. Click **Analyze**.
 5. During analysis, use **Cancel analysis** if you need to stop. No partial tracking data is kept.
-6. After tracking, review the result with **Play**, the frame slider, or the yellow confidence markers. Use the mouse wheel to zoom the preview; Alt-drag or middle-drag pans it, and **Reset view** restores the full image.
+6. After tracking, review the result with **Play**, the frame slider, or the yellow confidence markers. Use the **− / +** controls on the preview to zoom; Alt-drag or middle-drag pans it, and **Reset view** restores the full image.
 7. To fix a drift, select the affected frame, click the correct point, then choose whether to re-track **before** or **after** that frame.
 8. Select one or more destination clips in the timeline.
 9. Click **Apply trajectory**.
@@ -52,7 +52,7 @@ The plugin adds a Transform effect and Position keyframes to every selected dest
 3. Use Play or the frame slider to choose the best reference frame, then click the four corners of the surface in this order: top-left, top-right, bottom-right, bottom-left.
 4. Drag the numbered handles to refine the selection.
 5. Click **Analyze**.
-6. Review the result with **Play**, the frame slider, or the yellow confidence markers. Use the mouse wheel to zoom the preview; Alt-drag or middle-drag pans it, and **Reset view** restores the full image. To fix a drift, drag one or more numbered corners on the affected frame, then choose whether to re-track **before** or **after** that frame.
+6. Review the result with **Play**, the frame slider, or the yellow confidence markers. Use the **− / +** controls on the preview to zoom; Alt-drag or middle-drag pans it, and **Reset view** restores the full image. To fix a drift, drag one or more numbered corners on the affected frame, then choose whether to re-track **before** or **after** that frame.
 7. Select the destination clip and click **Apply perspective**.
 
 Surface mode works best with flat, textured, clearly visible surfaces. It can be unreliable on blurred, reflective, heavily occluded, or strongly deforming surfaces.

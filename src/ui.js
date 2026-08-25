@@ -79,6 +79,8 @@
       play: "Play",
       pause: "Pause",
       resetPreviewView: "Reset view",
+      zoomPreviewIn: "Zoom in",
+      zoomPreviewOut: "Zoom out",
       preparingPreview: "Preparing preview {count} / {total}…",
       skippingPreview: "Skipping preview…",
       trackingPreview: "Tracking preview · frame {current} / {total} · confidence {confidence}%",
@@ -157,6 +159,8 @@
       play: "Lire",
       pause: "Pause",
       resetPreviewView: "Réinitialiser la vue",
+      zoomPreviewIn: "Zoom avant",
+      zoomPreviewOut: "Zoom arrière",
       preparingPreview: "Préparation de l’aperçu {count} / {total}…",
       skippingPreview: "Aperçu ignoré…",
       trackingPreview: "Aperçu tracking · image {current} / {total} · confiance {confidence}%",
@@ -382,7 +386,10 @@
   function updatePreviewTransform(rootNode) {
     const content = rootNode && rootNode.querySelector("#pmt-preview-content");
     if (content) {
-      content.style.transform = "translate(" + Number(state.previewPan.x).toFixed(1) + "px, " + Number(state.previewPan.y).toFixed(1) + "px) scale(" + Number(state.previewZoom).toFixed(3) + ")";
+      const hasViewTransform = state.previewZoom !== 1 || state.previewPan.x !== 0 || state.previewPan.y !== 0;
+      content.style.transform = hasViewTransform
+        ? "translate(" + Number(state.previewPan.x).toFixed(1) + "px, " + Number(state.previewPan.y).toFixed(1) + "px) scale(" + Number(state.previewZoom).toFixed(3) + ")"
+        : "none";
     }
   }
 
@@ -391,6 +398,15 @@
     state.previewZoom = 1;
     state.previewPan = { x: 0, y: 0 };
     updatePreviewTransform(rootNode);
+  }
+
+  // Adjust the inspection magnification through explicit controls that work consistently in Premiere UXP panels.
+  function adjustPreviewZoom(rootNode, multiplier) {
+    const nextZoom = clampPreviewZoom(state.previewZoom * multiplier);
+    if (nextZoom !== state.previewZoom) {
+      state.previewZoom = nextZoom;
+      updatePreviewTransform(rootNode);
+    }
   }
 
   // Resize every visible search window during a slider drag without rebuilding the active Spectrum control.
@@ -514,15 +530,11 @@
     return '<div class="pmt-search-area" style="left:' + (Number(point.x) * 100).toFixed(3) + '%;top:' + (Number(point.y) * 100).toFixed(3) + '%;width:' + String(visualSize) + 'px;height:' + String(visualSize) + 'px"></div>';
   }
 
-  // Derive one HTML edge from two normalized corners, accounting for the preview's source-media aspect ratio.
-  function surfaceEdgeStyle(from, to) {
-    const aspectRatio = Number(state.media && state.media.width) / Number(state.media && state.media.height);
-    const safeAspectRatio = Number.isFinite(aspectRatio) && aspectRatio > 0 ? aspectRatio : 16 / 9;
-    const horizontal = Number(to.x) - Number(from.x);
-    const vertical = Number(to.y) - Number(from.y);
-    const width = Math.hypot(horizontal, vertical / safeAspectRatio) * 100;
-    const angle = Math.atan2(vertical, horizontal * safeAspectRatio) * 180 / Math.PI;
-    return 'left:' + (Number(from.x) * 100).toFixed(3) + '%;top:' + (Number(from.y) * 100).toFixed(3) + '%;width:' + width.toFixed(3) + '%;transform:translateY(-50%) rotate(' + angle.toFixed(3) + 'deg)';
+  // Convert normalized corners into the stable 0–100 viewBox coordinates used by the non-interactive shape overlay.
+  function surfacePolygonPoints(corners) {
+    return (Array.isArray(corners) ? corners : []).map((corner) => {
+      return (Number(corner.x) * 100).toFixed(3) + "," + (Number(corner.y) * 100).toFixed(3);
+    }).join(" ");
   }
 
   // Prefer the user-edited quadrilateral while reviewing its source frame, otherwise show the native tracking result.
@@ -534,15 +546,15 @@
     return frame && Array.isArray(frame.corners) ? frame.corners : state.referenceCorners;
   }
 
-  // Use regular HTML segments instead of SVG because Premiere UXP can fail to paint an absolutely positioned SVG after a transform.
+  // Keep draggable handles as HTML controls while SVG draws only the lightweight surface fill and dotted outline.
   function surfaceCornersMarkup(corners, editable) {
     if (!Array.isArray(corners) || !corners.length) {
       return "";
     }
-    const edges = corners.length >= 2 ? corners.map((corner, index) => {
-      const nextCorner = corners[(index + 1) % corners.length];
-      return '<div class="pmt-surface-edge" data-surface-edge="' + String(index) + '" aria-hidden="true" style="' + surfaceEdgeStyle(corner, nextCorner) + '"></div>';
-    }).join("") : "";
+    const points = surfacePolygonPoints(corners);
+    const shape = corners.length >= 3
+      ? '<svg class="pmt-surface-shape" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><polygon id="pmt-surface-polygon" points="' + points + '"></polygon></svg>'
+      : '<svg class="pmt-surface-shape" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><polyline id="pmt-surface-polygon" points="' + points + '"></polyline></svg>';
     const handles = corners.map((corner, index) => {
       const className = editable ? "pmt-surface-corner pmt-surface-corner-editable" : "pmt-surface-corner";
       const attributes = editable
@@ -550,7 +562,7 @@
         : ' aria-hidden="true"';
       return '<div class="' + className + '" data-surface-corner="' + String(index) + '"' + attributes + ' style="left:' + (Number(corner.x) * 100).toFixed(3) + '%;top:' + (Number(corner.y) * 100).toFixed(3) + '%">' + String(index + 1) + '</div>';
     }).join("");
-    return edges + handles;
+    return shape + handles;
   }
 
   // Render attention markers below the host-provided slider without replacing its validated transport control.
@@ -683,7 +695,7 @@
       '  </div>',
       '  <div class="pmt-card">',
       '    <h2 class="pmt-card-title">' + escapeHtml(t("previewTitle")) + '</h2>',
-      '    <div class="pmt-preview" id="pmt-preview" data-ready="' + String(Boolean(hasInitialPreview() || playbackFrame)) + '"><div class="pmt-preview-content" id="pmt-preview-content" style="transform:translate(' + Number(state.previewPan.x).toFixed(1) + 'px,' + Number(state.previewPan.y).toFixed(1) + 'px) scale(' + Number(state.previewZoom).toFixed(3) + ')">' + previewContent + '</div></div>',
+      '    <div class="pmt-preview" id="pmt-preview" data-ready="' + String(Boolean(hasInitialPreview() || playbackFrame)) + '"><div class="pmt-preview-content" id="pmt-preview-content"' + (state.previewZoom !== 1 || state.previewPan.x !== 0 || state.previewPan.y !== 0 ? ' style="transform:translate(' + Number(state.previewPan.x).toFixed(1) + 'px,' + Number(state.previewPan.y).toFixed(1) + 'px) scale(' + Number(state.previewZoom).toFixed(3) + ')"' : '') + '>' + previewContent + '</div>' + (Boolean(hasInitialPreview() || playbackFrame) ? '<div class="pmt-preview-zoom-controls">' + buttonMarkup("pmt-preview-zoom-out", "−", ["pmt-preview-zoom-button"], state.previewZoom <= 1) + buttonMarkup("pmt-preview-zoom-in", "+", ["pmt-preview-zoom-button"], state.previewZoom >= 4) + '</div>' : '') + '</div>',
       Boolean(hasInitialPreview() || playbackFrame) ? '    <div class="pmt-actions">' + buttonMarkup("pmt-reset-preview-view", t("resetPreviewView"), ["pmt-button-compact"], state.previewZoom <= 1 && state.previewPan.x === 0 && state.previewPan.y === 0) + '</div>' : '',
       playbackFrame ? '    <div class="pmt-preview-navigation"><div class="pmt-label">' + escapeHtml(t("previewNavigation")) + '</div><sp-slider class="pmt-preview-slider" id="pmt-preview-slider" min="0" max="' + String(Math.max(0, state.trackingPreview.frames.length - 1)) + '" step="1" value="' + String(state.previewFrameIndex) + '"' + (canPlayPreview ? '' : ' disabled') + ' aria-label="' + escapeHtml(t("previewNavigation")) + '"></sp-slider></div>' : '',
       playbackFrame ? '    <div class="pmt-uncertain-review">' + uncertainMarkersMarkup(uncertainIndexes, state.trackingPreview.frames.length) + '</div>' : '',
@@ -801,15 +813,11 @@
         }
         const surfaceCorners = isSurfaceMode() ? surfaceCornersForPreview(frame) : null;
         if (isSurfaceMode() && Array.isArray(surfaceCorners)) {
-          // Keep each visible surface edge in lockstep with the four tracked corner handles.
-          Array.prototype.forEach.call(rootNode.querySelectorAll(".pmt-surface-edge"), (edgeElement) => {
-            const edgeIndex = Number(edgeElement.getAttribute("data-surface-edge"));
-            const from = surfaceCorners[edgeIndex];
-            const to = surfaceCorners[(edgeIndex + 1) % surfaceCorners.length];
-            if (from && to) {
-              edgeElement.style.cssText = surfaceEdgeStyle(from, to);
-            }
-          });
+          // Keep the translucent surface polygon in lockstep with the four tracked corner handles.
+          const polygon = rootNode.querySelector("#pmt-surface-polygon");
+          if (polygon) {
+            polygon.setAttribute("points", surfacePolygonPoints(surfaceCorners));
+          }
           Array.prototype.forEach.call(rootNode.querySelectorAll(".pmt-surface-corner"), (cornerElement) => {
             const cornerIndex = Number(cornerElement.getAttribute("data-surface-corner"));
             const corner = surfaceCorners[cornerIndex];
@@ -1237,15 +1245,11 @@
   // Update only the overlay during a drag so Premiere does not lose the current mouse interaction to a full render.
   function updateSurfaceSelectionOverlay(rootNode, corners) {
     const activeCorners = corners || state.referenceCorners;
-    // Refresh the simple HTML edges without relying on SVG repainting during a live drag.
-    Array.prototype.forEach.call(rootNode.querySelectorAll(".pmt-surface-edge"), (edgeElement) => {
-      const edgeIndex = Number(edgeElement.getAttribute("data-surface-edge"));
-      const from = activeCorners[edgeIndex];
-      const to = activeCorners[(edgeIndex + 1) % activeCorners.length];
-      if (from && to) {
-        edgeElement.style.cssText = surfaceEdgeStyle(from, to);
-      }
-    });
+    const points = surfacePolygonPoints(activeCorners);
+    const polygon = rootNode.querySelector("#pmt-surface-polygon");
+    if (polygon) {
+      polygon.setAttribute("points", points);
+    }
     Array.prototype.forEach.call(rootNode.querySelectorAll(".pmt-surface-corner"), (cornerElement) => {
       const cornerIndex = Number(cornerElement.getAttribute("data-surface-corner"));
       const corner = activeCorners[cornerIndex];
@@ -1772,7 +1776,7 @@
     element.addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
-        callback();
+        callback(event);
       }
     });
   }
@@ -1810,6 +1814,16 @@
     bindButton(rootNode, "pmt-toggle-preview-generation", () => togglePreviewGeneration(rootNode));
     bindButton(rootNode, "pmt-generate-long-preview", () => generateDeferredPreview(rootNode));
     bindButton(rootNode, "pmt-reset-preview-view", () => resetPreviewView(rootNode));
+    bindButton(rootNode, "pmt-preview-zoom-out", (event) => {
+      // Do not let the preview's correction click handler treat the zoom control as a tracking correction.
+      event.stopPropagation();
+      adjustPreviewZoom(rootNode, 1 / 1.25);
+    });
+    bindButton(rootNode, "pmt-preview-zoom-in", (event) => {
+      // Do not let the preview's correction click handler treat the zoom control as a tracking correction.
+      event.stopPropagation();
+      adjustPreviewZoom(rootNode, 1.25);
+    });
     bindButton(rootNode, "pmt-reset-surface", () => {
       state.referenceCorners = [];
       state.tracking = null;
@@ -1824,22 +1838,6 @@
     bindButton(rootNode, "pmt-copy-log", () => copyDiagnostics(rootNode));
     const preview = rootNode.querySelector("#pmt-preview");
     if (preview && preview.getAttribute("data-ready") === "true") {
-      // Catch both DOM wheel spellings in the capture phase because Premiere UXP otherwise scrolls the panel before the preview receives it.
-      const zoomPreviewWithWheel = (event) => {
-        if (!preview.contains(event.target)) {
-          return;
-        }
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        const delta = Number(event.deltaY) || -Number(event.wheelDelta) || Number(event.detail);
-        const nextZoom = clampPreviewZoom(state.previewZoom * (delta < 0 ? 1.15 : 1 / 1.15));
-        if (nextZoom !== state.previewZoom) {
-          state.previewZoom = nextZoom;
-          updatePreviewTransform(rootNode);
-        }
-      };
-      rootNode.addEventListener("wheel", zoomPreviewWithWheel, { capture: true, passive: false });
-      rootNode.addEventListener("mousewheel", zoomPreviewWithWheel, true);
       // Pan deliberately requires the middle button or Alt-drag so ordinary clicks and corner drags retain their existing meaning.
       preview.addEventListener("mousedown", (event) => {
         if (event.button !== 1 && !event.altKey) {

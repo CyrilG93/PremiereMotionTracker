@@ -272,7 +272,25 @@ input {
   position: relative;
   width: 100%;
   transform-origin: center center;
-  will-change: transform;
+}
+
+/* Keep explicit UXP-safe zoom controls fixed above the transformed preview canvas. */
+.pmt-preview-zoom-controls {
+  position: absolute;
+  z-index: 4;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 4px;
+}
+
+.pmt-preview-zoom-button {
+  min-width: 28px;
+  min-height: 28px;
+  padding: 2px 7px;
+  background: rgba(24, 24, 24, 0.9);
+  font-size: 18px;
+  line-height: 1;
 }
 
 .pmt-preview-image {
@@ -325,16 +343,31 @@ input {
   transform: translate(-50%, -50%);
 }
 
-/* Draw a UXP-safe visible quadrilateral edge without intercepting preview clicks. */
-.pmt-surface-edge {
+/* Let a passive SVG show the complete selected quadrilateral without intercepting preview clicks. */
+.pmt-surface-shape {
   position: absolute;
   z-index: 1;
-  height: 2px;
-  border-radius: 999px;
-  background: #ffffff;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
-  transform-origin: 0 50%;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
   pointer-events: none;
+}
+
+.pmt-surface-shape polygon,
+.pmt-surface-shape polyline {
+  stroke: #ffffff;
+  stroke-width: 0.75;
+  stroke-dasharray: 1.5 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.pmt-surface-shape polygon {
+  fill: rgba(224, 98, 66, 0.42);
+}
+
+.pmt-surface-shape polyline {
+  fill: none;
 }
 
 /* Keep four numbered HTML handles directly draggable above the surface visual. */

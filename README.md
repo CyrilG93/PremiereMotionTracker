@@ -26,7 +26,7 @@ To remove the plugin, open Creative Cloud Desktop, go to **Plugins > Manage Plug
 ## Before You Start
 
 1. Open the sequence you want to work in.
-2. Set the sequence In and Out points to the part you want to track.
+2. Set the sequence In and Out points to the part you want to track. If they do not overlap the selected clip, Motion Tracker automatically uses that clip's visible duration instead.
 3. Put the source clip in the timeline and select it.
 
 The source and destination clips must be in the same sequence.

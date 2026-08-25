@@ -381,6 +381,24 @@
     });
   }
 
+  // Prefer the sequence In/Out intersection, then fall back to the selected clip when the markers belong elsewhere.
+  function getSourceTimelineRange() {
+    if (!state.source || !state.range) {
+      return null;
+    }
+    const clipStart = Number(state.source.start.seconds);
+    const clipEnd = Number(state.source.end.seconds);
+    if (!Number.isFinite(clipStart) || !Number.isFinite(clipEnd) || clipEnd <= clipStart) {
+      return null;
+    }
+    const sequenceStart = Math.max(Number(state.range.inPoint.seconds), Number(state.source.start.seconds));
+    const sequenceEnd = Math.min(Number(state.range.outPoint.seconds), Number(state.source.end.seconds));
+    if (Number.isFinite(sequenceStart) && Number.isFinite(sequenceEnd) && sequenceEnd > sequenceStart) {
+      return { sequenceStart, sequenceEnd, usesClipRange: false };
+    }
+    return { sequenceStart: clipStart, sequenceEnd: clipEnd, usesClipRange: true };
+  }
+
   // Intersect the visible sequence range with the source clip and convert it into source-media seconds.
   function getTrackingMediaRange() {
     if (!state.source || !state.range || !hasTrackingReference()) {
@@ -394,14 +412,14 @@
     if (!Number.isFinite(normalizedSpeed) || normalizedSpeed <= 0) {
       throw new Error("The source clip speed is invalid.");
     }
-    const sequenceStart = Math.max(Number(state.range.inPoint.seconds), Number(state.source.start.seconds));
-    const sequenceEnd = Math.min(Number(state.range.outPoint.seconds), Number(state.source.end.seconds));
-    if (!Number.isFinite(sequenceStart) || !Number.isFinite(sequenceEnd) || sequenceEnd <= sequenceStart) {
-      throw new Error("The sequence In/Out range does not overlap the source clip.");
+    const timelineRange = getSourceTimelineRange();
+    if (!timelineRange) {
+      throw new Error("The selected source clip has no usable timeline range.");
     }
     return {
-      startSeconds: Number(state.source.inPoint.seconds) + (sequenceStart - Number(state.source.start.seconds)) * normalizedSpeed,
-      endSeconds: Number(state.source.inPoint.seconds) + (sequenceEnd - Number(state.source.start.seconds)) * normalizedSpeed
+      startSeconds: Number(state.source.inPoint.seconds) + (timelineRange.sequenceStart - Number(state.source.start.seconds)) * normalizedSpeed,
+      endSeconds: Number(state.source.inPoint.seconds) + (timelineRange.sequenceEnd - Number(state.source.start.seconds)) * normalizedSpeed,
+      usesClipRange: timelineRange.usesClipRange
     };
   }
 
@@ -411,14 +429,14 @@
       return null;
     }
     const speed = Number(state.source.speed) === 100 ? 1 : Number(state.source.speed);
-    const sequenceStart = Math.max(Number(state.range.inPoint.seconds), Number(state.source.start.seconds));
-    const sequenceEnd = Math.min(Number(state.range.outPoint.seconds), Number(state.source.end.seconds));
-    if (state.source.reversed || !Number.isFinite(speed) || speed <= 0 || !Number.isFinite(sequenceStart) || !Number.isFinite(sequenceEnd) || sequenceEnd <= sequenceStart) {
+    const timelineRange = getSourceTimelineRange();
+    if (state.source.reversed || !Number.isFinite(speed) || speed <= 0 || !timelineRange) {
       return null;
     }
     return {
-      startSeconds: Number(state.source.inPoint.seconds) + (sequenceStart - Number(state.source.start.seconds)) * speed,
-      endSeconds: Number(state.source.inPoint.seconds) + (sequenceEnd - Number(state.source.start.seconds)) * speed
+      startSeconds: Number(state.source.inPoint.seconds) + (timelineRange.sequenceStart - Number(state.source.start.seconds)) * speed,
+      endSeconds: Number(state.source.inPoint.seconds) + (timelineRange.sequenceEnd - Number(state.source.start.seconds)) * speed,
+      usesClipRange: timelineRange.usesClipRange
     };
   }
 
@@ -989,6 +1007,10 @@
     try {
       const previewRange = getPreviewVideoRange();
       if (!previewRange) throw new Error("The source media range is unavailable.");
+      if (previewRange.usesClipRange) {
+        // Do not reuse the unrelated sequence In-point image when a newly selected clip sits outside its markers.
+        addLog("Sequence In/Out does not overlap this source; preparing the selected clip's visible range instead.");
+      }
       // Decode the range only once: its first cached frame also replaces the former separate, slow In-frame seek.
       const previewFolder = await prepareNativePreviewCache(previewRange.startSeconds, previewRange.endSeconds);
       state.liveSamples = [];

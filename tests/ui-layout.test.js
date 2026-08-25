@@ -73,7 +73,6 @@ test("tracking preview replays Premiere-rendered image frames without replacing 
   assert.match(uiSource, /pmt-tracking-image-b/);
   assert.match(uiSource, /updatePreviewBuildStatus/);
   assert.match(uiSource, /scheduleTrackingPreviewFrame/);
-  assert.match(uiSource, /previewFileName/);
   assert.match(uiSource, /getTrackingPreviewFrameDelay/);
   assert.doesNotMatch(uiSource, /\}, 120\);/);
   assert.match(uiSource, /pmt-skip-preview/);
@@ -111,14 +110,6 @@ test("validation exposes confidence markers, visible search-area tuning, and Sur
   assert.match(nativeSource, /Number\(searchRadius\) \|\| 10/);
   assert.match(styles, /\.pmt-search-area\s*\{[^}]*pointer-events:\s*none;/s);
   assert.match(uiSource, /getSearchAreaVisualSize/);
-  assert.match(uiSource, /clampPreviewZoom/);
-  assert.match(uiSource, /pmt-preview-zoom-out/);
-  assert.match(uiSource, /pmt-preview-zoom-in/);
-  assert.match(uiSource, /adjustPreviewZoom/);
-  assert.match(uiSource, /pmt-reset-preview-view/);
-  assert.match(uiSource, /const previewStatusText = playbackFrame/);
-  assert.match(uiSource, /const stage = rootNode\.querySelector\("\.pmt-preview-stage"\)/);
-  assert.match(styles, /\.pmt-preview-content\s*\{[^}]*flex:\s*0 0 auto;/s);
   assert.match(styles, /\.pmt-uncertain-markers\s*\{[^}]*position:\s*relative;/s);
 });
 
@@ -170,11 +161,11 @@ test("surface mode collects four corners and applies the tracked plane through C
   assert.match(uiSource, /pmt-mode-surface/);
   assert.match(uiSource, /referenceCorners\.length === 4/);
   assert.match(uiSource, /surfaceCornersMarkup/);
-  assert.match(uiSource, /drawSurfaceShape/);
+  assert.match(uiSource, /surfacePolygonPoints/);
   assert.match(uiSource, /beginSurfaceCornerDrag/);
   assert.match(uiSource, /nudgeSurfaceCorner/);
   assert.match(uiSource, /surfaceCornersForPreview\(frame\)/);
-  assert.match(uiSource, /canvas\.getContext\("2d"\)/);
+  assert.match(uiSource, /polygon\.setAttribute\("points", surfacePolygonPoints\(surfaceCorners\)\)/);
   assert.match(uiSource, /setSurfaceCorrectionCorner/);
   assert.match(uiSource, /startSurfaceTrackingReverse\(state\.source\.mediaPath, correction\.corners/);
   // Surface tracking now uses the same cancellable worker flow as point tracking.

@@ -15,8 +15,6 @@
     previewActiveBuffer: "a",
     previewPaintRequest: 0,
     previewPlaying: false,
-    previewZoom: 1,
-    previewPan: { x: 0, y: 0 },
     previewBuildCount: 0,
     previewBuildTotal: 0,
     previewSkipRequested: false,
@@ -78,9 +76,6 @@
       cancellingAnalysis: "Cancelling analysis…",
       play: "Play",
       pause: "Pause",
-      resetPreviewView: "Reset view",
-      zoomPreviewIn: "Zoom in",
-      zoomPreviewOut: "Zoom out",
       preparingPreview: "Preparing preview {count} / {total}…",
       skippingPreview: "Skipping preview…",
       trackingPreview: "Tracking preview · frame {current} / {total} · confidence {confidence}%",
@@ -158,9 +153,6 @@
       cancellingAnalysis: "Annulation de l’analyse…",
       play: "Lire",
       pause: "Pause",
-      resetPreviewView: "Réinitialiser la vue",
-      zoomPreviewIn: "Zoom avant",
-      zoomPreviewOut: "Zoom arrière",
       preparingPreview: "Préparation de l’aperçu {count} / {total}…",
       skippingPreview: "Aperçu ignoré…",
       trackingPreview: "Aperçu tracking · image {current} / {total} · confiance {confidence}%",
@@ -377,91 +369,6 @@
     return Math.round(18 + Number(state.searchRadius) * 1.5);
   }
 
-  // Keep zoom deliberately bounded so a precise placement remains easy to recover in Premiere's compact panel.
-  function clampPreviewZoom(value) {
-    return Math.max(1, Math.min(4, Number(value) || 1));
-  }
-
-  // Resize and offset one shared frame so the visual preview, its overlays, and click coordinates stay aligned in UXP.
-  function updatePreviewTransform(rootNode) {
-    const stage = rootNode && rootNode.querySelector(".pmt-preview-stage");
-    if (stage) {
-      stage.style.width = (clampPreviewZoom(state.previewZoom) * 100).toFixed(3) + "%";
-      stage.style.left = Number(state.previewPan.x).toFixed(1) + "px";
-      stage.style.top = Number(state.previewPan.y).toFixed(1) + "px";
-    }
-  }
-
-  // Reset the temporary inspection view without clearing the selected source, tracking, or corrections.
-  function resetPreviewView(rootNode) {
-    state.previewZoom = 1;
-    state.previewPan = { x: 0, y: 0 };
-    updatePreviewTransform(rootNode);
-  }
-
-  // Adjust the inspection magnification through explicit controls that work consistently in Premiere UXP panels.
-  function adjustPreviewZoom(rootNode, multiplier) {
-    const nextZoom = clampPreviewZoom(state.previewZoom * multiplier);
-    if (nextZoom !== state.previewZoom) {
-      state.previewZoom = nextZoom;
-      // Rebuild the direct preview overlays with the same visual coordinates as the resized media frame.
-      render(rootNode);
-    }
-  }
-
-  // Lock the crop viewport to the source aspect ratio after UXP has measured the docked panel width.
-  function syncPreviewViewport(rootNode) {
-    const preview = rootNode && rootNode.querySelector("#pmt-preview");
-    const mediaWidth = Number(state.media && state.media.width);
-    const mediaHeight = Number(state.media && state.media.height);
-    const previewWidth = preview && Number(preview.getBoundingClientRect().width);
-    if (!preview || !Number.isFinite(mediaWidth) || !Number.isFinite(mediaHeight) || mediaWidth <= 0 || mediaHeight <= 0 || !Number.isFinite(previewWidth) || previewWidth <= 0) {
-      return;
-    }
-    preview.style.height = Math.round(previewWidth * mediaHeight / mediaWidth) + "px";
-  }
-
-  // Convert a source-normalized point into its centered visual position for the current zoom level.
-  function getPreviewVisualPoint(point, rootNode) {
-    const zoom = clampPreviewZoom(state.previewZoom);
-    const preview = rootNode && rootNode.querySelector("#pmt-preview");
-    const bounds = preview && preview.getBoundingClientRect();
-    const panX = bounds && bounds.width ? Number(state.previewPan.x) / bounds.width : 0;
-    const panY = bounds && bounds.height ? Number(state.previewPan.y) / bounds.height : 0;
-    return {
-      x: 0.5 + (Number(point.x) - 0.5) * zoom + panX,
-      y: 0.5 + (Number(point.y) - 0.5) * zoom + panY
-    };
-  }
-
-  // Draw the complete quadrilateral in preview pixels so its edges always meet the draggable HTML handles.
-  function drawSurfaceShape(rootNode, corners) {
-    const canvas = rootNode && rootNode.querySelector("#pmt-surface-shape");
-    const bounds = canvas && canvas.getBoundingClientRect();
-    if (!canvas || !bounds || !bounds.width || !bounds.height || !Array.isArray(corners) || corners.length < 2) {
-      return;
-    }
-    canvas.width = Math.round(bounds.width);
-    canvas.height = Math.round(bounds.height);
-    const context = canvas.getContext("2d");
-    const visualCorners = corners.map((corner) => getPreviewVisualPoint(corner, rootNode));
-    context.clearRect(0, 0, canvas.width, canvas.height);
-    context.beginPath();
-    visualCorners.forEach((corner, index) => {
-      const x = Number(corner.x) * canvas.width;
-      const y = Number(corner.y) * canvas.height;
-      if (index === 0) context.moveTo(x, y);
-      else context.lineTo(x, y);
-    });
-    if (visualCorners.length >= 3) context.closePath();
-    context.fillStyle = "rgba(224, 98, 66, 0.30)";
-    context.fill();
-    context.strokeStyle = "#ffffff";
-    context.lineWidth = 2;
-    context.setLineDash([5, 4]);
-    context.stroke();
-  }
-
   // Resize every visible search window during a slider drag without rebuilding the active Spectrum control.
   function updateSearchAreaSize(rootNode) {
     if (!rootNode) {
@@ -583,6 +490,13 @@
     return '<div class="pmt-search-area" style="left:' + (Number(point.x) * 100).toFixed(3) + '%;top:' + (Number(point.y) * 100).toFixed(3) + '%;width:' + String(visualSize) + 'px;height:' + String(visualSize) + 'px"></div>';
   }
 
+  // Convert normalized corners into the stable 0–100 viewBox coordinates used by the non-interactive shape overlay.
+  function surfacePolygonPoints(corners) {
+    return (Array.isArray(corners) ? corners : []).map((corner) => {
+      return (Number(corner.x) * 100).toFixed(3) + "," + (Number(corner.y) * 100).toFixed(3);
+    }).join(" ");
+  }
+
   // Prefer the user-edited quadrilateral while reviewing its source frame, otherwise show the native tracking result.
   function surfaceCornersForPreview(frame) {
     const correction = state.correction;
@@ -592,12 +506,15 @@
     return frame && Array.isArray(frame.corners) ? frame.corners : state.referenceCorners;
   }
 
-  // Keep draggable handles as HTML controls while a canvas draws the surface without UXP SVG layout quirks.
+  // Keep draggable handles as HTML controls while SVG draws only the lightweight surface fill and dotted outline.
   function surfaceCornersMarkup(corners, editable) {
     if (!Array.isArray(corners) || !corners.length) {
       return "";
     }
-    const shape = '<canvas class="pmt-surface-shape" id="pmt-surface-shape" aria-hidden="true"></canvas>';
+    const points = surfacePolygonPoints(corners);
+    const shape = corners.length >= 3
+      ? '<svg class="pmt-surface-shape" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><polygon id="pmt-surface-polygon" points="' + points + '"></polygon></svg>'
+      : '<svg class="pmt-surface-shape" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><polyline id="pmt-surface-polygon" points="' + points + '"></polyline></svg>';
     const handles = corners.map((corner, index) => {
       const className = editable ? "pmt-surface-corner pmt-surface-corner-editable" : "pmt-surface-corner";
       const attributes = editable
@@ -704,26 +621,17 @@
     const uncertainIndexes = getPreviewUncertainIndexes();
     const currentConfidence = confidencePercent(playbackFrame);
     const previewSurfaceCorners = surfaceMode ? surfaceCornersForPreview(playbackFrame) : (state.tracking && playbackFrame ? playbackFrame.corners : state.referenceCorners);
-    const visualSurfaceCorners = Array.isArray(previewSurfaceCorners) ? previewSurfaceCorners.map(getPreviewVisualPoint) : previewSurfaceCorners;
-    const visualDisplayedPoint = displayedPoint ? getPreviewVisualPoint(displayedPoint) : displayedPoint;
     const previewContent = playbackFrame
-      ? '<div class="pmt-preview-stage" style="width:' + (clampPreviewZoom(state.previewZoom) * 100).toFixed(3) + '%;left:' + Number(state.previewPan.x).toFixed(1) + 'px;top:' + Number(state.previewPan.y).toFixed(1) + 'px"><img class="pmt-preview-buffer pmt-preview-buffer-active" id="pmt-tracking-image-a" src="' + escapeHtml(playbackFrame.url) + '" alt="' + escapeHtml(t("trackingPreviewAlt")) + '"><img class="pmt-preview-buffer" id="pmt-tracking-image-b" alt=""></div>' + (surfaceMode ? (Array.isArray(visualSurfaceCorners) ? visualSurfaceCorners.map(searchAreaMarkup).join("") : "") + surfaceCornersMarkup(previewSurfaceCorners, true) : searchAreaMarkup(visualDisplayedPoint) + '<div class="pmt-tracking-point" id="pmt-preview-point" style="left:' + (Number(visualDisplayedPoint.x) * 100).toFixed(3) + '%;top:' + (Number(visualDisplayedPoint.y) * 100).toFixed(3) + '%"></div>')
+      ? '<div class="pmt-preview-stage"><img class="pmt-preview-buffer pmt-preview-buffer-active" id="pmt-tracking-image-a" src="' + escapeHtml(playbackFrame.url) + '" alt="' + escapeHtml(t("trackingPreviewAlt")) + '"><img class="pmt-preview-buffer" id="pmt-tracking-image-b" alt=""></div>' + (surfaceMode ? (Array.isArray(previewSurfaceCorners) ? previewSurfaceCorners.map(searchAreaMarkup).join("") : "") + surfaceCornersMarkup(previewSurfaceCorners, true) : searchAreaMarkup(displayedPoint) + '<div class="pmt-tracking-point" id="pmt-preview-point" style="left:' + (Number(displayedPoint.x) * 100).toFixed(3) + '%;top:' + (Number(displayedPoint.y) * 100).toFixed(3) + '%"></div>') + '<div class="pmt-preview-status" id="pmt-preview-status">' + escapeHtml(t("trackingPreview", { current: state.previewFrameIndex + 1, total: state.trackingPreview.frames.length, confidence: currentConfidence })) + '</div>'
       : state.previewVideo && !state.videoUnavailable
-      ? '<div class="pmt-preview-stage"><video class="pmt-preview-video" id="pmt-preview-video" src="' + escapeHtml(state.previewVideo.url) + '" muted playsinline preload="metadata"></video></div>' + (surfaceMode
+      ? '<video class="pmt-preview-video" id="pmt-preview-video" src="' + escapeHtml(state.previewVideo.url) + '" muted playsinline preload="metadata"></video>' + (surfaceMode
         ? state.referenceCorners.map(searchAreaMarkup).join("") + surfaceCornersMarkup(state.referenceCorners, true)
-        : state.referencePoint ? searchAreaMarkup(state.referencePoint) + '<div class="pmt-tracking-point" id="pmt-preview-point" style="left:' + (state.referencePoint.x * 100).toFixed(3) + '%;top:' + (state.referencePoint.y * 100).toFixed(3) + '%"></div>' : "")
+        : state.referencePoint ? searchAreaMarkup(state.referencePoint) + '<div class="pmt-tracking-point" id="pmt-preview-point" style="left:' + (state.referencePoint.x * 100).toFixed(3) + '%;top:' + (state.referencePoint.y * 100).toFixed(3) + '%"></div>' : "") + '<div class="pmt-preview-status" id="pmt-preview-status">' + escapeHtml(t("readyToAnalyze")) + '</div>'
       : state.preview
-      ? '<div class="pmt-preview-stage"><img class="pmt-preview-image" src="' + escapeHtml(state.preview.url) + '" alt="' + escapeHtml(t("inImageAlt")) + '"></div>' + (surfaceMode
+      ? '<img class="pmt-preview-image" src="' + escapeHtml(state.preview.url) + '" alt="' + escapeHtml(t("inImageAlt")) + '">' + (surfaceMode
         ? state.referenceCorners.map(searchAreaMarkup).join("") + surfaceCornersMarkup(state.referenceCorners, true)
         : state.referencePoint ? searchAreaMarkup(state.referencePoint) + '<div class="pmt-tracking-point" style="left:' + (state.referencePoint.x * 100).toFixed(3) + '%;top:' + (state.referencePoint.y * 100).toFixed(3) + '%"></div>' : "")
       : '<div class="pmt-preview-grid"></div><div class="pmt-preview-copy">' + escapeHtml(t("emptyPreview")) + '</div>';
-    // Keep the review status outside the movable frame so it remains readable while zooming or panning.
-    const previewStatusText = playbackFrame
-      ? t("trackingPreview", { current: state.previewFrameIndex + 1, total: state.trackingPreview.frames.length, confidence: currentConfidence })
-      : state.previewVideo && !state.videoUnavailable ? t("readyToAnalyze") : "";
-    const previewStatus = previewStatusText
-      ? '<div class="pmt-preview-status" id="pmt-preview-status">' + escapeHtml(previewStatusText) + '</div>'
-      : "";
     rootNode.innerHTML = [
       '<div class="pmt-shell">',
       '  <div class="pmt-header">',
@@ -747,8 +655,7 @@
       '  </div>',
       '  <div class="pmt-card">',
       '    <h2 class="pmt-card-title">' + escapeHtml(t("previewTitle")) + '</h2>',
-      '    <div class="pmt-preview" id="pmt-preview" data-ready="' + String(Boolean(hasInitialPreview() || playbackFrame)) + '">' + previewContent + previewStatus + (Boolean(hasInitialPreview() || playbackFrame) ? '<div class="pmt-preview-zoom-controls">' + buttonMarkup("pmt-preview-zoom-out", "−", ["pmt-preview-zoom-button"], state.previewZoom <= 1) + buttonMarkup("pmt-preview-zoom-in", "+", ["pmt-preview-zoom-button"], state.previewZoom >= 4) + '</div>' : '') + '</div>',
-      Boolean(hasInitialPreview() || playbackFrame) ? '    <div class="pmt-actions">' + buttonMarkup("pmt-reset-preview-view", t("resetPreviewView"), ["pmt-button-compact"], state.previewZoom <= 1 && state.previewPan.x === 0 && state.previewPan.y === 0) + '</div>' : '',
+       '    <div class="pmt-preview" id="pmt-preview" data-ready="' + String(Boolean(hasInitialPreview() || playbackFrame)) + '">' + previewContent + '</div>',
       playbackFrame ? '    <div class="pmt-preview-navigation"><div class="pmt-label">' + escapeHtml(t("previewNavigation")) + '</div><sp-slider class="pmt-preview-slider" id="pmt-preview-slider" min="0" max="' + String(Math.max(0, state.trackingPreview.frames.length - 1)) + '" step="1" value="' + String(state.previewFrameIndex) + '"' + (canPlayPreview ? '' : ' disabled') + ' aria-label="' + escapeHtml(t("previewNavigation")) + '"></sp-slider></div>' : '',
       playbackFrame ? '    <div class="pmt-uncertain-review">' + uncertainMarkersMarkup(uncertainIndexes, state.trackingPreview.frames.length) + '</div>' : '',
       playbackFrame ? '    <div class="pmt-label">' + escapeHtml(surfaceMode ? t("surfaceCorrectionHelp") : t("correctionHelp")) + '</div>' : '',
@@ -779,12 +686,6 @@
       '</div>'
     ].join("");
     bindEvents(rootNode);
-    syncPreviewViewport(rootNode);
-    // Premiere can report a zero preview width during its first panel layout pass, so lock the crop once more after paint.
-    setTimeout(() => {
-      syncPreviewViewport(rootNode);
-      updatePreviewOverlayPositions(rootNode);
-    }, 30);
     bindVideoPreview(rootNode);
     const logArea = rootNode.querySelector("#pmt-log");
     if (logArea) {
@@ -871,7 +772,11 @@
         }
         const surfaceCorners = isSurfaceMode() ? surfaceCornersForPreview(frame) : null;
         if (isSurfaceMode() && Array.isArray(surfaceCorners)) {
-          // The exact canvas redraw below restores the visible surface after the next image buffer is painted.
+          // Keep the translucent surface polygon in lockstep with the four tracked corner handles.
+          const polygon = rootNode.querySelector("#pmt-surface-polygon");
+          if (polygon) {
+            polygon.setAttribute("points", surfacePolygonPoints(surfaceCorners));
+          }
           Array.prototype.forEach.call(rootNode.querySelectorAll(".pmt-surface-corner"), (cornerElement) => {
             const cornerIndex = Number(cornerElement.getAttribute("data-surface-corner"));
             const corner = surfaceCorners[cornerIndex];
@@ -894,7 +799,6 @@
         if (slider) {
           slider.value = String(requestedIndex);
         }
-        updatePreviewOverlayPositions(rootNode);
         resolve(true);
       };
       nextImage.onload = swapWhenReady;
@@ -1152,8 +1056,6 @@
       state.nativePreview = null;
       state.previewVideo = null;
       state.videoUnavailable = false;
-      state.previewZoom = 1;
-      state.previewPan = { x: 0, y: 0 };
       state.referencePoint = null;
       state.referenceCorners = [];
       state.tracking = null;
@@ -1225,15 +1127,14 @@
 
   // Convert a mouse or keyboard pointer event into a normalized point inside the visible preview frame.
   function getPreviewSelectionPoint(rootNode, event) {
-    const stage = rootNode.querySelector(".pmt-preview-stage");
-    if (!stage || !state.source || !state.range || typeof stage.getBoundingClientRect !== "function") {
+    const preview = rootNode.querySelector("#pmt-preview");
+    if (!preview || !state.source || !state.range || typeof preview.getBoundingClientRect !== "function") {
       return null;
     }
-    const bounds = stage.getBoundingClientRect();
+    const bounds = preview.getBoundingClientRect();
     if (!bounds.width || !bounds.height) {
       return null;
     }
-    // The visible stage already includes its real zoom and pan dimensions, so direct bounds conversion stays accurate.
     return root.PMT_SESSION.normalizePoint({
       x: (Number(event.clientX) - bounds.left) / bounds.width,
       y: (Number(event.clientY) - bounds.top) / bounds.height
@@ -1297,52 +1198,26 @@
   // Update only the overlay during a drag so Premiere does not lose the current mouse interaction to a full render.
   function updateSurfaceSelectionOverlay(rootNode, corners) {
     const activeCorners = corners || state.referenceCorners;
-    const visualCorners = activeCorners.map((corner) => getPreviewVisualPoint(corner, rootNode));
+    const points = surfacePolygonPoints(activeCorners);
+    const polygon = rootNode.querySelector("#pmt-surface-polygon");
+    if (polygon) {
+      polygon.setAttribute("points", points);
+    }
     Array.prototype.forEach.call(rootNode.querySelectorAll(".pmt-surface-corner"), (cornerElement) => {
       const cornerIndex = Number(cornerElement.getAttribute("data-surface-corner"));
-      const corner = visualCorners[cornerIndex];
+      const corner = activeCorners[cornerIndex];
       if (corner) {
         cornerElement.style.left = (Number(corner.x) * 100).toFixed(3) + "%";
         cornerElement.style.top = (Number(corner.y) * 100).toFixed(3) + "%";
       }
     });
     Array.prototype.forEach.call(rootNode.querySelectorAll(".pmt-search-area"), (searchArea, index) => {
-      const corner = visualCorners[index];
+      const corner = activeCorners[index];
       if (corner) {
         searchArea.style.left = (Number(corner.x) * 100).toFixed(3) + "%";
         searchArea.style.top = (Number(corner.y) * 100).toFixed(3) + "%";
       }
     });
-    drawSurfaceShape(rootNode, activeCorners);
-  }
-
-  // Move every visible overlay with the media frame while preserving its source-normalized tracking data.
-  function updatePreviewOverlayPositions(rootNode) {
-    const playbackFrame = state.trackingPreview && state.trackingPreview.frames[state.previewFrameIndex];
-    if (isSurfaceMode()) {
-      const corners = surfaceCornersForPreview(playbackFrame);
-      if (Array.isArray(corners) && corners.length) {
-        updateSurfaceSelectionOverlay(rootNode, corners);
-      }
-      return;
-    }
-    const pointSource = state.correction && playbackFrame && state.correction.frameIndex === state.previewFrameIndex
-      ? state.correction.point
-      : (!state.tracking && state.referencePoint ? state.referencePoint : playbackFrame);
-    if (!pointSource) {
-      return;
-    }
-    const point = getPreviewVisualPoint(pointSource, rootNode);
-    const marker = rootNode.querySelector("#pmt-preview-point");
-    const searchArea = rootNode.querySelector(".pmt-search-area");
-    if (marker) {
-      marker.style.left = (Number(point.x) * 100).toFixed(3) + "%";
-      marker.style.top = (Number(point.y) * 100).toFixed(3) + "%";
-    }
-    if (searchArea) {
-      searchArea.style.left = (Number(point.x) * 100).toFixed(3) + "%";
-      searchArea.style.top = (Number(point.y) * 100).toFixed(3) + "%";
-    }
   }
 
   // Drag an existing blue handle with plain mouse events, which remain reliable in Premiere UXP panels.
@@ -1400,7 +1275,7 @@
 
   // Save a corrected point on the displayed review image without invalidating its already approved prefix.
   function chooseCorrectionPoint(rootNode, event) {
-    const preview = rootNode.querySelector(".pmt-preview-stage");
+    const preview = rootNode.querySelector("#pmt-preview");
     const frame = state.trackingPreview && state.trackingPreview.frames[state.previewFrameIndex];
     if (!preview || !frame || typeof preview.getBoundingClientRect !== "function") {
       return;
@@ -1854,7 +1729,7 @@
     element.addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
-        callback(event);
+        callback();
       }
     });
   }
@@ -1891,20 +1766,6 @@
     bindButton(rootNode, "pmt-skip-preview", () => skipTrackingPreview(rootNode));
     bindButton(rootNode, "pmt-toggle-preview-generation", () => togglePreviewGeneration(rootNode));
     bindButton(rootNode, "pmt-generate-long-preview", () => generateDeferredPreview(rootNode));
-    bindButton(rootNode, "pmt-reset-preview-view", () => {
-      resetPreviewView(rootNode);
-      render(rootNode);
-    });
-    bindButton(rootNode, "pmt-preview-zoom-out", (event) => {
-      // Do not let the preview's correction click handler treat the zoom control as a tracking correction.
-      event.stopPropagation();
-      adjustPreviewZoom(rootNode, 1 / 1.25);
-    });
-    bindButton(rootNode, "pmt-preview-zoom-in", (event) => {
-      // Do not let the preview's correction click handler treat the zoom control as a tracking correction.
-      event.stopPropagation();
-      adjustPreviewZoom(rootNode, 1.25);
-    });
     bindButton(rootNode, "pmt-reset-surface", () => {
       state.referenceCorners = [];
       state.tracking = null;
@@ -1918,30 +1779,6 @@
     bindButton(rootNode, "pmt-apply-tracking", () => applyTracking(rootNode));
     bindButton(rootNode, "pmt-copy-log", () => copyDiagnostics(rootNode));
     const preview = rootNode.querySelector("#pmt-preview");
-    if (preview && preview.getAttribute("data-ready") === "true") {
-      // Pan deliberately requires the middle button or Alt-drag so ordinary clicks and corner drags retain their existing meaning.
-      preview.addEventListener("mousedown", (event) => {
-        if (event.button !== 1 && !event.altKey) {
-          return;
-        }
-        event.preventDefault();
-        event.stopPropagation();
-        const startX = Number(event.clientX);
-        const startY = Number(event.clientY);
-        const startPan = { x: Number(state.previewPan.x), y: Number(state.previewPan.y) };
-        const move = (moveEvent) => {
-          state.previewPan = { x: startPan.x + Number(moveEvent.clientX) - startX, y: startPan.y + Number(moveEvent.clientY) - startY };
-          updatePreviewTransform(rootNode);
-          updatePreviewOverlayPositions(rootNode);
-        };
-        const finish = () => {
-          document.removeEventListener("mousemove", move);
-          document.removeEventListener("mouseup", finish);
-        };
-        document.addEventListener("mousemove", move);
-        document.addEventListener("mouseup", finish);
-      });
-    }
     const previewSlider = rootNode.querySelector("#pmt-preview-slider");
     if (previewSlider && state.trackingPreview && !state.busy) {
       // Spectrum's native UXP slider gives direct scrubbing without the unreliable HTML range control.

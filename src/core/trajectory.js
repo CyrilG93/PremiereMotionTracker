@@ -250,6 +250,21 @@
     return corrected.concat(original.filter((sample) => Number(sample && sample.seconds) > restartSeconds + 0.000001));
   }
 
+  // Copy four corrected corners so a review edit never mutates the samples already approved by the user.
+  function cloneSurfaceCorners(corners) {
+    if (!Array.isArray(corners) || corners.length !== 4) {
+      throw new Error("La correction de surface doit contenir quatre coins.");
+    }
+    return corners.map((corner) => {
+      const x = Number(corner && corner.x);
+      const y = Number(corner && corner.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x > 1 || y < 0 || y > 1) {
+        throw new Error("Un coin de correction de surface est invalide.");
+      }
+      return { x, y };
+    });
+  }
+
   return {
     computeRelativeOffsets,
     findUncertainSamples,
@@ -260,6 +275,7 @@
     computeTargetPositionScale,
     computeCornerPinPoint,
     replaceTrackingTail,
-    replaceTrackingHead
+    replaceTrackingHead,
+    cloneSurfaceCorners
   };
 }));

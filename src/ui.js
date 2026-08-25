@@ -82,6 +82,7 @@
       trackingPreviewAlt: "Tracking preview",
       previewNavigation: "Browse the analyzed frames",
       correctionHelp: "Click the image to correct the point, then re-track from this frame.",
+      surfaceCorrectionHelp: "Drag a surface corner to correct this frame, then re-track before or after it.",
       retrackFromHere: "Re-track from this frame",
       retrackBefore: "Re-track before this frame",
       retrackAfter: "Re-track after this frame",
@@ -158,6 +159,7 @@
       trackingPreviewAlt: "Aperçu du tracking",
       previewNavigation: "Parcourir les images analysées",
       correctionHelp: "Cliquez dans l’image pour corriger le point, puis relancer le tracking depuis cette image.",
+      surfaceCorrectionHelp: "Déplacez un coin pour corriger cette image, puis relancez le tracking avant ou après celle-ci.",
       retrackFromHere: "Relancer depuis cette image",
       retrackBefore: "Relancer avant cette image",
       retrackAfter: "Relancer après cette image",
@@ -477,6 +479,15 @@
     }).join(" ");
   }
 
+  // Prefer the user-edited quadrilateral while reviewing its source frame, otherwise show the native tracking result.
+  function surfaceCornersForPreview(frame) {
+    const correction = state.correction;
+    if (correction && Array.isArray(correction.corners) && correction.frameIndex === state.previewFrameIndex) {
+      return correction.corners;
+    }
+    return frame && Array.isArray(frame.corners) ? frame.corners : state.referenceCorners;
+  }
+
   // Keep draggable handles as HTML controls while SVG draws only the lightweight surface fill and dotted outline.
   function surfaceCornersMarkup(corners, editable) {
     if (!Array.isArray(corners) || !corners.length) {
@@ -585,15 +596,15 @@
     const canPlayPreview = Boolean(!state.busy && ((state.previewVideo && !state.videoUnavailable) || (state.trackingPreview && state.trackingPreview.frames.length > 1)));
     const analyzeLabel = state.operation === "analysis" ? t("analyzing") : t("analyze");
     const playbackFrame = state.trackingPreview && state.trackingPreview.frames[state.previewFrameIndex];
-    const hasCorrection = Boolean(!surfaceMode && state.tracking && state.correction && playbackFrame && state.correction.frameIndex === state.previewFrameIndex);
+    const hasCorrection = Boolean(state.tracking && state.correction && playbackFrame && state.correction.frameIndex === state.previewFrameIndex);
     // Before analysis, show the point selected on the current cache frame instead of the cache placeholder coordinates.
     const displayedPoint = hasCorrection ? state.correction.point : (!state.tracking && state.referencePoint ? state.referencePoint : playbackFrame);
     const canRetrack = Boolean(!state.busy && hasCorrection && state.tracking && state.tracking.length > 1 && Number(playbackFrame.seconds) < Number(state.tracking[state.tracking.length - 1].seconds));
     const uncertainIndexes = getPreviewUncertainIndexes();
     const currentConfidence = confidencePercent(playbackFrame);
-    const previewSurfaceCorners = state.tracking && playbackFrame ? playbackFrame.corners : state.referenceCorners;
+    const previewSurfaceCorners = surfaceMode ? surfaceCornersForPreview(playbackFrame) : (state.tracking && playbackFrame ? playbackFrame.corners : state.referenceCorners);
     const previewContent = playbackFrame
-      ? '<div class="pmt-preview-stage"><img class="pmt-preview-buffer pmt-preview-buffer-active" id="pmt-tracking-image-a" src="' + escapeHtml(playbackFrame.url) + '" alt="' + escapeHtml(t("trackingPreviewAlt")) + '"><img class="pmt-preview-buffer" id="pmt-tracking-image-b" alt=""></div>' + (surfaceMode ? (Array.isArray(previewSurfaceCorners) ? previewSurfaceCorners.map(searchAreaMarkup).join("") : "") + surfaceCornersMarkup(previewSurfaceCorners, !state.tracking) : searchAreaMarkup(displayedPoint) + '<div class="pmt-tracking-point" id="pmt-preview-point" style="left:' + (Number(displayedPoint.x) * 100).toFixed(3) + '%;top:' + (Number(displayedPoint.y) * 100).toFixed(3) + '%"></div>') + '<div class="pmt-preview-status" id="pmt-preview-status">' + escapeHtml(t("trackingPreview", { current: state.previewFrameIndex + 1, total: state.trackingPreview.frames.length, confidence: currentConfidence })) + '</div>'
+      ? '<div class="pmt-preview-stage"><img class="pmt-preview-buffer pmt-preview-buffer-active" id="pmt-tracking-image-a" src="' + escapeHtml(playbackFrame.url) + '" alt="' + escapeHtml(t("trackingPreviewAlt")) + '"><img class="pmt-preview-buffer" id="pmt-tracking-image-b" alt=""></div>' + (surfaceMode ? (Array.isArray(previewSurfaceCorners) ? previewSurfaceCorners.map(searchAreaMarkup).join("") : "") + surfaceCornersMarkup(previewSurfaceCorners, true) : searchAreaMarkup(displayedPoint) + '<div class="pmt-tracking-point" id="pmt-preview-point" style="left:' + (Number(displayedPoint.x) * 100).toFixed(3) + '%;top:' + (Number(displayedPoint.y) * 100).toFixed(3) + '%"></div>') + '<div class="pmt-preview-status" id="pmt-preview-status">' + escapeHtml(t("trackingPreview", { current: state.previewFrameIndex + 1, total: state.trackingPreview.frames.length, confidence: currentConfidence })) + '</div>'
       : state.previewVideo && !state.videoUnavailable
       ? '<video class="pmt-preview-video" id="pmt-preview-video" src="' + escapeHtml(state.previewVideo.url) + '" muted playsinline preload="metadata"></video>' + (surfaceMode
         ? state.referenceCorners.map(searchAreaMarkup).join("") + surfaceCornersMarkup(state.referenceCorners, true)
@@ -629,7 +640,7 @@
        '    <div class="pmt-preview" id="pmt-preview" data-ready="' + String(Boolean(hasInitialPreview() || playbackFrame)) + '">' + previewContent + '</div>',
       playbackFrame ? '    <div class="pmt-preview-navigation"><div class="pmt-label">' + escapeHtml(t("previewNavigation")) + '</div><sp-slider class="pmt-preview-slider" id="pmt-preview-slider" min="0" max="' + String(Math.max(0, state.trackingPreview.frames.length - 1)) + '" step="1" value="' + String(state.previewFrameIndex) + '"' + (canPlayPreview ? '' : ' disabled') + ' aria-label="' + escapeHtml(t("previewNavigation")) + '"></sp-slider></div>' : '',
       playbackFrame ? '    <div class="pmt-uncertain-review">' + uncertainMarkersMarkup(uncertainIndexes, state.trackingPreview.frames.length) + '</div>' : '',
-      playbackFrame && !surfaceMode ? '    <div class="pmt-label">' + escapeHtml(t("correctionHelp")) + '</div>' : '',
+      playbackFrame ? '    <div class="pmt-label">' + escapeHtml(surfaceMode ? t("surfaceCorrectionHelp") : t("correctionHelp")) + '</div>' : '',
        !playbackFrame && surfaceMode && hasInitialPreview() ? '    <div class="pmt-label">' + escapeHtml(t("surfaceHelp")) + ' (' + String(state.referenceCorners.length) + '/4)</div>' : '',
       '    <div class="pmt-actions">',
       '      ' + buttonMarkup("pmt-analyze", analyzeLabel, ["pmt-button-primary"], !canAnalyze),
@@ -641,7 +652,7 @@
       playbackFrame ? '      ' + buttonMarkup("pmt-next-uncertain", t("nextUncertain"), [], !uncertainIndexes.length || state.busy) : '',
       '    </div>',
       state.previewGenerationDeferred ? '    <div class="pmt-label">' + escapeHtml(t("longPreviewWarning", { count: state.previewBuildTotal })) + '</div>' + buttonMarkup("pmt-generate-long-preview", t("generatePreview"), ["pmt-button-full", "pmt-button-primary"], state.busy) : '',
-      playbackFrame && !surfaceMode ? '    <div class="pmt-actions">' + buttonMarkup("pmt-retrack-before", t("retrackBefore"), [], !hasCorrection || state.previewFrameIndex <= 0) + buttonMarkup("pmt-retrack-from-here", t("retrackAfter"), [], !canRetrack) + '</div>' : '',
+      playbackFrame ? '    <div class="pmt-actions">' + buttonMarkup("pmt-retrack-before", t("retrackBefore"), [], !hasCorrection || state.previewFrameIndex <= 0) + buttonMarkup("pmt-retrack-from-here", t("retrackAfter"), [], !canRetrack) + '</div>' : '',
       '  </div>',
       '  <div class="pmt-card">',
       '    <h2 class="pmt-card-title">' + escapeHtml(t("applyTitle")) + '</h2>',
@@ -741,22 +752,23 @@
           searchArea.style.left = (Number(correction.x) * 100).toFixed(3) + "%";
           searchArea.style.top = (Number(correction.y) * 100).toFixed(3) + "%";
         }
-        if (isSurfaceMode() && Array.isArray(frame.corners)) {
+        const surfaceCorners = isSurfaceMode() ? surfaceCornersForPreview(frame) : null;
+        if (isSurfaceMode() && Array.isArray(surfaceCorners)) {
           // Keep the translucent surface polygon in lockstep with the four tracked corner handles.
           const polygon = rootNode.querySelector("#pmt-surface-polygon");
           if (polygon) {
-            polygon.setAttribute("points", surfacePolygonPoints(frame.corners));
+            polygon.setAttribute("points", surfacePolygonPoints(surfaceCorners));
           }
           Array.prototype.forEach.call(rootNode.querySelectorAll(".pmt-surface-corner"), (cornerElement) => {
             const cornerIndex = Number(cornerElement.getAttribute("data-surface-corner"));
-            const corner = frame.corners[cornerIndex];
+            const corner = surfaceCorners[cornerIndex];
             if (corner) {
               cornerElement.style.left = (Number(corner.x) * 100).toFixed(3) + "%";
               cornerElement.style.top = (Number(corner.y) * 100).toFixed(3) + "%";
             }
           });
           Array.prototype.forEach.call(rootNode.querySelectorAll(".pmt-search-area"), (searchArea, index) => {
-            const corner = frame.corners[index];
+            const corner = surfaceCorners[index];
             if (corner) {
               searchArea.style.left = (Number(corner.x) * 100).toFixed(3) + "%";
               searchArea.style.top = (Number(corner.y) * 100).toFixed(3) + "%";
@@ -1130,7 +1142,7 @@
     render(rootNode);
   }
 
-  // Update one surface corner without changing the other three selected corners.
+  // Update one pre-analysis surface corner without changing the other three selected corners.
   function setSurfaceCorner(rootNode, cornerIndex, point) {
     if (!Number.isInteger(cornerIndex) || cornerIndex < 0 || cornerIndex >= state.referenceCorners.length || !point) {
       return false;
@@ -1141,42 +1153,75 @@
     return true;
   }
 
+  // Start a review correction from the visible quadrilateral, then replace only the corner the user moved.
+  function setSurfaceCorrectionCorner(rootNode, cornerIndex, point) {
+    const frame = state.trackingPreview && state.trackingPreview.frames[state.previewFrameIndex];
+    if (!frame || !Array.isArray(frame.corners) || frame.corners.length !== 4) {
+      return false;
+    }
+    const correction = state.correction && state.correction.frameIndex === state.previewFrameIndex
+      ? state.correction
+      : {
+        frameIndex: state.previewFrameIndex,
+        frame: Number(frame.frame),
+        seconds: Number(frame.seconds),
+        corners: root.PMT_TRAJECTORY.cloneSurfaceCorners(frame.corners)
+      };
+    correction.corners[cornerIndex] = point;
+    state.correction = correction;
+    updateSurfaceSelectionOverlay(rootNode, correction.corners);
+    return true;
+  }
+
   // Update only the overlay during a drag so Premiere does not lose the current mouse interaction to a full render.
-  function updateSurfaceSelectionOverlay(rootNode) {
-    const points = surfacePolygonPoints(state.referenceCorners);
+  function updateSurfaceSelectionOverlay(rootNode, corners) {
+    const activeCorners = corners || state.referenceCorners;
+    const points = surfacePolygonPoints(activeCorners);
     const polygon = rootNode.querySelector("#pmt-surface-polygon");
     if (polygon) {
       polygon.setAttribute("points", points);
     }
     Array.prototype.forEach.call(rootNode.querySelectorAll(".pmt-surface-corner"), (cornerElement) => {
       const cornerIndex = Number(cornerElement.getAttribute("data-surface-corner"));
-      const corner = state.referenceCorners[cornerIndex];
+      const corner = activeCorners[cornerIndex];
       if (corner) {
         cornerElement.style.left = (Number(corner.x) * 100).toFixed(3) + "%";
         cornerElement.style.top = (Number(corner.y) * 100).toFixed(3) + "%";
+      }
+    });
+    Array.prototype.forEach.call(rootNode.querySelectorAll(".pmt-search-area"), (searchArea, index) => {
+      const corner = activeCorners[index];
+      if (corner) {
+        searchArea.style.left = (Number(corner.x) * 100).toFixed(3) + "%";
+        searchArea.style.top = (Number(corner.y) * 100).toFixed(3) + "%";
       }
     });
   }
 
   // Drag an existing blue handle with plain mouse events, which remain reliable in Premiere UXP panels.
   function beginSurfaceCornerDrag(rootNode, cornerIndex, event) {
-    if (state.busy || !isSurfaceMode() || state.tracking || !hasInitialPreview() || !state.referenceCorners[cornerIndex]) {
+    const reviewFrame = state.trackingPreview && state.trackingPreview.frames[state.previewFrameIndex];
+    const editableCorners = state.tracking ? surfaceCornersForPreview(reviewFrame) : state.referenceCorners;
+    if (state.busy || !isSurfaceMode() || !hasInitialPreview() || !editableCorners[cornerIndex]) {
       return;
     }
     event.preventDefault();
     event.stopPropagation();
     const move = (moveEvent) => {
       const point = getPreviewSelectionPoint(rootNode, moveEvent);
-      if (point && setSurfaceCorner(rootNode, cornerIndex, point)) {
+      const updated = state.tracking
+        ? point && setSurfaceCorrectionCorner(rootNode, cornerIndex, point)
+        : point && setSurfaceCorner(rootNode, cornerIndex, point);
+      if (updated && !state.tracking) {
         updateSurfaceSelectionOverlay(rootNode);
       }
     };
     const finish = () => {
       document.removeEventListener("mousemove", move);
       document.removeEventListener("mouseup", finish);
-      const corner = state.referenceCorners[cornerIndex];
+      const corner = state.tracking ? state.correction.corners[cornerIndex] : state.referenceCorners[cornerIndex];
       if (corner) {
-        addLog("Surface corner " + (cornerIndex + 1) + " adjusted: " + (corner.x * 100).toFixed(1) + "%, " + (corner.y * 100).toFixed(1) + "%." );
+        addLog("Surface corner " + (cornerIndex + 1) + (state.tracking ? " corrected" : " adjusted") + ": " + (corner.x * 100).toFixed(1) + "%, " + (corner.y * 100).toFixed(1) + "%." );
       }
       render(rootNode);
     };
@@ -1188,15 +1233,20 @@
   function nudgeSurfaceCorner(rootNode, cornerIndex, event) {
     const changes = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
     const change = changes[event.key];
-    if (!change || state.busy || !state.referenceCorners[cornerIndex]) {
+    const reviewFrame = state.trackingPreview && state.trackingPreview.frames[state.previewFrameIndex];
+    const editableCorners = state.tracking ? surfaceCornersForPreview(reviewFrame) : state.referenceCorners;
+    if (!change || state.busy || !editableCorners[cornerIndex]) {
       return;
     }
     event.preventDefault();
     const step = event.shiftKey ? 0.05 : 0.01;
-    const current = state.referenceCorners[cornerIndex];
+    const current = editableCorners[cornerIndex];
     const point = root.PMT_SESSION.normalizePoint({ x: current.x + change[0] * step, y: current.y + change[1] * step });
-    if (setSurfaceCorner(rootNode, cornerIndex, point)) {
-      addLog("Surface corner " + (cornerIndex + 1) + " adjusted: " + (point.x * 100).toFixed(1) + "%, " + (point.y * 100).toFixed(1) + "%." );
+    const updated = state.tracking
+      ? setSurfaceCorrectionCorner(rootNode, cornerIndex, point)
+      : setSurfaceCorner(rootNode, cornerIndex, point);
+    if (updated) {
+      addLog("Surface corner " + (cornerIndex + 1) + (state.tracking ? " corrected" : " adjusted") + ": " + (point.x * 100).toFixed(1) + "%, " + (point.y * 100).toFixed(1) + "%." );
       render(rootNode);
     }
   }
@@ -1492,7 +1542,7 @@
     }
   }
 
-  // Re-run only the unapproved tail of the trajectory from a manually corrected preview image.
+  // Re-run only the unapproved surface or point samples on one side of a manually corrected review frame.
   async function retrackFromCorrection(rootNode, direction) {
     const correction = state.correction;
     const previousTracking = state.tracking ? state.tracking.slice() : [];
@@ -1513,12 +1563,17 @@
       }
       const mediaRange = getTrackingMediaRange();
       const previewFolder = state.nativePreview && state.nativePreview.folder && state.nativePreview.folder.nativePath;
+      const isSurfaceCorrection = isSurfaceMode() && Array.isArray(correction.corners);
       if (direction === "before") {
         if (Number(correction.seconds) <= Number(mediaRange.startSeconds)) throw new Error("The correction must be after the start of the tracking range.");
-        state.analysisTaskId = await root.PMT_NATIVE.startTrackingReverse(state.source.mediaPath, correction.point, mediaRange.startSeconds, correction.seconds, state.searchRadius, previewFolder);
+        state.analysisTaskId = isSurfaceCorrection
+          ? await root.PMT_NATIVE.startSurfaceTrackingReverse(state.source.mediaPath, correction.corners, mediaRange.startSeconds, correction.seconds, state.searchRadius, state.surfaceFeatureCount, previewFolder)
+          : await root.PMT_NATIVE.startTrackingReverse(state.source.mediaPath, correction.point, mediaRange.startSeconds, correction.seconds, state.searchRadius, previewFolder);
       } else {
         if (Number(correction.seconds) >= Number(mediaRange.endSeconds)) throw new Error("The correction must be before the end of the tracking range.");
-        state.analysisTaskId = await root.PMT_NATIVE.startTracking(state.source.mediaPath, correction.point, correction.seconds, mediaRange.endSeconds, state.searchRadius, previewFolder);
+        state.analysisTaskId = isSurfaceCorrection
+          ? await root.PMT_NATIVE.startSurfaceTracking(state.source.mediaPath, correction.corners, correction.seconds, mediaRange.endSeconds, state.searchRadius, state.surfaceFeatureCount, previewFolder)
+          : await root.PMT_NATIVE.startTracking(state.source.mediaPath, correction.point, correction.seconds, mediaRange.endSeconds, state.searchRadius, previewFolder);
       }
       if (state.cancelRequested) {
         await root.PMT_NATIVE.cancelTracking(state.analysisTaskId);
@@ -1528,7 +1583,7 @@
       state.analysisTaskId = "";
       state.tracking = direction === "before" ? root.PMT_TRAJECTORY.replaceTrackingHead(previousTracking, replacement) : root.PMT_TRAJECTORY.replaceTrackingTail(previousTracking, replacement);
       const invalidCount = root.PMT_TRAJECTORY.findUncertainSamples(state.tracking, state.confidenceThreshold).length;
-      addLog("Correction merged: " + replacement.length + " re-tracked frames from source frame " + correction.frame + ".");
+      addLog((isSurfaceCorrection ? "Surface correction" : "Correction") + " merged: " + replacement.length + " re-tracked frames from source frame " + correction.frame + ".");
       addLog("Uncertain frames: " + invalidCount + ".");
       try {
         await buildTrackingPreview(rootNode);

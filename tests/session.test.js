@@ -194,3 +194,25 @@ test("replaceTrackingTail retains the approved prefix and replaces the corrected
   assert.equal(merged[1].x, 0.31);
   assert.throws(() => trajectoryApi.replaceTrackingTail([], []), /aucune image exploitable/);
 });
+
+test("cloneSurfaceCorners isolates a valid review correction from the tracked sample", () => {
+  const source = [{ x: 0.1, y: 0.2 }, { x: 0.4, y: 0.2 }, { x: 0.4, y: 0.5 }, { x: 0.1, y: 0.5 }];
+  const copied = trajectoryApi.cloneSurfaceCorners(source);
+  copied[0].x = 0.15;
+  assert.equal(source[0].x, 0.1);
+  assert.equal(copied[0].x, 0.15);
+  assert.throws(() => trajectoryApi.cloneSurfaceCorners(source.slice(0, 3)), /quatre coins/);
+});
+
+test("replaceTrackingTail also preserves ordered surface samples around a corrected frame", () => {
+  const merged = trajectoryApi.replaceTrackingTail([
+    { frame: 10, seconds: 1, corners: [{ x: 0.1, y: 0.1 }] },
+    { frame: 11, seconds: 1.04, corners: [{ x: 0.2, y: 0.2 }] },
+    { frame: 12, seconds: 1.08, corners: [{ x: 0.3, y: 0.3 }] }
+  ], [
+    { frame: 11, seconds: 1.04, corners: [{ x: 0.21, y: 0.19 }] },
+    { frame: 12, seconds: 1.08, corners: [{ x: 0.31, y: 0.29 }] }
+  ]);
+  assert.deepEqual(merged.map((sample) => sample.frame), [10, 11, 12]);
+  assert.equal(merged[1].corners[0].x, 0.21);
+});

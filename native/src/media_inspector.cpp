@@ -159,6 +159,31 @@ SurfaceTrackingSample makeSurfaceSample(
     return sample;
 }
 
+// Measure local grayscale variation only around tracked features so confidence notices a surface becoming flat or blurred.
+double meanFeatureTexture(const cv::Mat& gray, const std::vector<cv::Point2f>& features) {
+    if (gray.empty() || features.empty()) return 0.0;
+    double totalDeviation = 0.0;
+    std::size_t sampleCount = 0;
+    for (const cv::Point2f& feature : features) {
+        const int x = cvRound(feature.x);
+        const int y = cvRound(feature.y);
+        const int radius = 3;
+        if (x < radius || y < radius || x + radius >= gray.cols || y + radius >= gray.rows) continue;
+        cv::Scalar mean;
+        cv::Scalar deviation;
+        cv::meanStdDev(gray(cv::Rect(x - radius, y - radius, radius * 2 + 1, radius * 2 + 1)), mean, deviation);
+        totalDeviation += deviation[0];
+        sampleCount += 1;
+    }
+    return sampleCount ? totalDeviation / static_cast<double>(sampleCount) : 0.0;
+}
+
+// Compare the currently visible local texture with the manually selected reference surface.
+double textureConfidence(const cv::Mat& gray, const std::vector<cv::Point2f>& features, double referenceTexture) {
+    if (!std::isfinite(referenceTexture) || referenceTexture <= 0.0) return 0.0;
+    return std::clamp(meanFeatureTexture(gray, features) / referenceTexture, 0.0, 1.0);
+}
+
 } // namespace
 
 MediaInspection inspectMedia(const std::string& mediaPath) {
@@ -491,8 +516,9 @@ std::vector<SurfaceTrackingSample> trackSurface(
     };
     std::vector<cv::Point2f> trackedFeatures = reseedSurfaceFeatures(previousGray);
     if (trackedFeatures.size() < 8) {
-        throw std::runtime_error("La surface ne contient pas assez de détails contrastés pour le tracking.");
+        throw std::runtime_error("La surface ne contient pas assez de détails contrastés : sélectionnez une zone texturée, sans aplat ni reflet uniforme.");
     }
+    const double referenceTexture = meanFeatureTexture(previousGray, trackedFeatures);
 
     std::vector<SurfaceTrackingSample> samples;
     samples.push_back(makeSurfaceSample(firstFrame, framesPerSecond, surfaceCorners, previousGray.cols, previousGray.rows, 1.0, true));
@@ -555,7 +581,8 @@ std::vector<SurfaceTrackingSample> trackSurface(
                 const double featureRatio = static_cast<double>(sourceInliers.size()) / static_cast<double>(std::max<std::size_t>(1, forwardFeatures.size()));
                 const double inlierRatio = static_cast<double>(inlierCount) / static_cast<double>(sourceInliers.size());
                 const double backwardConfidence = std::clamp(1.0 - (backwardDistanceSum / static_cast<double>(sourceInliers.size())) / 1.5, 0.0, 1.0);
-                confidence = std::clamp(featureRatio * inlierRatio * backwardConfidence, 0.0, 1.0);
+                const double textureScore = textureConfidence(currentGray, trackedFeatures, referenceTexture);
+                confidence = std::clamp(featureRatio * inlierRatio * backwardConfidence * textureScore, 0.0, 1.0);
             }
         }
         samples.push_back(makeSurfaceSample(frame, framesPerSecond, surfaceCorners, currentGray.cols, currentGray.rows, confidence, valid));
@@ -605,7 +632,8 @@ std::vector<SurfaceTrackingSample> trackSurfaceReverseFromPreview(
         return features;
     };
     std::vector<cv::Point2f> trackedFeatures = reseed(previousGray);
-    if (trackedFeatures.size() < 8) throw std::runtime_error("La surface de référence ne contient pas assez de détails.");
+    if (trackedFeatures.size() < 8) throw std::runtime_error("La surface de référence ne contient pas assez de détails contrastés : sélectionnez une zone texturée, sans aplat ni reflet uniforme.");
+    const double referenceTexture = meanFeatureTexture(previousGray, trackedFeatures);
     std::vector<SurfaceTrackingSample> samples;
     samples.push_back(makeSurfaceSample(lastFrame, framesPerSecond, surfaceCorners, previousGray.cols, previousGray.rows, 1.0, true));
     const cv::Size window(searchRadius * 2 + 1, searchRadius * 2 + 1);
@@ -637,7 +665,8 @@ std::vector<SurfaceTrackingSample> trackSurfaceReverseFromPreview(
                 std::vector<cv::Point2f> retained;
                 for (int index = 0; index < mask.rows; index += 1) if (mask.at<unsigned char>(index)) retained.push_back(destination.at(static_cast<std::size_t>(index)));
                 trackedFeatures = std::move(retained);
-                confidence = std::clamp((static_cast<double>(source.size()) / std::max<std::size_t>(1, forward.size())) * (static_cast<double>(inlierCount) / source.size()) * (1.0 - (backwardSum / source.size()) / 1.5), 0.0, 1.0);
+                const double textureScore = textureConfidence(currentGray, trackedFeatures, referenceTexture);
+                confidence = std::clamp((static_cast<double>(source.size()) / std::max<std::size_t>(1, forward.size())) * (static_cast<double>(inlierCount) / source.size()) * (1.0 - (backwardSum / source.size()) / 1.5) * textureScore, 0.0, 1.0);
             }
         }
         samples.push_back(makeSurfaceSample(frame, framesPerSecond, surfaceCorners, currentGray.cols, currentGray.rows, confidence, valid));

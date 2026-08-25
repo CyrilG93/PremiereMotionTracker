@@ -52,7 +52,8 @@ The plugin adds a Transform effect and Position keyframes to every selected dest
 3. Use Play or the frame slider to choose the best reference frame, then click the four corners of the surface in this order: top-left, top-right, bottom-right, bottom-left.
 4. Drag the numbered handles to refine the selection.
 5. Click **Analyze**.
-6. Use **Cancel analysis** if needed, then select the destination clip and click **Apply perspective**.
+6. Review the result with **Play**, the frame slider, or the yellow confidence markers. To fix a drift, drag one or more numbered corners on the affected frame, then choose whether to re-track **before** or **after** that frame.
+7. Select the destination clip and click **Apply perspective**.
 
 Surface mode works best with flat, textured, clearly visible surfaces. It can be unreliable on blurred, reflective, heavily occluded, or strongly deforming surfaces.
 
@@ -72,7 +73,7 @@ Windows installers include the FFmpeg decoder and its LGPL licence automatically
 
 - Landscape, square, vertical, and ultra-wide sequence formats are supported; tracking is not limited to 16:9.
 - NAS media is supported when Premiere exposes a local media path. If it does not, the plugin uses an attached proxy when available, or lets you select the original source file manually.
-- Reversed clips are not supported. Variable time remapping may not track accurately.
+- Reversed clips and variable time remapping are not supported; the plugin rejects them before analysis.
 - Fast movement, motion blur, poor lighting, or low-detail areas can reduce tracking accuracy.
 - The plugin requires local file access only to analyse the selected media and create temporary previews. It does not upload media anywhere.
 - The panel warns when the source and sequence frame rates are not integer multiples (for example, 25 fps and 30 fps). This can cause stuttering in the applied tracking; pairs such as 25/50 or 30/60 are supported without a warning.

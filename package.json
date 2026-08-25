@@ -1,6 +1,6 @@
 {
   "name": "premiere-motion-tracker",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "private": true,
   "description": "Adobe Premiere Pro UXP motion tracking plugin",
   "scripts": {

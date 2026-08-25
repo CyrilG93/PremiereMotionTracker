@@ -59,7 +59,8 @@ Critère de validation : la trajectoire détectée dans le média déplace réel
 - Implémenté au jalon 0.4.3 : ajuster indépendamment les quatre coins avant l’analyse avec poignées déplaçables, aplat translucide et contour pointillé de la zone suivie.
 - Implémenté au jalon 0.4.4 : synchroniser l’aplat et le contour de la prévisualisation avec les quatre coins suivis, image par image.
 - Implémenté au jalon 0.4.5 : le paquet macOS ARM64 signe l’addon et ses bibliothèques natives avec Developer ID, puis peut les soumettre au service de notarisation Apple via un profil Keychain local.
-- À faire : autoriser la correction indépendante de chaque coin pendant la revue, reprendre le tracking à cette image, et valider les noms/coordonnées Corner Pin dans Premiere sur macOS et Windows.
+- Implémenté au jalon 0.6.1 : corriger indépendamment un ou plusieurs coins pendant la revue, puis recalculer uniquement la partie avant ou après cette image. Le score Surface inclut désormais la texture locale des points suivis pour signaler les aplats et flous.
+- À faire : valider les corrections Surface et les noms/coordonnées Corner Pin dans Premiere sur macOS et Windows.
 
 ## État au 16 août 2026 — jalon 0.3.0
 

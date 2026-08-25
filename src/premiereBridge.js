@@ -1122,6 +1122,21 @@
     return results;
   }
 
+  // Apply inverse Position keyframes directly to the captured source clip for 2D point stabilisation.
+  async function applyReverseTracking(keyframes) {
+    if (!getHandleStatus().source) {
+      throw new Error("Capturez d’abord le clip source.");
+    }
+    if (!Array.isArray(keyframes) || keyframes.length < 2) {
+      throw new Error("Analysez au moins deux images valides avant le reverse tracking.");
+    }
+    const context = await getSelectionContext();
+    if (String(context.sequence.guid || context.sequence.name || "") !== handles.source.descriptor.sequenceId) {
+      throw new Error("Le clip source doit appartenir à la séquence active.");
+    }
+    return applyTrackingToItem(context, handles.source.item, keyframes);
+  }
+
   // Count valid destination clips before applying so the panel can explain an empty selection without a failed transaction.
   async function getDestinationSelectionStatus() {
     if (!getHandleStatus().source) {
@@ -1207,6 +1222,7 @@
     getHandleStatus,
     getDestinationSelectionStatus,
     applyTracking,
+    applyReverseTracking,
     applySurfaceTracking,
     applySurfaceMotionTracking
   };

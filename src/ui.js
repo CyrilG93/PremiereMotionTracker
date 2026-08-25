@@ -76,6 +76,7 @@
       cancellingAnalysis: "Cancelling analysis…",
       play: "Play",
       pause: "Pause",
+      reverseTracking: "Reverse tracking",
       preparingPreview: "Preparing preview {count} / {total}…",
       skippingPreview: "Skipping preview…",
       trackingPreview: "Tracking preview · frame {current} / {total} · confidence {confidence}%",
@@ -153,6 +154,7 @@
       cancellingAnalysis: "Annulation de l’analyse…",
       play: "Lire",
       pause: "Pause",
+      reverseTracking: "Reverse tracking",
       preparingPreview: "Préparation de l’aperçu {count} / {total}…",
       skippingPreview: "Aperçu ignoré…",
       trackingPreview: "Aperçu tracking · image {current} / {total} · confiance {confidence}%",
@@ -664,6 +666,7 @@
       '      ' + buttonMarkup("pmt-analyze", analyzeLabel, ["pmt-button-primary"], !canAnalyze),
       state.operation === "analysis" ? '      ' + buttonMarkup("pmt-cancel-analysis", t("cancelAnalysis"), [], state.cancelRequested) : '',
       '      ' + buttonMarkup("pmt-play-preview", state.previewPlaying ? t("pause") : t("play"), [], !canPlayPreview),
+      !surfaceMode ? '      ' + buttonMarkup("pmt-reverse-tracking", t("reverseTracking"), ["pmt-button-primary"], !canApplyTracking) : '',
       !playbackFrame && surfaceMode ? '      ' + buttonMarkup("pmt-reset-surface", t("resetSurface"), [], !state.referenceCorners.length || state.busy) : '',
       state.operation === "preview" ? '      ' + buttonMarkup("pmt-skip-preview", t("skipPreview"), [], state.previewSkipRequested) : '',
       !playbackFrame && state.preview && (state.operation === "" || state.operation === "analysis") ? '      ' + buttonMarkup("pmt-toggle-preview-generation", state.previewGenerationSkipped ? t("previewSkippedBefore") : t("skipPreviewBefore"), state.previewGenerationSkipped ? ["pmt-button-primary"] : [], false) : '',
@@ -1658,6 +1661,22 @@
     }
   }
 
+  // Apply inverse 2D Position keyframes to the captured source so the tracked point stays centred.
+  async function applyReverseTracking(rootNode) {
+    state.busy = true;
+    render(rootNode);
+    try {
+      const keyframes = root.PMT_TRAJECTORY.buildReversePositionKeyframes(state.tracking);
+      const result = await root.PMT_PREMIERE.applyReverseTracking(keyframes);
+      addLog("Reverse tracking applied to " + result.clipName + " · " + result.keyframeCount + " keys.");
+    } catch (error) {
+      addLog("Reverse tracking error: " + (error && error.message ? error.message : String(error)));
+    } finally {
+      state.busy = false;
+      render(rootNode);
+    }
+  }
+
   // Try both Premiere UXP clipboard generations because their availability varies by host runtime.
   async function writeClipboardText(text) {
     const clipboard = navigator.clipboard;
@@ -1777,6 +1796,7 @@
     bindButton(rootNode, "pmt-retrack-from-here", () => retrackFromCorrection(rootNode));
     bindButton(rootNode, "pmt-retrack-before", () => retrackFromCorrection(rootNode, "before"));
     bindButton(rootNode, "pmt-apply-tracking", () => applyTracking(rootNode));
+    bindButton(rootNode, "pmt-reverse-tracking", () => applyReverseTracking(rootNode));
     bindButton(rootNode, "pmt-copy-log", () => copyDiagnostics(rootNode));
     const preview = rootNode.querySelector("#pmt-preview");
     const previewSlider = rootNode.querySelector("#pmt-preview-slider");

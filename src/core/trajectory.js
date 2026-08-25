@@ -94,6 +94,14 @@
     });
   }
 
+  // Move the source in the opposite direction so the tracked point remains at the sequence centre.
+  function buildReversePositionKeyframes(samples) {
+    return buildPositionKeyframes(samples, { x: 0.5, y: 0.5 }).map((sample) => Object.assign({}, sample, {
+      dx: -Number(sample.dx),
+      dy: -Number(sample.dy)
+    }));
+  }
+
   // Preserve each valid four-corner measurement with clip-relative timing for Premiere's Corner Pin effect.
   function buildSurfaceKeyframes(samples) {
     const validSamples = (Array.isArray(samples) ? samples : []).filter((sample) => {
@@ -270,6 +278,7 @@
     findUncertainSamples,
     smoothTrackingSamples,
     buildPositionKeyframes,
+    buildReversePositionKeyframes,
     buildSurfaceKeyframes,
     buildSurfaceMotionKeyframes,
     computeTargetPositionScale,

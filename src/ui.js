@@ -408,6 +408,18 @@
     }
   }
 
+  // Lock the crop viewport to the source aspect ratio after UXP has measured the docked panel width.
+  function syncPreviewViewport(rootNode) {
+    const preview = rootNode && rootNode.querySelector("#pmt-preview");
+    const mediaWidth = Number(state.media && state.media.width);
+    const mediaHeight = Number(state.media && state.media.height);
+    const previewWidth = preview && Number(preview.getBoundingClientRect().width);
+    if (!preview || !Number.isFinite(mediaWidth) || !Number.isFinite(mediaHeight) || mediaWidth <= 0 || mediaHeight <= 0 || !Number.isFinite(previewWidth) || previewWidth <= 0) {
+      return;
+    }
+    preview.style.height = Math.round(previewWidth * mediaHeight / mediaWidth) + "px";
+  }
+
   // Resize every visible search window during a slider drag without rebuilding the active Spectrum control.
   function updateSearchAreaSize(rootNode) {
     if (!rootNode) {
@@ -661,15 +673,15 @@
     const currentConfidence = confidencePercent(playbackFrame);
     const previewSurfaceCorners = surfaceMode ? surfaceCornersForPreview(playbackFrame) : (state.tracking && playbackFrame ? playbackFrame.corners : state.referenceCorners);
     const previewContent = playbackFrame
-      ? '<div class="pmt-preview-stage"><img class="pmt-preview-buffer pmt-preview-buffer-active" id="pmt-tracking-image-a" src="' + escapeHtml(playbackFrame.url) + '" alt="' + escapeHtml(t("trackingPreviewAlt")) + '"><img class="pmt-preview-buffer" id="pmt-tracking-image-b" alt="">' + (surfaceMode ? (Array.isArray(previewSurfaceCorners) ? previewSurfaceCorners.map(searchAreaMarkup).join("") : "") + surfaceCornersMarkup(previewSurfaceCorners, true) : searchAreaMarkup(displayedPoint) + '<div class="pmt-tracking-point" id="pmt-preview-point" style="left:' + (Number(displayedPoint.x) * 100).toFixed(3) + '%;top:' + (Number(displayedPoint.y) * 100).toFixed(3) + '%"></div>') + '</div>'
+      ? '<div class="pmt-preview-stage"><img class="pmt-preview-buffer pmt-preview-buffer-active" id="pmt-tracking-image-a" src="' + escapeHtml(playbackFrame.url) + '" alt="' + escapeHtml(t("trackingPreviewAlt")) + '"><img class="pmt-preview-buffer" id="pmt-tracking-image-b" alt=""></div>' + (surfaceMode ? (Array.isArray(previewSurfaceCorners) ? previewSurfaceCorners.map(searchAreaMarkup).join("") : "") + surfaceCornersMarkup(previewSurfaceCorners, true) : searchAreaMarkup(displayedPoint) + '<div class="pmt-tracking-point" id="pmt-preview-point" style="left:' + (Number(displayedPoint.x) * 100).toFixed(3) + '%;top:' + (Number(displayedPoint.y) * 100).toFixed(3) + '%"></div>')
       : state.previewVideo && !state.videoUnavailable
-      ? '<div class="pmt-preview-stage"><video class="pmt-preview-video" id="pmt-preview-video" src="' + escapeHtml(state.previewVideo.url) + '" muted playsinline preload="metadata"></video>' + (surfaceMode
+      ? '<div class="pmt-preview-stage"><video class="pmt-preview-video" id="pmt-preview-video" src="' + escapeHtml(state.previewVideo.url) + '" muted playsinline preload="metadata"></video></div>' + (surfaceMode
         ? state.referenceCorners.map(searchAreaMarkup).join("") + surfaceCornersMarkup(state.referenceCorners, true)
-        : state.referencePoint ? searchAreaMarkup(state.referencePoint) + '<div class="pmt-tracking-point" id="pmt-preview-point" style="left:' + (state.referencePoint.x * 100).toFixed(3) + '%;top:' + (state.referencePoint.y * 100).toFixed(3) + '%"></div>' : "") + '</div>'
+        : state.referencePoint ? searchAreaMarkup(state.referencePoint) + '<div class="pmt-tracking-point" id="pmt-preview-point" style="left:' + (state.referencePoint.x * 100).toFixed(3) + '%;top:' + (state.referencePoint.y * 100).toFixed(3) + '%"></div>' : "")
       : state.preview
-      ? '<div class="pmt-preview-stage"><img class="pmt-preview-image" src="' + escapeHtml(state.preview.url) + '" alt="' + escapeHtml(t("inImageAlt")) + '">' + (surfaceMode
+      ? '<div class="pmt-preview-stage"><img class="pmt-preview-image" src="' + escapeHtml(state.preview.url) + '" alt="' + escapeHtml(t("inImageAlt")) + '"></div>' + (surfaceMode
         ? state.referenceCorners.map(searchAreaMarkup).join("") + surfaceCornersMarkup(state.referenceCorners, true)
-        : state.referencePoint ? searchAreaMarkup(state.referencePoint) + '<div class="pmt-tracking-point" style="left:' + (state.referencePoint.x * 100).toFixed(3) + '%;top:' + (state.referencePoint.y * 100).toFixed(3) + '%"></div>' : "") + '</div>'
+        : state.referencePoint ? searchAreaMarkup(state.referencePoint) + '<div class="pmt-tracking-point" style="left:' + (state.referencePoint.x * 100).toFixed(3) + '%;top:' + (state.referencePoint.y * 100).toFixed(3) + '%"></div>' : "")
       : '<div class="pmt-preview-grid"></div><div class="pmt-preview-copy">' + escapeHtml(t("emptyPreview")) + '</div>';
     // Keep the review status outside the movable frame so it remains readable while zooming or panning.
     const previewStatusText = playbackFrame
@@ -733,6 +745,7 @@
       '</div>'
     ].join("");
     bindEvents(rootNode);
+    syncPreviewViewport(rootNode);
     bindVideoPreview(rootNode);
     const logArea = rootNode.querySelector("#pmt-log");
     if (logArea) {

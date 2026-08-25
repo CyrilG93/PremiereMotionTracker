@@ -170,11 +170,11 @@ test("surface mode collects four corners and applies the tracked plane through C
   assert.match(uiSource, /pmt-mode-surface/);
   assert.match(uiSource, /referenceCorners\.length === 4/);
   assert.match(uiSource, /surfaceCornersMarkup/);
-  assert.match(uiSource, /surfacePolygonPoints/);
+  assert.match(uiSource, /drawSurfaceShape/);
   assert.match(uiSource, /beginSurfaceCornerDrag/);
   assert.match(uiSource, /nudgeSurfaceCorner/);
   assert.match(uiSource, /surfaceCornersForPreview\(frame\)/);
-  assert.match(uiSource, /polygon\.setAttribute\("points", surfacePolygonPoints\(surfaceCorners\)\)/);
+  assert.match(uiSource, /canvas\.getContext\("2d"\)/);
   assert.match(uiSource, /setSurfaceCorrectionCorner/);
   assert.match(uiSource, /startSurfaceTrackingReverse\(state\.source\.mediaPath, correction\.corners/);
   // Surface tracking now uses the same cancellable worker flow as point tracking.

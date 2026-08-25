@@ -356,21 +356,6 @@ input {
   pointer-events: none;
 }
 
-.pmt-surface-shape polygon,
-.pmt-surface-shape polyline {
-  stroke: #ffffff;
-  stroke-width: 0.75;
-  stroke-dasharray: 1.5 1.5;
-  vector-effect: non-scaling-stroke;
-}
-
-.pmt-surface-shape polygon {
-  fill: rgba(224, 98, 66, 0.42);
-}
-
-.pmt-surface-shape polyline {
-  fill: none;
-}
 
 /* Keep four numbered HTML handles directly draggable above the surface visual. */
 .pmt-surface-corner {

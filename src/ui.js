@@ -434,19 +434,32 @@
     };
   }
 
-  // Match the SVG's outer frame to the cropped media frame while keeping its four source coordinates untouched.
-  function updateSurfaceOverlayViewport(rootNode) {
-    const preview = rootNode && rootNode.querySelector("#pmt-preview");
-    const shape = rootNode && rootNode.querySelector(".pmt-surface-shape");
-    const bounds = preview && preview.getBoundingClientRect();
-    if (!shape || !bounds || !bounds.width || !bounds.height) {
+  // Draw the complete quadrilateral in preview pixels so its edges always meet the draggable HTML handles.
+  function drawSurfaceShape(rootNode, corners) {
+    const canvas = rootNode && rootNode.querySelector("#pmt-surface-shape");
+    const bounds = canvas && canvas.getBoundingClientRect();
+    if (!canvas || !bounds || !bounds.width || !bounds.height || !Array.isArray(corners) || corners.length < 2) {
       return;
     }
-    const zoom = clampPreviewZoom(state.previewZoom);
-    shape.style.left = ((1 - zoom) * 50 + Number(state.previewPan.x) / bounds.width * 100).toFixed(3) + "%";
-    shape.style.top = ((1 - zoom) * 50 + Number(state.previewPan.y) / bounds.height * 100).toFixed(3) + "%";
-    shape.style.width = (zoom * 100).toFixed(3) + "%";
-    shape.style.height = (zoom * 100).toFixed(3) + "%";
+    canvas.width = Math.round(bounds.width);
+    canvas.height = Math.round(bounds.height);
+    const context = canvas.getContext("2d");
+    const visualCorners = corners.map((corner) => getPreviewVisualPoint(corner, rootNode));
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.beginPath();
+    visualCorners.forEach((corner, index) => {
+      const x = Number(corner.x) * canvas.width;
+      const y = Number(corner.y) * canvas.height;
+      if (index === 0) context.moveTo(x, y);
+      else context.lineTo(x, y);
+    });
+    if (visualCorners.length >= 3) context.closePath();
+    context.fillStyle = "rgba(224, 98, 66, 0.30)";
+    context.fill();
+    context.strokeStyle = "#ffffff";
+    context.lineWidth = 2;
+    context.setLineDash([5, 4]);
+    context.stroke();
   }
 
   // Resize every visible search window during a slider drag without rebuilding the active Spectrum control.
@@ -570,13 +583,6 @@
     return '<div class="pmt-search-area" style="left:' + (Number(point.x) * 100).toFixed(3) + '%;top:' + (Number(point.y) * 100).toFixed(3) + '%;width:' + String(visualSize) + 'px;height:' + String(visualSize) + 'px"></div>';
   }
 
-  // Convert normalized corners into the stable 0–100 viewBox coordinates used by the non-interactive shape overlay.
-  function surfacePolygonPoints(corners) {
-    return (Array.isArray(corners) ? corners : []).map((corner) => {
-      return (Number(corner.x) * 100).toFixed(3) + "," + (Number(corner.y) * 100).toFixed(3);
-    }).join(" ");
-  }
-
   // Prefer the user-edited quadrilateral while reviewing its source frame, otherwise show the native tracking result.
   function surfaceCornersForPreview(frame) {
     const correction = state.correction;
@@ -586,15 +592,12 @@
     return frame && Array.isArray(frame.corners) ? frame.corners : state.referenceCorners;
   }
 
-  // Keep draggable handles as HTML controls while SVG draws only the lightweight surface fill and dotted outline.
+  // Keep draggable handles as HTML controls while a canvas draws the surface without UXP SVG layout quirks.
   function surfaceCornersMarkup(corners, editable) {
     if (!Array.isArray(corners) || !corners.length) {
       return "";
     }
-    const points = surfacePolygonPoints(corners);
-    const shape = corners.length >= 3
-      ? '<svg class="pmt-surface-shape" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><polygon id="pmt-surface-polygon" points="' + points + '"></polygon></svg>'
-      : '<svg class="pmt-surface-shape" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><polyline id="pmt-surface-polygon" points="' + points + '"></polyline></svg>';
+    const shape = '<canvas class="pmt-surface-shape" id="pmt-surface-shape" aria-hidden="true"></canvas>';
     const handles = corners.map((corner, index) => {
       const className = editable ? "pmt-surface-corner pmt-surface-corner-editable" : "pmt-surface-corner";
       const attributes = editable
@@ -868,11 +871,7 @@
         }
         const surfaceCorners = isSurfaceMode() ? surfaceCornersForPreview(frame) : null;
         if (isSurfaceMode() && Array.isArray(surfaceCorners)) {
-          // Keep the translucent surface polygon in lockstep with the four tracked corner handles.
-          const polygon = rootNode.querySelector("#pmt-surface-polygon");
-          if (polygon) {
-            polygon.setAttribute("points", surfacePolygonPoints(surfaceCorners));
-          }
+          // The exact canvas redraw below restores the visible surface after the next image buffer is painted.
           Array.prototype.forEach.call(rootNode.querySelectorAll(".pmt-surface-corner"), (cornerElement) => {
             const cornerIndex = Number(cornerElement.getAttribute("data-surface-corner"));
             const corner = surfaceCorners[cornerIndex];
@@ -1299,11 +1298,6 @@
   function updateSurfaceSelectionOverlay(rootNode, corners) {
     const activeCorners = corners || state.referenceCorners;
     const visualCorners = activeCorners.map((corner) => getPreviewVisualPoint(corner, rootNode));
-    const points = surfacePolygonPoints(activeCorners);
-    const polygon = rootNode.querySelector("#pmt-surface-polygon");
-    if (polygon) {
-      polygon.setAttribute("points", points);
-    }
     Array.prototype.forEach.call(rootNode.querySelectorAll(".pmt-surface-corner"), (cornerElement) => {
       const cornerIndex = Number(cornerElement.getAttribute("data-surface-corner"));
       const corner = visualCorners[cornerIndex];
@@ -1319,7 +1313,7 @@
         searchArea.style.top = (Number(corner.y) * 100).toFixed(3) + "%";
       }
     });
-    updateSurfaceOverlayViewport(rootNode);
+    drawSurfaceShape(rootNode, activeCorners);
   }
 
   // Move every visible overlay with the media frame while preserving its source-normalized tracking data.

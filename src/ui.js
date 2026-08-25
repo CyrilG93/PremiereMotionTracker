@@ -422,11 +422,15 @@
   }
 
   // Convert a source-normalized point into its centered visual position for the current zoom level.
-  function getPreviewVisualPoint(point) {
+  function getPreviewVisualPoint(point, rootNode) {
     const zoom = clampPreviewZoom(state.previewZoom);
+    const preview = rootNode && rootNode.querySelector("#pmt-preview");
+    const bounds = preview && preview.getBoundingClientRect();
+    const panX = bounds && bounds.width ? Number(state.previewPan.x) / bounds.width : 0;
+    const panY = bounds && bounds.height ? Number(state.previewPan.y) / bounds.height : 0;
     return {
-      x: 0.5 + (Number(point.x) - 0.5) * zoom,
-      y: 0.5 + (Number(point.y) - 0.5) * zoom
+      x: 0.5 + (Number(point.x) - 0.5) * zoom + panX,
+      y: 0.5 + (Number(point.y) - 0.5) * zoom + panY
     };
   }
 
@@ -759,7 +763,10 @@
     bindEvents(rootNode);
     syncPreviewViewport(rootNode);
     // Premiere can report a zero preview width during its first panel layout pass, so lock the crop once more after paint.
-    setTimeout(() => syncPreviewViewport(rootNode), 30);
+    setTimeout(() => {
+      syncPreviewViewport(rootNode);
+      updatePreviewOverlayPositions(rootNode);
+    }, 30);
     bindVideoPreview(rootNode);
     const logArea = rootNode.querySelector("#pmt-log");
     if (logArea) {
@@ -873,6 +880,7 @@
         if (slider) {
           slider.value = String(requestedIndex);
         }
+        updatePreviewOverlayPositions(rootNode);
         resolve(true);
       };
       nextImage.onload = swapWhenReady;
@@ -1275,26 +1283,56 @@
   // Update only the overlay during a drag so Premiere does not lose the current mouse interaction to a full render.
   function updateSurfaceSelectionOverlay(rootNode, corners) {
     const activeCorners = corners || state.referenceCorners;
-    const points = surfacePolygonPoints(activeCorners);
+    const visualCorners = activeCorners.map((corner) => getPreviewVisualPoint(corner, rootNode));
+    const points = surfacePolygonPoints(visualCorners);
     const polygon = rootNode.querySelector("#pmt-surface-polygon");
     if (polygon) {
       polygon.setAttribute("points", points);
     }
     Array.prototype.forEach.call(rootNode.querySelectorAll(".pmt-surface-corner"), (cornerElement) => {
       const cornerIndex = Number(cornerElement.getAttribute("data-surface-corner"));
-      const corner = activeCorners[cornerIndex];
+      const corner = visualCorners[cornerIndex];
       if (corner) {
         cornerElement.style.left = (Number(corner.x) * 100).toFixed(3) + "%";
         cornerElement.style.top = (Number(corner.y) * 100).toFixed(3) + "%";
       }
     });
     Array.prototype.forEach.call(rootNode.querySelectorAll(".pmt-search-area"), (searchArea, index) => {
-      const corner = activeCorners[index];
+      const corner = visualCorners[index];
       if (corner) {
         searchArea.style.left = (Number(corner.x) * 100).toFixed(3) + "%";
         searchArea.style.top = (Number(corner.y) * 100).toFixed(3) + "%";
       }
     });
+  }
+
+  // Move every visible overlay with the media frame while preserving its source-normalized tracking data.
+  function updatePreviewOverlayPositions(rootNode) {
+    const playbackFrame = state.trackingPreview && state.trackingPreview.frames[state.previewFrameIndex];
+    if (isSurfaceMode()) {
+      const corners = surfaceCornersForPreview(playbackFrame);
+      if (Array.isArray(corners) && corners.length) {
+        updateSurfaceSelectionOverlay(rootNode, corners);
+      }
+      return;
+    }
+    const pointSource = state.correction && playbackFrame && state.correction.frameIndex === state.previewFrameIndex
+      ? state.correction.point
+      : (!state.tracking && state.referencePoint ? state.referencePoint : playbackFrame);
+    if (!pointSource) {
+      return;
+    }
+    const point = getPreviewVisualPoint(pointSource, rootNode);
+    const marker = rootNode.querySelector("#pmt-preview-point");
+    const searchArea = rootNode.querySelector(".pmt-search-area");
+    if (marker) {
+      marker.style.left = (Number(point.x) * 100).toFixed(3) + "%";
+      marker.style.top = (Number(point.y) * 100).toFixed(3) + "%";
+    }
+    if (searchArea) {
+      searchArea.style.left = (Number(point.x) * 100).toFixed(3) + "%";
+      searchArea.style.top = (Number(point.y) * 100).toFixed(3) + "%";
+    }
   }
 
   // Drag an existing blue handle with plain mouse events, which remain reliable in Premiere UXP panels.
@@ -1884,6 +1922,7 @@
         const move = (moveEvent) => {
           state.previewPan = { x: startPan.x + Number(moveEvent.clientX) - startX, y: startPan.y + Number(moveEvent.clientY) - startY };
           updatePreviewTransform(rootNode);
+          updatePreviewOverlayPositions(rootNode);
         };
         const finish = () => {
           document.removeEventListener("mousemove", move);

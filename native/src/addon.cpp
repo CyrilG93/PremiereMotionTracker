@@ -198,6 +198,7 @@ addon_value createSurfaceTrackingSample(addon_env env, const pmt::SurfaceTrackin
     setNumberProperty(env, item, "seconds", sample.seconds);
     setNumberProperty(env, item, "confidence", sample.confidence);
     setBooleanProperty(env, item, "valid", sample.valid);
+    setStringProperty(env, item, "previewFileName", sample.previewFileName);
     addon_value corners = nullptr;
     Check(UxpAddonApis.uxp_addon_create_array_with_length(env, sample.corners.size(), &corners));
     for (std::size_t index = 0; index < sample.corners.size(); index += 1) {

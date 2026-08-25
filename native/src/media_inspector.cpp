@@ -142,13 +142,15 @@ SurfaceTrackingSample makeSurfaceSample(
     int width,
     int height,
     double confidence,
-    bool valid
+    bool valid,
+    const std::string& previewFileName = {}
 ) {
     SurfaceTrackingSample sample;
     sample.frame = frame;
     sample.seconds = static_cast<double>(frame) / framesPerSecond;
     sample.confidence = confidence;
     sample.valid = valid;
+    sample.previewFileName = previewFileName;
     for (std::size_t index = 0; index < sample.corners.size(); index += 1) {
         const cv::Point2f point = corners.at(index);
         sample.corners[index] = {
@@ -521,7 +523,7 @@ std::vector<SurfaceTrackingSample> trackSurface(
     const double referenceTexture = meanFeatureTexture(previousGray, trackedFeatures);
 
     std::vector<SurfaceTrackingSample> samples;
-    samples.push_back(makeSurfaceSample(firstFrame, framesPerSecond, surfaceCorners, previousGray.cols, previousGray.rows, 1.0, true));
+    samples.push_back(makeSurfaceSample(firstFrame, framesPerSecond, surfaceCorners, previousGray.cols, previousGray.rows, 1.0, true, cachePreviewFrame(decodedFrame, previewFolder, firstFrame)));
     if (progressCallback && !progressCallback(samples.back())) {
         throw std::runtime_error("Tracking cancelled.");
     }
@@ -530,7 +532,7 @@ std::vector<SurfaceTrackingSample> trackSurface(
         cv::Mat currentGray = toGray(decodedFrame);
         if (trackedFeatures.size() < 8) {
             // A previous dropout left no points to flow; flag this frame and wait until texture returns.
-            samples.push_back(makeSurfaceSample(frame, framesPerSecond, surfaceCorners, currentGray.cols, currentGray.rows, 0.0, false));
+            samples.push_back(makeSurfaceSample(frame, framesPerSecond, surfaceCorners, currentGray.cols, currentGray.rows, 0.0, false, cachePreviewFrame(decodedFrame, previewFolder, frame)));
             if (progressCallback && !progressCallback(samples.back())) {
                 throw std::runtime_error("Tracking cancelled.");
             }
@@ -585,7 +587,7 @@ std::vector<SurfaceTrackingSample> trackSurface(
                 confidence = std::clamp(featureRatio * inlierRatio * backwardConfidence * textureScore, 0.0, 1.0);
             }
         }
-        samples.push_back(makeSurfaceSample(frame, framesPerSecond, surfaceCorners, currentGray.cols, currentGray.rows, confidence, valid));
+        samples.push_back(makeSurfaceSample(frame, framesPerSecond, surfaceCorners, currentGray.cols, currentGray.rows, confidence, valid, cachePreviewFrame(decodedFrame, previewFolder, frame)));
         if (progressCallback && !progressCallback(samples.back())) {
             throw std::runtime_error("Tracking cancelled.");
         }
@@ -635,7 +637,7 @@ std::vector<SurfaceTrackingSample> trackSurfaceReverseFromPreview(
     if (trackedFeatures.size() < 8) throw std::runtime_error("La surface de référence ne contient pas assez de détails contrastés : sélectionnez une zone texturée, sans aplat ni reflet uniforme.");
     const double referenceTexture = meanFeatureTexture(previousGray, trackedFeatures);
     std::vector<SurfaceTrackingSample> samples;
-    samples.push_back(makeSurfaceSample(lastFrame, framesPerSecond, surfaceCorners, previousGray.cols, previousGray.rows, 1.0, true));
+    samples.push_back(makeSurfaceSample(lastFrame, framesPerSecond, surfaceCorners, previousGray.cols, previousGray.rows, 1.0, true, "pmt-native-track-" + std::to_string(lastFrame) + ".png"));
     const cv::Size window(searchRadius * 2 + 1, searchRadius * 2 + 1);
     for (std::int64_t frame = lastFrame - 1; frame >= firstFrame; frame -= 1) {
         cv::Mat currentGray = toGray(readCached(frame));
@@ -669,7 +671,7 @@ std::vector<SurfaceTrackingSample> trackSurfaceReverseFromPreview(
                 confidence = std::clamp((static_cast<double>(source.size()) / std::max<std::size_t>(1, forward.size())) * (static_cast<double>(inlierCount) / source.size()) * (1.0 - (backwardSum / source.size()) / 1.5) * textureScore, 0.0, 1.0);
             }
         }
-        samples.push_back(makeSurfaceSample(frame, framesPerSecond, surfaceCorners, currentGray.cols, currentGray.rows, confidence, valid));
+        samples.push_back(makeSurfaceSample(frame, framesPerSecond, surfaceCorners, currentGray.cols, currentGray.rows, confidence, valid, "pmt-native-track-" + std::to_string(frame) + ".png"));
         if (!valid || trackedFeatures.size() < 8) trackedFeatures = reseed(currentGray);
         previousGray = std::move(currentGray);
     }

@@ -15,6 +15,8 @@
     previewActiveBuffer: "a",
     previewPaintRequest: 0,
     previewPlaying: false,
+    previewZoom: 1,
+    previewPan: { x: 0, y: 0 },
     previewBuildCount: 0,
     previewBuildTotal: 0,
     previewSkipRequested: false,
@@ -76,6 +78,7 @@
       cancellingAnalysis: "Cancelling analysis…",
       play: "Play",
       pause: "Pause",
+      resetPreviewView: "Reset view",
       preparingPreview: "Preparing preview {count} / {total}…",
       skippingPreview: "Skipping preview…",
       trackingPreview: "Tracking preview · frame {current} / {total} · confidence {confidence}%",
@@ -153,6 +156,7 @@
       cancellingAnalysis: "Annulation de l’analyse…",
       play: "Lire",
       pause: "Pause",
+      resetPreviewView: "Réinitialiser la vue",
       preparingPreview: "Préparation de l’aperçu {count} / {total}…",
       skippingPreview: "Aperçu ignoré…",
       trackingPreview: "Aperçu tracking · image {current} / {total} · confiance {confidence}%",
@@ -367,6 +371,26 @@
   // Magnify the small source-pixel search radius so its change remains visible in a compact 4K preview.
   function getSearchAreaVisualSize() {
     return Math.round(18 + Number(state.searchRadius) * 1.5);
+  }
+
+  // Keep zoom deliberately bounded so a precise placement remains easy to recover in Premiere's compact panel.
+  function clampPreviewZoom(value) {
+    return Math.max(1, Math.min(4, Number(value) || 1));
+  }
+
+  // Apply one shared transform to the image and all overlays so points and corners remain perfectly aligned.
+  function updatePreviewTransform(rootNode) {
+    const content = rootNode && rootNode.querySelector("#pmt-preview-content");
+    if (content) {
+      content.style.transform = "translate(" + Number(state.previewPan.x).toFixed(1) + "px, " + Number(state.previewPan.y).toFixed(1) + "px) scale(" + Number(state.previewZoom).toFixed(3) + ")";
+    }
+  }
+
+  // Reset the temporary inspection view without clearing the selected source, tracking, or corrections.
+  function resetPreviewView(rootNode) {
+    state.previewZoom = 1;
+    state.previewPan = { x: 0, y: 0 };
+    updatePreviewTransform(rootNode);
   }
 
   // Resize every visible search window during a slider drag without rebuilding the active Spectrum control.
@@ -655,7 +679,8 @@
       '  </div>',
       '  <div class="pmt-card">',
       '    <h2 class="pmt-card-title">' + escapeHtml(t("previewTitle")) + '</h2>',
-       '    <div class="pmt-preview" id="pmt-preview" data-ready="' + String(Boolean(hasInitialPreview() || playbackFrame)) + '">' + previewContent + '</div>',
+      '    <div class="pmt-preview" id="pmt-preview" data-ready="' + String(Boolean(hasInitialPreview() || playbackFrame)) + '"><div class="pmt-preview-content" id="pmt-preview-content" style="transform:translate(' + Number(state.previewPan.x).toFixed(1) + 'px,' + Number(state.previewPan.y).toFixed(1) + 'px) scale(' + Number(state.previewZoom).toFixed(3) + ')">' + previewContent + '</div></div>',
+      Boolean(hasInitialPreview() || playbackFrame) ? '    <div class="pmt-actions">' + buttonMarkup("pmt-reset-preview-view", t("resetPreviewView"), ["pmt-button-compact"], state.previewZoom <= 1 && state.previewPan.x === 0 && state.previewPan.y === 0) + '</div>' : '',
       playbackFrame ? '    <div class="pmt-preview-navigation"><div class="pmt-label">' + escapeHtml(t("previewNavigation")) + '</div><sp-slider class="pmt-preview-slider" id="pmt-preview-slider" min="0" max="' + String(Math.max(0, state.trackingPreview.frames.length - 1)) + '" step="1" value="' + String(state.previewFrameIndex) + '"' + (canPlayPreview ? '' : ' disabled') + ' aria-label="' + escapeHtml(t("previewNavigation")) + '"></sp-slider></div>' : '',
       playbackFrame ? '    <div class="pmt-uncertain-review">' + uncertainMarkersMarkup(uncertainIndexes, state.trackingPreview.frames.length) + '</div>' : '',
       playbackFrame ? '    <div class="pmt-label">' + escapeHtml(surfaceMode ? t("surfaceCorrectionHelp") : t("correctionHelp")) + '</div>' : '',
@@ -1056,6 +1081,8 @@
       state.nativePreview = null;
       state.previewVideo = null;
       state.videoUnavailable = false;
+      state.previewZoom = 1;
+      state.previewPan = { x: 0, y: 0 };
       state.referencePoint = null;
       state.referenceCorners = [];
       state.tracking = null;
@@ -1135,9 +1162,13 @@
     if (!bounds.width || !bounds.height) {
       return null;
     }
+    const screenX = (Number(event.clientX) - bounds.left) / bounds.width;
+    const screenY = (Number(event.clientY) - bounds.top) / bounds.height;
+    const zoom = clampPreviewZoom(state.previewZoom);
+    // Invert the shared preview transform before saving a point, so placement stays accurate while zoomed or panned.
     return root.PMT_SESSION.normalizePoint({
-      x: (Number(event.clientX) - bounds.left) / bounds.width,
-      y: (Number(event.clientY) - bounds.top) / bounds.height
+      x: 0.5 + (screenX - 0.5 - Number(state.previewPan.x) / bounds.width) / zoom,
+      y: 0.5 + (screenY - 0.5 - Number(state.previewPan.y) / bounds.height) / zoom
     });
   }
 
@@ -1766,6 +1797,7 @@
     bindButton(rootNode, "pmt-skip-preview", () => skipTrackingPreview(rootNode));
     bindButton(rootNode, "pmt-toggle-preview-generation", () => togglePreviewGeneration(rootNode));
     bindButton(rootNode, "pmt-generate-long-preview", () => generateDeferredPreview(rootNode));
+    bindButton(rootNode, "pmt-reset-preview-view", () => resetPreviewView(rootNode));
     bindButton(rootNode, "pmt-reset-surface", () => {
       state.referenceCorners = [];
       state.tracking = null;
@@ -1779,6 +1811,38 @@
     bindButton(rootNode, "pmt-apply-tracking", () => applyTracking(rootNode));
     bindButton(rootNode, "pmt-copy-log", () => copyDiagnostics(rootNode));
     const preview = rootNode.querySelector("#pmt-preview");
+    if (preview && preview.getAttribute("data-ready") === "true") {
+      // Wheel zoom keeps the current review image in place while the user prepares a precise point or surface corner.
+      preview.addEventListener("wheel", (event) => {
+        event.preventDefault();
+        const nextZoom = clampPreviewZoom(state.previewZoom * (event.deltaY < 0 ? 1.15 : 1 / 1.15));
+        if (nextZoom !== state.previewZoom) {
+          state.previewZoom = nextZoom;
+          updatePreviewTransform(rootNode);
+        }
+      });
+      // Pan deliberately requires the middle button or Alt-drag so ordinary clicks and corner drags retain their existing meaning.
+      preview.addEventListener("mousedown", (event) => {
+        if (event.button !== 1 && !event.altKey) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        const startX = Number(event.clientX);
+        const startY = Number(event.clientY);
+        const startPan = { x: Number(state.previewPan.x), y: Number(state.previewPan.y) };
+        const move = (moveEvent) => {
+          state.previewPan = { x: startPan.x + Number(moveEvent.clientX) - startX, y: startPan.y + Number(moveEvent.clientY) - startY };
+          updatePreviewTransform(rootNode);
+        };
+        const finish = () => {
+          document.removeEventListener("mousemove", move);
+          document.removeEventListener("mouseup", finish);
+        };
+        document.addEventListener("mousemove", move);
+        document.addEventListener("mouseup", finish);
+      });
+    }
     const previewSlider = rootNode.querySelector("#pmt-preview-slider");
     if (previewSlider && state.trackingPreview && !state.busy) {
       // Spectrum's native UXP slider gives direct scrubbing without the unreliable HTML range control.

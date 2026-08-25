@@ -73,6 +73,7 @@ test("tracking preview replays Premiere-rendered image frames without replacing 
   assert.match(uiSource, /pmt-tracking-image-b/);
   assert.match(uiSource, /updatePreviewBuildStatus/);
   assert.match(uiSource, /scheduleTrackingPreviewFrame/);
+  assert.match(uiSource, /previewFileName/);
   assert.match(uiSource, /getTrackingPreviewFrameDelay/);
   assert.doesNotMatch(uiSource, /\}, 120\);/);
   assert.match(uiSource, /pmt-skip-preview/);
@@ -110,6 +111,10 @@ test("validation exposes confidence markers, visible search-area tuning, and Sur
   assert.match(nativeSource, /Number\(searchRadius\) \|\| 10/);
   assert.match(styles, /\.pmt-search-area\s*\{[^}]*pointer-events:\s*none;/s);
   assert.match(uiSource, /getSearchAreaVisualSize/);
+  assert.match(uiSource, /clampPreviewZoom/);
+  assert.match(uiSource, /preview\.addEventListener\("wheel"/);
+  assert.match(uiSource, /pmt-reset-preview-view/);
+  assert.match(styles, /\.pmt-preview-content\s*\{[^}]*transform-origin:\s*center center;/s);
   assert.match(styles, /\.pmt-uncertain-markers\s*\{[^}]*position:\s*relative;/s);
 });
 

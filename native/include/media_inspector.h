@@ -45,6 +45,7 @@ struct SurfaceTrackingSample {
     std::array<std::array<double, 2>, 4> corners {};
     double confidence = 0.0;
     bool valid = false;
+    std::string previewFileName;
 };
 
 // Allow the native worker to publish a durable sample without exposing OpenCV frame objects to UXP.

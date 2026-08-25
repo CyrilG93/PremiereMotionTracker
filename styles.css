@@ -267,6 +267,14 @@ input {
   cursor: crosshair;
 }
 
+/* Transform one shared canvas so zoom never separates the media from its tracking overlays. */
+.pmt-preview-content {
+  position: relative;
+  width: 100%;
+  transform-origin: center center;
+  will-change: transform;
+}
+
 .pmt-preview-image {
   display: block;
   width: 100%;

@@ -434,6 +434,21 @@
     };
   }
 
+  // Match the SVG's outer frame to the cropped media frame while keeping its four source coordinates untouched.
+  function updateSurfaceOverlayViewport(rootNode) {
+    const preview = rootNode && rootNode.querySelector("#pmt-preview");
+    const shape = rootNode && rootNode.querySelector(".pmt-surface-shape");
+    const bounds = preview && preview.getBoundingClientRect();
+    if (!shape || !bounds || !bounds.width || !bounds.height) {
+      return;
+    }
+    const zoom = clampPreviewZoom(state.previewZoom);
+    shape.style.left = ((1 - zoom) * 50 + Number(state.previewPan.x) / bounds.width * 100).toFixed(3) + "%";
+    shape.style.top = ((1 - zoom) * 50 + Number(state.previewPan.y) / bounds.height * 100).toFixed(3) + "%";
+    shape.style.width = (zoom * 100).toFixed(3) + "%";
+    shape.style.height = (zoom * 100).toFixed(3) + "%";
+  }
+
   // Resize every visible search window during a slider drag without rebuilding the active Spectrum control.
   function updateSearchAreaSize(rootNode) {
     if (!rootNode) {
@@ -689,7 +704,7 @@
     const visualSurfaceCorners = Array.isArray(previewSurfaceCorners) ? previewSurfaceCorners.map(getPreviewVisualPoint) : previewSurfaceCorners;
     const visualDisplayedPoint = displayedPoint ? getPreviewVisualPoint(displayedPoint) : displayedPoint;
     const previewContent = playbackFrame
-      ? '<div class="pmt-preview-stage" style="width:' + (clampPreviewZoom(state.previewZoom) * 100).toFixed(3) + '%;left:' + Number(state.previewPan.x).toFixed(1) + 'px;top:' + Number(state.previewPan.y).toFixed(1) + 'px"><img class="pmt-preview-buffer pmt-preview-buffer-active" id="pmt-tracking-image-a" src="' + escapeHtml(playbackFrame.url) + '" alt="' + escapeHtml(t("trackingPreviewAlt")) + '"><img class="pmt-preview-buffer" id="pmt-tracking-image-b" alt=""></div>' + (surfaceMode ? (Array.isArray(visualSurfaceCorners) ? visualSurfaceCorners.map(searchAreaMarkup).join("") : "") + surfaceCornersMarkup(visualSurfaceCorners, true) : searchAreaMarkup(visualDisplayedPoint) + '<div class="pmt-tracking-point" id="pmt-preview-point" style="left:' + (Number(visualDisplayedPoint.x) * 100).toFixed(3) + '%;top:' + (Number(visualDisplayedPoint.y) * 100).toFixed(3) + '%"></div>')
+      ? '<div class="pmt-preview-stage" style="width:' + (clampPreviewZoom(state.previewZoom) * 100).toFixed(3) + '%;left:' + Number(state.previewPan.x).toFixed(1) + 'px;top:' + Number(state.previewPan.y).toFixed(1) + 'px"><img class="pmt-preview-buffer pmt-preview-buffer-active" id="pmt-tracking-image-a" src="' + escapeHtml(playbackFrame.url) + '" alt="' + escapeHtml(t("trackingPreviewAlt")) + '"><img class="pmt-preview-buffer" id="pmt-tracking-image-b" alt=""></div>' + (surfaceMode ? (Array.isArray(visualSurfaceCorners) ? visualSurfaceCorners.map(searchAreaMarkup).join("") : "") + surfaceCornersMarkup(previewSurfaceCorners, true) : searchAreaMarkup(visualDisplayedPoint) + '<div class="pmt-tracking-point" id="pmt-preview-point" style="left:' + (Number(visualDisplayedPoint.x) * 100).toFixed(3) + '%;top:' + (Number(visualDisplayedPoint.y) * 100).toFixed(3) + '%"></div>')
       : state.previewVideo && !state.videoUnavailable
       ? '<div class="pmt-preview-stage"><video class="pmt-preview-video" id="pmt-preview-video" src="' + escapeHtml(state.previewVideo.url) + '" muted playsinline preload="metadata"></video></div>' + (surfaceMode
         ? state.referenceCorners.map(searchAreaMarkup).join("") + surfaceCornersMarkup(state.referenceCorners, true)
@@ -1284,7 +1299,7 @@
   function updateSurfaceSelectionOverlay(rootNode, corners) {
     const activeCorners = corners || state.referenceCorners;
     const visualCorners = activeCorners.map((corner) => getPreviewVisualPoint(corner, rootNode));
-    const points = surfacePolygonPoints(visualCorners);
+    const points = surfacePolygonPoints(activeCorners);
     const polygon = rootNode.querySelector("#pmt-surface-polygon");
     if (polygon) {
       polygon.setAttribute("points", points);
@@ -1304,6 +1319,7 @@
         searchArea.style.top = (Number(corner.y) * 100).toFixed(3) + "%";
       }
     });
+    updateSurfaceOverlayViewport(rootNode);
   }
 
   // Move every visible overlay with the media frame while preserving its source-normalized tracking data.

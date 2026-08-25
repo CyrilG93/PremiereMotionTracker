@@ -267,14 +267,14 @@ input {
   cursor: crosshair;
 }
 
-/* Transform one shared canvas so zoom never separates the media from its tracking overlays. */
+/* Keep one frame container for the media and overlays so a real UXP layout resize keeps them aligned. */
 .pmt-preview-content {
   position: relative;
+  flex: 0 0 auto;
   width: 100%;
-  transform-origin: center center;
 }
 
-/* Keep explicit UXP-safe zoom controls fixed above the transformed preview canvas. */
+/* Keep explicit UXP-safe zoom controls fixed above the movable preview frame. */
 .pmt-preview-zoom-controls {
   position: absolute;
   z-index: 4;
@@ -430,6 +430,7 @@ input {
   color: #ffffff;
   background: rgba(0, 0, 0, 0.72);
   font-size: 10px;
+  pointer-events: none;
 }
 
 .pmt-preview-grid {

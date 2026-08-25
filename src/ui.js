@@ -382,14 +382,13 @@
     return Math.max(1, Math.min(4, Number(value) || 1));
   }
 
-  // Apply one shared transform to the image and all overlays so points and corners remain perfectly aligned.
+  // Resize and offset one shared frame so the visual preview, its overlays, and click coordinates stay aligned in UXP.
   function updatePreviewTransform(rootNode) {
     const content = rootNode && rootNode.querySelector("#pmt-preview-content");
     if (content) {
-      const hasViewTransform = state.previewZoom !== 1 || state.previewPan.x !== 0 || state.previewPan.y !== 0;
-      content.style.transform = hasViewTransform
-        ? "translate(" + Number(state.previewPan.x).toFixed(1) + "px, " + Number(state.previewPan.y).toFixed(1) + "px) scale(" + Number(state.previewZoom).toFixed(3) + ")"
-        : "none";
+      content.style.width = (clampPreviewZoom(state.previewZoom) * 100).toFixed(3) + "%";
+      content.style.left = Number(state.previewPan.x).toFixed(1) + "px";
+      content.style.top = Number(state.previewPan.y).toFixed(1) + "px";
     }
   }
 
@@ -662,16 +661,23 @@
     const currentConfidence = confidencePercent(playbackFrame);
     const previewSurfaceCorners = surfaceMode ? surfaceCornersForPreview(playbackFrame) : (state.tracking && playbackFrame ? playbackFrame.corners : state.referenceCorners);
     const previewContent = playbackFrame
-      ? '<div class="pmt-preview-stage"><img class="pmt-preview-buffer pmt-preview-buffer-active" id="pmt-tracking-image-a" src="' + escapeHtml(playbackFrame.url) + '" alt="' + escapeHtml(t("trackingPreviewAlt")) + '"><img class="pmt-preview-buffer" id="pmt-tracking-image-b" alt=""></div>' + (surfaceMode ? (Array.isArray(previewSurfaceCorners) ? previewSurfaceCorners.map(searchAreaMarkup).join("") : "") + surfaceCornersMarkup(previewSurfaceCorners, true) : searchAreaMarkup(displayedPoint) + '<div class="pmt-tracking-point" id="pmt-preview-point" style="left:' + (Number(displayedPoint.x) * 100).toFixed(3) + '%;top:' + (Number(displayedPoint.y) * 100).toFixed(3) + '%"></div>') + '<div class="pmt-preview-status" id="pmt-preview-status">' + escapeHtml(t("trackingPreview", { current: state.previewFrameIndex + 1, total: state.trackingPreview.frames.length, confidence: currentConfidence })) + '</div>'
+      ? '<div class="pmt-preview-stage"><img class="pmt-preview-buffer pmt-preview-buffer-active" id="pmt-tracking-image-a" src="' + escapeHtml(playbackFrame.url) + '" alt="' + escapeHtml(t("trackingPreviewAlt")) + '"><img class="pmt-preview-buffer" id="pmt-tracking-image-b" alt="">' + (surfaceMode ? (Array.isArray(previewSurfaceCorners) ? previewSurfaceCorners.map(searchAreaMarkup).join("") : "") + surfaceCornersMarkup(previewSurfaceCorners, true) : searchAreaMarkup(displayedPoint) + '<div class="pmt-tracking-point" id="pmt-preview-point" style="left:' + (Number(displayedPoint.x) * 100).toFixed(3) + '%;top:' + (Number(displayedPoint.y) * 100).toFixed(3) + '%"></div>') + '</div>'
       : state.previewVideo && !state.videoUnavailable
-      ? '<video class="pmt-preview-video" id="pmt-preview-video" src="' + escapeHtml(state.previewVideo.url) + '" muted playsinline preload="metadata"></video>' + (surfaceMode
+      ? '<div class="pmt-preview-stage"><video class="pmt-preview-video" id="pmt-preview-video" src="' + escapeHtml(state.previewVideo.url) + '" muted playsinline preload="metadata"></video>' + (surfaceMode
         ? state.referenceCorners.map(searchAreaMarkup).join("") + surfaceCornersMarkup(state.referenceCorners, true)
-        : state.referencePoint ? searchAreaMarkup(state.referencePoint) + '<div class="pmt-tracking-point" id="pmt-preview-point" style="left:' + (state.referencePoint.x * 100).toFixed(3) + '%;top:' + (state.referencePoint.y * 100).toFixed(3) + '%"></div>' : "") + '<div class="pmt-preview-status" id="pmt-preview-status">' + escapeHtml(t("readyToAnalyze")) + '</div>'
+        : state.referencePoint ? searchAreaMarkup(state.referencePoint) + '<div class="pmt-tracking-point" id="pmt-preview-point" style="left:' + (state.referencePoint.x * 100).toFixed(3) + '%;top:' + (state.referencePoint.y * 100).toFixed(3) + '%"></div>' : "") + '</div>'
       : state.preview
-      ? '<img class="pmt-preview-image" src="' + escapeHtml(state.preview.url) + '" alt="' + escapeHtml(t("inImageAlt")) + '">' + (surfaceMode
+      ? '<div class="pmt-preview-stage"><img class="pmt-preview-image" src="' + escapeHtml(state.preview.url) + '" alt="' + escapeHtml(t("inImageAlt")) + '">' + (surfaceMode
         ? state.referenceCorners.map(searchAreaMarkup).join("") + surfaceCornersMarkup(state.referenceCorners, true)
-        : state.referencePoint ? searchAreaMarkup(state.referencePoint) + '<div class="pmt-tracking-point" style="left:' + (state.referencePoint.x * 100).toFixed(3) + '%;top:' + (state.referencePoint.y * 100).toFixed(3) + '%"></div>' : "")
+        : state.referencePoint ? searchAreaMarkup(state.referencePoint) + '<div class="pmt-tracking-point" style="left:' + (state.referencePoint.x * 100).toFixed(3) + '%;top:' + (state.referencePoint.y * 100).toFixed(3) + '%"></div>' : "") + '</div>'
       : '<div class="pmt-preview-grid"></div><div class="pmt-preview-copy">' + escapeHtml(t("emptyPreview")) + '</div>';
+    // Keep the review status outside the movable frame so it remains readable while zooming or panning.
+    const previewStatusText = playbackFrame
+      ? t("trackingPreview", { current: state.previewFrameIndex + 1, total: state.trackingPreview.frames.length, confidence: currentConfidence })
+      : state.previewVideo && !state.videoUnavailable ? t("readyToAnalyze") : "";
+    const previewStatus = previewStatusText
+      ? '<div class="pmt-preview-status" id="pmt-preview-status">' + escapeHtml(previewStatusText) + '</div>'
+      : "";
     rootNode.innerHTML = [
       '<div class="pmt-shell">',
       '  <div class="pmt-header">',
@@ -695,7 +701,7 @@
       '  </div>',
       '  <div class="pmt-card">',
       '    <h2 class="pmt-card-title">' + escapeHtml(t("previewTitle")) + '</h2>',
-      '    <div class="pmt-preview" id="pmt-preview" data-ready="' + String(Boolean(hasInitialPreview() || playbackFrame)) + '"><div class="pmt-preview-content" id="pmt-preview-content"' + (state.previewZoom !== 1 || state.previewPan.x !== 0 || state.previewPan.y !== 0 ? ' style="transform:translate(' + Number(state.previewPan.x).toFixed(1) + 'px,' + Number(state.previewPan.y).toFixed(1) + 'px) scale(' + Number(state.previewZoom).toFixed(3) + ')"' : '') + '>' + previewContent + '</div>' + (Boolean(hasInitialPreview() || playbackFrame) ? '<div class="pmt-preview-zoom-controls">' + buttonMarkup("pmt-preview-zoom-out", "−", ["pmt-preview-zoom-button"], state.previewZoom <= 1) + buttonMarkup("pmt-preview-zoom-in", "+", ["pmt-preview-zoom-button"], state.previewZoom >= 4) + '</div>' : '') + '</div>',
+      '    <div class="pmt-preview" id="pmt-preview" data-ready="' + String(Boolean(hasInitialPreview() || playbackFrame)) + '"><div class="pmt-preview-content" id="pmt-preview-content" style="width:' + (clampPreviewZoom(state.previewZoom) * 100).toFixed(3) + '%;left:' + Number(state.previewPan.x).toFixed(1) + 'px;top:' + Number(state.previewPan.y).toFixed(1) + 'px">' + previewContent + '</div>' + previewStatus + (Boolean(hasInitialPreview() || playbackFrame) ? '<div class="pmt-preview-zoom-controls">' + buttonMarkup("pmt-preview-zoom-out", "−", ["pmt-preview-zoom-button"], state.previewZoom <= 1) + buttonMarkup("pmt-preview-zoom-in", "+", ["pmt-preview-zoom-button"], state.previewZoom >= 4) + '</div>' : '') + '</div>',
       Boolean(hasInitialPreview() || playbackFrame) ? '    <div class="pmt-actions">' + buttonMarkup("pmt-reset-preview-view", t("resetPreviewView"), ["pmt-button-compact"], state.previewZoom <= 1 && state.previewPan.x === 0 && state.previewPan.y === 0) + '</div>' : '',
       playbackFrame ? '    <div class="pmt-preview-navigation"><div class="pmt-label">' + escapeHtml(t("previewNavigation")) + '</div><sp-slider class="pmt-preview-slider" id="pmt-preview-slider" min="0" max="' + String(Math.max(0, state.trackingPreview.frames.length - 1)) + '" step="1" value="' + String(state.previewFrameIndex) + '"' + (canPlayPreview ? '' : ' disabled') + ' aria-label="' + escapeHtml(t("previewNavigation")) + '"></sp-slider></div>' : '',
       playbackFrame ? '    <div class="pmt-uncertain-review">' + uncertainMarkersMarkup(uncertainIndexes, state.trackingPreview.frames.length) + '</div>' : '',
@@ -1170,21 +1176,18 @@
 
   // Convert a mouse or keyboard pointer event into a normalized point inside the visible preview frame.
   function getPreviewSelectionPoint(rootNode, event) {
-    const preview = rootNode.querySelector("#pmt-preview");
-    if (!preview || !state.source || !state.range || typeof preview.getBoundingClientRect !== "function") {
+    const stage = rootNode.querySelector(".pmt-preview-stage");
+    if (!stage || !state.source || !state.range || typeof stage.getBoundingClientRect !== "function") {
       return null;
     }
-    const bounds = preview.getBoundingClientRect();
+    const bounds = stage.getBoundingClientRect();
     if (!bounds.width || !bounds.height) {
       return null;
     }
-    const screenX = (Number(event.clientX) - bounds.left) / bounds.width;
-    const screenY = (Number(event.clientY) - bounds.top) / bounds.height;
-    const zoom = clampPreviewZoom(state.previewZoom);
-    // Invert the shared preview transform before saving a point, so placement stays accurate while zoomed or panned.
+    // The visible stage already includes its real zoom and pan dimensions, so direct bounds conversion stays accurate.
     return root.PMT_SESSION.normalizePoint({
-      x: 0.5 + (screenX - 0.5 - Number(state.previewPan.x) / bounds.width) / zoom,
-      y: 0.5 + (screenY - 0.5 - Number(state.previewPan.y) / bounds.height) / zoom
+      x: (Number(event.clientX) - bounds.left) / bounds.width,
+      y: (Number(event.clientY) - bounds.top) / bounds.height
     });
   }
 
@@ -1322,7 +1325,7 @@
 
   // Save a corrected point on the displayed review image without invalidating its already approved prefix.
   function chooseCorrectionPoint(rootNode, event) {
-    const preview = rootNode.querySelector("#pmt-preview");
+    const preview = rootNode.querySelector(".pmt-preview-stage");
     const frame = state.trackingPreview && state.trackingPreview.frames[state.previewFrameIndex];
     if (!preview || !frame || typeof preview.getBoundingClientRect !== "function") {
       return;

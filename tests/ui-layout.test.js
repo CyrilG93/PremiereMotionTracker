@@ -116,7 +116,9 @@ test("validation exposes confidence markers, visible search-area tuning, and Sur
   assert.match(uiSource, /pmt-preview-zoom-in/);
   assert.match(uiSource, /adjustPreviewZoom/);
   assert.match(uiSource, /pmt-reset-preview-view/);
-  assert.match(styles, /\.pmt-preview-content\s*\{[^}]*transform-origin:\s*center center;/s);
+  assert.match(uiSource, /const previewStatusText = playbackFrame/);
+  assert.match(uiSource, /const stage = rootNode\.querySelector\("\.pmt-preview-stage"\)/);
+  assert.match(styles, /\.pmt-preview-content\s*\{[^}]*flex:\s*0 0 auto;/s);
   assert.match(styles, /\.pmt-uncertain-markers\s*\{[^}]*position:\s*relative;/s);
 });
 

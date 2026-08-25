@@ -112,7 +112,8 @@ test("validation exposes confidence markers, visible search-area tuning, and Sur
   assert.match(styles, /\.pmt-search-area\s*\{[^}]*pointer-events:\s*none;/s);
   assert.match(uiSource, /getSearchAreaVisualSize/);
   assert.match(uiSource, /clampPreviewZoom/);
-  assert.match(uiSource, /preview\.addEventListener\("wheel"/);
+  assert.match(uiSource, /rootNode\.addEventListener\("wheel", zoomPreviewWithWheel/);
+  assert.match(uiSource, /rootNode\.addEventListener\("mousewheel", zoomPreviewWithWheel/);
   assert.match(uiSource, /pmt-reset-preview-view/);
   assert.match(styles, /\.pmt-preview-content\s*\{[^}]*transform-origin:\s*center center;/s);
   assert.match(styles, /\.pmt-uncertain-markers\s*\{[^}]*position:\s*relative;/s);
@@ -166,11 +167,11 @@ test("surface mode collects four corners and applies the tracked plane through C
   assert.match(uiSource, /pmt-mode-surface/);
   assert.match(uiSource, /referenceCorners\.length === 4/);
   assert.match(uiSource, /surfaceCornersMarkup/);
-  assert.match(uiSource, /surfacePolygonPoints/);
+  assert.match(uiSource, /surfaceEdgeStyle/);
   assert.match(uiSource, /beginSurfaceCornerDrag/);
   assert.match(uiSource, /nudgeSurfaceCorner/);
   assert.match(uiSource, /surfaceCornersForPreview\(frame\)/);
-  assert.match(uiSource, /polygon\.setAttribute\("points", surfacePolygonPoints\(surfaceCorners\)\)/);
+  assert.match(uiSource, /pmt-surface-edge/);
   assert.match(uiSource, /setSurfaceCorrectionCorner/);
   assert.match(uiSource, /startSurfaceTrackingReverse\(state\.source\.mediaPath, correction\.corners/);
   // Surface tracking now uses the same cancellable worker flow as point tracking.
@@ -186,7 +187,7 @@ test("surface mode collects four corners and applies the tracked plane through C
   assert.match(premiereSource, /getTargetMotionGeometry/);
   assert.match(premiereSource, /computeCornerPinPoint/);
   assert.match(styles, /\.pmt-surface-corner\s*\{[^}]*position:\s*absolute;/s);
-  assert.match(styles, /\.pmt-surface-shape\s*\{[^}]*pointer-events:\s*none;/s);
+  assert.match(styles, /\.pmt-surface-edge\s*\{[^}]*pointer-events:\s*none;/s);
   assert.match(styles, /\.pmt-surface-corner-editable\s*\{[^}]*cursor:\s*grab;/s);
 });
 

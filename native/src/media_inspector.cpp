@@ -17,12 +17,19 @@
 #include <cstdlib>
 #include <filesystem>
 #include <stdexcept>
+#include <vector>
 
 #if defined(_WIN32)
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
 #include <windows.h>
+#else
+#include <dlfcn.h>
+#include <spawn.h>
+#include <sys/wait.h>
+#include <unistd.h>
+extern char** environ;
 #endif
 
 namespace pmt {
@@ -61,6 +68,11 @@ std::filesystem::path bundledFfmpegPath() {
     char modulePath[MAX_PATH] = {};
     if (!GetModuleFileNameA(module, modulePath, MAX_PATH)) return {};
     return std::filesystem::path(modulePath).parent_path() / "ffmpeg.exe";
+#elif defined(__APPLE__)
+    Dl_info moduleInfo {};
+    if (dladdr(reinterpret_cast<const void*>(&bundledFfmpegPath), &moduleInfo) == 0 || !moduleInfo.dli_fname) return {};
+    // Keep FFmpeg inside the signed plugin so it never depends on a user's PATH or Homebrew installation.
+    return std::filesystem::path(moduleInfo.dli_fname).parent_path() / "bin" / "ffmpeg";
 #else
     return {};
 #endif
@@ -71,8 +83,8 @@ bool decodePreviewCacheWithFfmpeg(const std::string& mediaPath, double startSeco
     const std::filesystem::path ffmpeg = bundledFfmpegPath();
     if (ffmpeg.empty() || !std::filesystem::exists(ffmpeg)) return false;
     const std::string outputPattern = (std::filesystem::path(previewFolder) / "pmt-native-track-%d.png").string();
-    const std::string command = "\"" + ffmpeg.string() + "\" -hide_banner -loglevel error -ss " + std::to_string(startSeconds) + " -t " + std::to_string(endSeconds - startSeconds) + " -i \"" + mediaPath + "\" -an -vf \"scale='min(960\\,iw)':-2\" -fps_mode passthrough -start_number " + std::to_string(firstFrame) + " -y \"" + outputPattern + "\"";
 #if defined(_WIN32)
+    const std::string command = "\"" + ffmpeg.string() + "\" -hide_banner -loglevel error -ss " + std::to_string(startSeconds) + " -t " + std::to_string(endSeconds - startSeconds) + " -i \"" + mediaPath + "\" -an -vf \"scale='min(960\\,iw)':-2\" -fps_mode passthrough -start_number " + std::to_string(firstFrame) + " -y \"" + outputPattern + "\"";
     STARTUPINFOA startupInfo {};
     startupInfo.cb = sizeof(startupInfo);
     PROCESS_INFORMATION processInfo {};
@@ -87,7 +99,22 @@ bool decodePreviewCacheWithFfmpeg(const std::string& mediaPath, double startSeco
     CloseHandle(processInfo.hProcess);
     return exitCode == 0;
 #else
-    return std::system(command.c_str()) == 0;
+    // Pass source paths as argv entries, never through a shell command, so NAS names and special characters remain safe.
+    const std::vector<std::string> arguments {
+        ffmpeg.string(), "-hide_banner", "-loglevel", "error", "-ss", std::to_string(startSeconds),
+        "-t", std::to_string(endSeconds - startSeconds), "-i", mediaPath, "-an", "-vf",
+        "scale='min(960\\,iw)':-2", "-fps_mode", "passthrough", "-start_number", std::to_string(firstFrame),
+        "-y", outputPattern
+    };
+    std::vector<char*> argv;
+    argv.reserve(arguments.size() + 1);
+    for (const std::string& argument : arguments) argv.push_back(const_cast<char*>(argument.c_str()));
+    argv.push_back(nullptr);
+    pid_t process = 0;
+    if (posix_spawn(&process, ffmpeg.c_str(), nullptr, nullptr, argv.data(), environ) != 0) return false;
+    int status = 0;
+    if (waitpid(process, &status, 0) != process) return false;
+    return WIFEXITED(status) && WEXITSTATUS(status) == 0;
 #endif
 }
 
@@ -98,6 +125,12 @@ bool openCachedImageSequence(cv::VideoCapture& capture, const std::string& previ
     const std::string pattern = (std::filesystem::path(previewFolder) / "pmt-native-track-%d.png").string();
     if (!capture.open(pattern, cv::CAP_IMAGES)) return false;
     return capture.set(cv::CAP_PROP_POS_FRAMES, static_cast<double>(firstFrame));
+}
+
+// Use the completed local cache for tracking so a NAS is read only once during preparation.
+bool openLocalPreviewCache(cv::VideoCapture& capture, const std::string& previewFolder, std::int64_t firstFrame) {
+    const std::filesystem::path firstPreview = std::filesystem::path(previewFolder) / ("pmt-native-track-" + std::to_string(firstFrame) + ".png");
+    return std::filesystem::exists(firstPreview) && openCachedImageSequence(capture, previewFolder, firstFrame);
 }
 
 // Save a compact original-media frame while OpenCV already owns the sequential decoder position.
@@ -386,7 +419,7 @@ std::vector<MediaTrackingSample> trackMedia(
         throw std::invalid_argument("La zone de recherche doit être comprise entre 5 et 40 pixels.");
     }
 
-    // Open the same platform decoder used by media inspection so the session stays consistent.
+    // Read source metadata once, then prefer the prepared local cache for the actual tracking pixels.
     cv::VideoCapture capture(mediaPath, cv::CAP_ANY);
     if (!capture.isOpened()) {
         throw std::runtime_error("Impossible d’ouvrir le média avec OpenCV : " + mediaPath);
@@ -400,7 +433,7 @@ std::vector<MediaTrackingSample> trackMedia(
     if (lastFrame - firstFrame + 1 > maximumTrackedFrames) {
         throw std::runtime_error("La plage dépasse 3600 images ; réduisez les In/Out avant l’analyse.");
     }
-    if (!capture.set(cv::CAP_PROP_POS_FRAMES, static_cast<double>(firstFrame)) && !openCachedImageSequence(capture, previewFolder, firstFrame)) {
+    if (!openLocalPreviewCache(capture, previewFolder, firstFrame) && !capture.set(cv::CAP_PROP_POS_FRAMES, static_cast<double>(firstFrame)) && !openCachedImageSequence(capture, previewFolder, firstFrame)) {
         throw std::runtime_error("OpenCV ne peut pas atteindre le début de la plage demandée.");
     }
 
@@ -481,6 +514,7 @@ std::vector<SurfaceTrackingSample> trackSurface(
     if (featureCount < 80 || featureCount > 400) {
         throw std::invalid_argument("Le niveau de détail de surface doit être compris entre 80 et 400 points.");
     }
+    // Read source metadata once, then prefer the prepared local cache for the actual tracking pixels.
     cv::VideoCapture capture(mediaPath, cv::CAP_ANY);
     if (!capture.isOpened()) {
         throw std::runtime_error("Impossible d’ouvrir le média avec OpenCV : " + mediaPath);
@@ -494,7 +528,7 @@ std::vector<SurfaceTrackingSample> trackSurface(
     if (lastFrame - firstFrame + 1 > maximumTrackedFrames) {
         throw std::runtime_error("La plage dépasse 3600 images ; réduisez les In/Out avant l’analyse.");
     }
-    if (!capture.set(cv::CAP_PROP_POS_FRAMES, static_cast<double>(firstFrame)) && !openCachedImageSequence(capture, previewFolder, firstFrame)) {
+    if (!openLocalPreviewCache(capture, previewFolder, firstFrame) && !capture.set(cv::CAP_PROP_POS_FRAMES, static_cast<double>(firstFrame)) && !openCachedImageSequence(capture, previewFolder, firstFrame)) {
         throw std::runtime_error("OpenCV ne peut pas atteindre le début de la plage demandée.");
     }
     cv::Mat decodedFrame;

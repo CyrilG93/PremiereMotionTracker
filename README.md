@@ -85,7 +85,7 @@ Windows installers include the FFmpeg decoder and its LGPL licence automatically
 ## Formats, Privacy, and Limitations
 
 - Landscape, square, vertical, and ultra-wide sequence formats are supported; tracking is not limited to 16:9.
-- NAS media is supported when Premiere exposes a local media path. If it does not, the plugin uses an attached proxy when available, or lets you select the original source file manually.
+- NAS media is supported when Premiere exposes a media path. Motion Tracker prepares its review and tracking images in a local cache, so the NAS is read only during this preparation. If the selected item is a nest or another composite clip without a source path, select the original source file manually.
 - Reversed clips and variable time remapping are not supported; the plugin rejects them before analysis.
 - Fast movement, motion blur, poor lighting, or low-detail areas can reduce tracking accuracy.
 - Reverse tracking keeps a Point track centred with 2D Position keyframes only; it is not a replacement for full warp stabilisation.

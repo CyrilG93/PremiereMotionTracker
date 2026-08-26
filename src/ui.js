@@ -1211,6 +1211,8 @@
       state.previewVideo = await root.PMT_PREMIERE.getSourcePreviewVideo();
       state.videoUnavailable = false;
       addLog("Direct source video updated after manual selection: " + state.previewVideo.fileName + ".");
+      // Rebuild the local PNG cache so manual NAS/nested sources never reuse the prior fallback preview.
+      await prepareSourceRange(rootNode);
     } catch (error) {
       addLog("Manual source error: " + (error && error.message ? error.message : String(error)));
     } finally {

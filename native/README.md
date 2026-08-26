@@ -9,6 +9,8 @@ Ce dossier contient le futur module C++ chargé par le plugin UXP Hybrid. Le cœ
 - CMake 3.20 ou plus récent ;
 - OpenCV et un backend FFmpeg compatible avec la distribution du produit, au jalon suivant.
 
+Sur macOS, le paquet de test attend aussi un binaire FFmpeg ARM64 redistribuable sous LGPL et son fichier de licence dans `mac/arm64/bin/`. Il est exécuté uniquement si OpenCV ne peut pas décoder la plage demandée ; il génère alors un cache PNG local avant le tracking. Ne pas utiliser le FFmpeg Homebrew GPL pour une distribution publique.
+
 Ces outils seront nécessaires uniquement pour construire le plugin. L’utilisateur final recevra les binaires dans le paquet d’installation.
 
 Sans le SDK Adobe, CMake construit uniquement le cœur portable et ses tests :

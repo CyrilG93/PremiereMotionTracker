@@ -7,6 +7,8 @@ project_dir="$(cd "$script_dir/.." && pwd)"
 version="$(node -p "require('$project_dir/package.json').version")"
 addon_name="premiere-motion-tracker-${version}.uxpaddon"
 source_addon="$project_dir/mac/arm64/$addon_name"
+source_ffmpeg="$project_dir/mac/arm64/bin/ffmpeg"
+source_ffmpeg_license="$project_dir/mac/arm64/bin/FFMPEG-LICENSE.txt"
 codesign_identity="${PMT_CODESIGN_IDENTITY:--}"
 notary_profile="${PMT_NOTARY_PROFILE:-}"
 codesign_jobs="${PMT_CODESIGN_JOBS:-8}"
@@ -36,6 +38,15 @@ if [ ! -f "$source_addon" ]; then
   echo "Missing arm64 addon: $source_addon" >&2
   exit 1
 fi
+if [ ! -x "$source_ffmpeg" ] || [ ! -f "$source_ffmpeg_license" ]; then
+  echo "Missing bundled LGPL FFmpeg runtime: $source_ffmpeg and FFMPEG-LICENSE.txt are required." >&2
+  exit 1
+fi
+# Reject a development-machine FFmpeg before it can be copied into a public package.
+if /usr/bin/otool -L "$source_ffmpeg" | /usr/bin/awk 'NR > 2 { print $1 }' | /usr/bin/grep -qE '(/opt/homebrew|/usr/local|@rpath/)'; then
+  echo "The bundled FFmpeg still depends on Homebrew or @rpath libraries." >&2
+  exit 1
+fi
 if [ -e "$output_file" ]; then
   echo "Refusing to overwrite existing package: $output_file" >&2
   exit 1
@@ -56,6 +67,9 @@ done
 /usr/bin/ditto "$project_dir/assets" "$plugin_dir/assets"
 /bin/mkdir -p "$plugin_dir/mac/arm64"
 /bin/cp -L "$source_addon" "$plugin_dir/mac/arm64/$addon_name"
+/bin/mkdir -p "$plugin_dir/mac/arm64/bin"
+/bin/cp -L "$source_ffmpeg" "$plugin_dir/mac/arm64/bin/ffmpeg"
+/bin/cp -L "$source_ffmpeg_license" "$plugin_dir/mac/arm64/bin/FFMPEG-LICENSE.txt"
 
 # Sign each executable component explicitly; --deep is unsafe for a bundle with independently linked libraries.
 sign_macho() {
@@ -181,6 +195,7 @@ export codesign_identity
 export -f sign_macho
 /usr/bin/find "$library_dir" -type f -name '*.dylib' -print0 | /usr/bin/xargs -0 -n 1 -P "$codesign_jobs" /bin/bash -c 'sign_macho "$1"' _
 sign_macho "$staged_addon"
+sign_macho "$plugin_dir/mac/arm64/bin/ffmpeg"
 
 # Refuse to emit a package that still relies on a developer-machine Homebrew path.
 # Skip each first otool entry because it is the binary's own install name, not a load dependency.
@@ -194,6 +209,7 @@ if {
   exit 1
 fi
 /usr/bin/codesign --verify --strict --verbose=2 "$staged_addon"
+/usr/bin/codesign --verify --strict --verbose=2 "$plugin_dir/mac/arm64/bin/ffmpeg"
 while IFS= read -r current_file; do
   /usr/bin/codesign --verify --strict --verbose=2 "$current_file"
 done < <(/usr/bin/find "$library_dir" -type f -name '*.dylib' -print)

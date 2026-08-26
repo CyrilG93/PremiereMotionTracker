@@ -48,6 +48,11 @@ int main() {
     const std::filesystem::path recoveryPath = std::filesystem::temp_directory_path() / "pmt-surface-recovery-sample.avi";
     const std::filesystem::path imagePath = std::filesystem::temp_directory_path() / "pmt-media-inspector-target.png";
     const std::filesystem::path previewPath = std::filesystem::temp_directory_path() / "pmt-media-inspector-preview.png";
+    const std::filesystem::path cachePath = std::filesystem::temp_directory_path() / "pmt-media-inspector-cache";
+    std::error_code directoryError;
+    std::filesystem::remove_all(cachePath, directoryError);
+    std::filesystem::create_directories(cachePath, directoryError);
+    passed &= expect(!directoryError, "native preview cache directory should be created");
     cv::VideoWriter writer(samplePath.string(), cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), 12.0, cv::Size(96, 64));
     passed &= expect(writer.isOpened(), "OpenCV should create the temporary motion-tracking sample");
     if (writer.isOpened()) {
@@ -109,6 +114,19 @@ int main() {
             const pmt::SurfaceTrackingSample& finalSurfaceSample = surfaceSamples.back();
             passed &= expect(finalSurfaceSample.valid, "surface tracker should validate the generated textured plane");
             passed &= expect(std::abs(finalSurfaceSample.corners[0][0] - 35.0 / 95.0) < 0.08 && std::abs(finalSurfaceSample.corners[0][1] - 27.0 / 63.0) < 0.08, "surface tracker should recover the generated plane motion");
+
+            const std::vector<pmt::MediaTrackingSample> cachedPreview = pmt::cacheMediaPreview(samplePath.string(), 0.0, 0.3, {}, cachePath.string());
+            passed &= expect(cachedPreview.size() >= 4, "preview preparation should write a local frame cache");
+            // Replace the source with blank frames: successful motion proves tracking prefers the completed local cache.
+            cv::VideoWriter replacementWriter(samplePath.string(), cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), 12.0, cv::Size(96, 64));
+            passed &= expect(replacementWriter.isOpened(), "test should replace the source after caching it");
+            if (replacementWriter.isOpened()) {
+                for (int frameIndex = 0; frameIndex < 4; frameIndex += 1) replacementWriter.write(cv::Mat(64, 96, CV_8UC3, cv::Scalar(15, 15, 15)));
+                replacementWriter.release();
+                const std::vector<pmt::MediaTrackingSample> cachedTracking = pmt::trackMedia(samplePath.string(), 36.0 / 95.0, 31.0 / 63.0, 0.0, 0.3, {}, 10, cachePath.string());
+                passed &= expect(cachedTracking.back().valid, "tracking should keep using local cached frames after the source changes");
+                passed &= expect(std::abs(cachedTracking.back().x - 42.0 / 95.0) < 0.06 && std::abs(cachedTracking.back().y - 34.0 / 63.0) < 0.06, "local cached tracking should retain the original motion");
+            }
         } catch (const std::exception& error) {
             passed &= expect(false, std::string("decoder should open the generated sample: ") + error.what());
         }
@@ -171,6 +189,8 @@ int main() {
     passed &= expect(!removeError, "temporary target image should be removable");
     std::filesystem::remove(previewPath, removeError);
     passed &= expect(!removeError, "temporary preview image should be removable");
+    std::filesystem::remove_all(cachePath, removeError);
+    passed &= expect(!removeError, "temporary preview cache should be removable");
 
     if (!passed) {
         return 1;

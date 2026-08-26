@@ -41,8 +41,12 @@
   };
   let previewPlaybackTimer = null;
   let previewScrubTimer = null;
+  let updateCheckStarted = false;
+  let updateState = { available: false, checking: false, latestVersion: "", downloadUrl: "", platformLabel: "", error: "" };
   // Keep the product URL in one place so the header badge always opens the public Motion Tracker page.
   const productPageUrl = "https://www.cyrilplugin.com/motion-tracker";
+  // Keep the release lookup alongside the product page so update downloads stay on the official repository.
+  const githubRepo = "CyrilG93/PremiereMotionTracker";
 
   // Keep the visible panel wording separate from technical diagnostics and default to English.
   const translations = {
@@ -122,6 +126,7 @@
       diagnostics: "Diagnostics",
       copy: "Copy",
       nativeEngine: "Native engine",
+      updateAvailable: "Version {version} is available. Download for {platform}",
       languageButton: "EN"
     },
     fr: {
@@ -200,6 +205,7 @@
       diagnostics: "Diagnostic",
       copy: "Copier",
       nativeEngine: "Moteur natif",
+      updateAvailable: "La version {version} est disponible. Télécharger pour {platform}",
       languageButton: "FR"
     }
   };
@@ -545,29 +551,113 @@
     return '<div class="' + classes + '" id="' + id + '" role="button" aria-disabled="' + String(Boolean(disabled)) + '" data-disabled="' + String(Boolean(disabled)) + '" tabindex="' + (disabled ? "-1" : "0") + '">' + escapeHtml(label) + '</div>';
   }
 
-  // Open the product page through the UXP shell and leave the link on the clipboard if the host blocks it.
-  async function openProductPage(rootNode) {
-    addLog("Opening Motion Tracker product page: " + productPageUrl + ".");
+  // Compare numeric release tags while treating a missing version segment as zero.
+  function compareVersions(left, right) {
+    const leftParts = String(left || "").replace(/^v/i, "").split(".").map(Number);
+    const rightParts = String(right || "").replace(/^v/i, "").split(".").map(Number);
+    const length = Math.max(leftParts.length, rightParts.length);
+    for (let index = 0; index < length; index += 1) {
+      const leftNumber = Number.isFinite(leftParts[index]) ? leftParts[index] : 0;
+      const rightNumber = Number.isFinite(rightParts[index]) ? rightParts[index] : 0;
+      if (leftNumber > rightNumber) return 1;
+      if (leftNumber < rightNumber) return -1;
+    }
+    return 0;
+  }
+
+  // Map the host platform to the matching release filename token, never falling back to another operating system.
+  function getUpdatePlatform() {
+    const navigatorValue = root.navigator || {};
+    const platform = String(navigatorValue.userAgent || "") + " " + String(navigatorValue.platform || "");
+    if (/windows|win32|win64/i.test(platform)) {
+      return { assetToken: "windows-x64", label: "Windows x64" };
+    }
+    return { assetToken: "macos-arm64", label: "macOS" };
+  }
+
+  // Pick only the signed installer built for this panel's platform from one GitHub release.
+  function findPlatformReleaseAsset(assets, platform) {
+    return (Array.isArray(assets) ? assets : []).find((asset) => {
+      const name = String(asset && asset.name || "").toLowerCase().replace(/_/g, "-");
+      return /\.ccx$/i.test(name) && name.indexOf(platform.assetToken) !== -1 && Boolean(asset.browser_download_url);
+    }) || null;
+  }
+
+  // Start a single background release check after the panel has rendered for the first time.
+  function startUpdateCheck(rootNode) {
+    if (updateCheckStarted) return;
+    updateCheckStarted = true;
+    checkForUpdates(rootNode);
+  }
+
+  // Query the official GitHub release feed and expose a banner only for a newer compatible installer.
+  async function checkForUpdates(rootNode) {
+    if (typeof fetch !== "function") {
+      updateState = { available: false, checking: false, latestVersion: "", downloadUrl: "", platformLabel: "", error: "Fetch unavailable" };
+      addLog("Update check skipped: fetch is unavailable.");
+      return;
+    }
+    updateState = Object.assign({}, updateState, { checking: true, error: "" });
+    try {
+      const response = await fetch("https://api.github.com/repos/" + githubRepo + "/releases/latest", {
+        headers: { Accept: "application/vnd.github+json" }
+      });
+      if (!response || !response.ok) throw new Error("GitHub latest release returned " + (response ? response.status : "no response"));
+      const release = await response.json();
+      const latestVersion = String(release.tag_name || "").replace(/^v/i, "");
+      const currentVersion = String(root.PMT_VERSION || "0.0.0");
+      const platform = getUpdatePlatform();
+      const asset = findPlatformReleaseAsset(release.assets, platform);
+      if (latestVersion && asset && compareVersions(latestVersion, currentVersion) > 0) {
+        updateState = { available: true, checking: false, latestVersion, downloadUrl: asset.browser_download_url, platformLabel: platform.label, error: "" };
+        addLog("Update available: " + latestVersion + " · " + platform.label + ".");
+        render(rootNode);
+        return;
+      }
+      updateState = { available: false, checking: false, latestVersion, downloadUrl: "", platformLabel: platform.label, error: "" };
+      if (latestVersion && !asset) addLog("Update check found no " + platform.label + " .ccx asset in release " + latestVersion + ".");
+    } catch (error) {
+      updateState = { available: false, checking: false, latestVersion: "", downloadUrl: "", platformLabel: "", error: error && error.message ? error.message : String(error) };
+      addLog("Update check failed: " + updateState.error);
+    }
+  }
+
+  // Open an approved external URL through UXP and copy it when the host blocks browser launching.
+  async function openExternalUrl(rootNode, url, reason) {
+    const normalizedUrl = String(url || "").trim();
+    if (!normalizedUrl) return;
     try {
       const uxp = typeof require === "function" ? require("uxp") : null;
       if (!uxp || !uxp.shell || typeof uxp.shell.openExternal !== "function") {
         throw new Error("UXP shell.openExternal is unavailable.");
       }
-      const result = await uxp.shell.openExternal(productPageUrl, "Open the Motion Tracker product page.");
+      const result = await uxp.shell.openExternal(normalizedUrl, reason || "Open a Motion Tracker link.");
       if (result) {
         throw new Error(String(result));
       }
-      addLog("Motion Tracker product page opened in the default browser.");
+      addLog("External link opened in the default browser.");
     } catch (error) {
       // Retain a useful way to reach the page if this Premiere host denies external processes.
       try {
-        await writeClipboardText(productPageUrl);
-        addLog("Could not open the product page; its URL was copied to the clipboard. " + (error && error.message ? error.message : String(error)));
+        await writeClipboardText(normalizedUrl);
+        addLog("Could not open the external link; its URL was copied to the clipboard. " + (error && error.message ? error.message : String(error)));
       } catch (clipboardError) {
-        addLog("Could not open or copy the product page URL. " + (clipboardError && clipboardError.message ? clipboardError.message : String(clipboardError)));
+        addLog("Could not open or copy the external link. " + (clipboardError && clipboardError.message ? clipboardError.message : String(clipboardError)));
       }
     }
     render(rootNode);
+  }
+
+  // Keep the version badge focused on the public product page rather than the release feed.
+  async function openProductPage(rootNode) {
+    addLog("Opening Motion Tracker product page: " + productPageUrl + ".");
+    await openExternalUrl(rootNode, productPageUrl, "Open the Motion Tracker product page.");
+  }
+
+  // Open the exact matching GitHub asset selected by the background update check.
+  async function downloadUpdate(rootNode) {
+    addLog("Opening Motion Tracker update download: " + updateState.downloadUrl + ".");
+    await openExternalUrl(rootNode, updateState.downloadUrl, "Download the Motion Tracker update.");
   }
 
   // Render an accessible skin-free checkbox because native UXP control styling varies by host version.
@@ -640,6 +730,7 @@
       '    <div class="pmt-title-line"><h1 class="pmt-title">Motion Tracker</h1>' + buttonMarkup("pmt-open-product-page", "v" + root.PMT_VERSION, ["pmt-version"], false) + '</div>',
       '    <div class="pmt-header-tools">' + buttonMarkup("pmt-toggle-language", t("languageButton"), ["pmt-button-compact"], false) + '</div>',
       '  </div>',
+      updateState.available ? '  ' + buttonMarkup("pmt-download-update", t("updateAvailable", { version: updateState.latestVersion, platform: updateState.platformLabel }), ["pmt-update-banner", "pmt-button-full"], false) : '',
       '  <div class="pmt-banner" data-tone="' + banner.tone + '">' + escapeHtml(banner.text) + '</div>',
       '  <div class="pmt-card">',
       '    <h2 class="pmt-card-title">' + escapeHtml(t("sourceTitle")) + '</h2>',
@@ -1756,6 +1847,7 @@
   // Connect the freshly rendered controls to their Premiere diagnostics.
   function bindEvents(rootNode) {
     bindButton(rootNode, "pmt-open-product-page", () => openProductPage(rootNode));
+    bindButton(rootNode, "pmt-download-update", () => downloadUpdate(rootNode));
     bindButton(rootNode, "pmt-toggle-language", () => {
       state.language = state.language === "en" ? "fr" : "en";
       render(rootNode);
@@ -1893,6 +1985,7 @@
   function mount(rootNode) {
     const nativeInitialization = root.PMT_NATIVE.initialize();
     render(rootNode);
+    startUpdateCheck(rootNode);
     nativeInitialization.then((nativeStatus) => {
       if (nativeStatus.available) {
         addLog("Native engine loaded: " + nativeStatus.version + " · self-test " + nativeStatus.selfTest + ".");

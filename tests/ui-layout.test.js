@@ -239,3 +239,16 @@ test("the header exposes the active language, product page badge, and enabled ap
   assert.match(styles, /\.pmt-title-line\s*\{[^}]*display:\s*flex;/s);
   assert.match(styles, /\.pmt-header-tools\s*\{[^}]*display:\s*flex;/s);
 });
+
+test("the panel offers only a newer platform-matched GitHub CCX update", () => {
+  assert.equal(manifest.requiredPermissions.network.domains, "all");
+  assert.match(uiSource, /api\.github\.com\/repos\/" \+ githubRepo \+ "\/releases\/latest/);
+  assert.match(uiSource, /assetToken: "windows-x64"/);
+  assert.match(uiSource, /assetToken: "macos-arm64"/);
+  assert.match(uiSource, /function findPlatformReleaseAsset/);
+  assert.match(uiSource, /name\.indexOf\(platform\.assetToken\) !== -1/);
+  assert.match(uiSource, /compareVersions\(latestVersion, currentVersion\) > 0/);
+  assert.match(uiSource, /pmt-download-update/);
+  assert.match(uiSource, /Download the Motion Tracker update/);
+  assert.match(styles, /\.pmt-update-banner\s*\{[^}]*border-color:\s*var\(--pmt-accent\);/s);
+});

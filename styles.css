@@ -117,6 +117,22 @@ input {
   color: var(--pmt-danger);
 }
 
+/* Make the optional update notice look like a banner while retaining the skin-free button behavior. */
+.pmt-update-banner {
+  min-height: 0;
+  padding: 9px 10px;
+  border-color: var(--pmt-accent);
+  color: #dce8ff;
+  background: #2d3e5e;
+  text-align: left;
+}
+
+.pmt-update-banner:hover,
+.pmt-update-banner:focus {
+  border-color: var(--pmt-accent-hover);
+  background: #364d74;
+}
+
 .pmt-card {
   display: flex;
   flex-direction: column;

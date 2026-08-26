@@ -95,6 +95,12 @@ Windows installers include the FFmpeg decoder and its LGPL licence automatically
 The header language button shows the active language: **EN** for English and **FR** for French. Click it to switch.
 Click the version badge beside **Motion Tracker** to open the product page in your default browser.
 
+## Updates
+
+When Motion Tracker opens, it checks the latest GitHub release. If a newer `.ccx` installer is available for your platform, a clickable banner downloads that installer. Restart Premiere Pro after installing the update.
+
 ## Changelog
 
-No public release has been published yet.
+### 0.7.0 — 26 August 2026
+
+- Added Reverse tracking for 2D point stabilisation on the source clip.

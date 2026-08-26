@@ -46,18 +46,6 @@ For Point and Surface tracking, the source and destination clips must be in the 
 
 The plugin adds a Transform effect and Position keyframes to every selected destination clip. Use Premiere Pro's **Edit > Undo** to remove the applied result.
 
-## Reverse Tracking
-
-Reverse tracking uses an analysed Point track to move the original source clip in the opposite direction. The tracked point stays at the centre of the frame.
-
-1. Complete a Point analysis and review it as usual.
-2. Click **Reverse tracking**.
-3. Motion Tracker adds a Transform effect and Position keyframes to the captured source clip.
-
-No destination clip needs to be selected for Reverse tracking. Use Premiere Pro's **Edit > Undo** to remove the result.
-
-Reverse tracking is a 2D translation stabilisation. It does not compensate for rotation, zoom, perspective changes, or rolling-shutter distortion. As with any stabilisation, moving the image can reveal empty edges; adjust Scale or Position in Premiere if needed.
-
 ## Track a Surface
 
 1. Set In/Out, then capture and prepare a source clip.
@@ -69,6 +57,18 @@ Reverse tracking is a 2D translation stabilisation. It does not compensate for r
 7. Select the destination clip and click **Apply perspective**.
 
 Surface mode works best with flat, textured, clearly visible surfaces. It can be unreliable on blurred, reflective, heavily occluded, or strongly deforming surfaces.
+
+## Reverse Tracking
+
+Reverse tracking uses an analysed Point track to move the original source clip in the opposite direction. The tracked point stays at the centre of the frame.
+
+1. Complete a Point analysis and review it as usual.
+2. Click **Reverse tracking**.
+3. Motion Tracker adds a Transform effect and Position keyframes to the captured source clip.
+
+No destination clip needs to be selected for Reverse tracking. Use Premiere Pro's **Edit > Undo** to remove the result.
+
+Reverse tracking is a 2D translation stabilisation. It does not compensate for rotation, zoom, perspective changes, or rolling-shutter distortion. As with any stabilisation, moving the image can reveal empty edges; adjust Scale or Position in Premiere if needed.
 
 ## Preview Options
 

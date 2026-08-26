@@ -3,6 +3,7 @@
 Premiere Motion Tracker tracks a point or a flat surface in a Premiere Pro sequence and applies that motion to one or more other clips.
 
 Use Point mode to transfer position movement to a logo, title, image, or video. Use Surface mode to place a clip onto a tracked four-corner surface with Corner Pin.
+Use Reverse tracking to keep a tracked point centred in its original clip.
 
 ## Compatibility
 
@@ -29,7 +30,7 @@ To remove the plugin, open Creative Cloud Desktop, go to **Plugins > Manage Plug
 2. Set the sequence In and Out points to the part you want to track. If they do not overlap the selected clip, Motion Tracker automatically uses that clip's visible duration instead.
 3. Put the source clip in the timeline and select it.
 
-The source and destination clips must be in the same sequence.
+For Point and Surface tracking, the source and destination clips must be in the same sequence.
 
 ## Track a Point
 
@@ -44,6 +45,18 @@ The source and destination clips must be in the same sequence.
 9. Click **Apply trajectory**.
 
 The plugin adds a Transform effect and Position keyframes to every selected destination clip. Use Premiere Pro's **Edit > Undo** to remove the applied result.
+
+## Reverse Tracking
+
+Reverse tracking uses an analysed Point track to move the original source clip in the opposite direction. The tracked point stays at the centre of the frame.
+
+1. Complete a Point analysis and review it as usual.
+2. Click **Reverse tracking**.
+3. Motion Tracker adds a Transform effect and Position keyframes to the captured source clip.
+
+No destination clip needs to be selected for Reverse tracking. Use Premiere Pro's **Edit > Undo** to remove the result.
+
+Reverse tracking is a 2D translation stabilisation. It does not compensate for rotation, zoom, perspective changes, or rolling-shutter distortion. As with any stabilisation, moving the image can reveal empty edges; adjust Scale or Position in Premiere if needed.
 
 ## Track a Surface
 
@@ -75,6 +88,7 @@ Windows installers include the FFmpeg decoder and its LGPL licence automatically
 - NAS media is supported when Premiere exposes a local media path. If it does not, the plugin uses an attached proxy when available, or lets you select the original source file manually.
 - Reversed clips and variable time remapping are not supported; the plugin rejects them before analysis.
 - Fast movement, motion blur, poor lighting, or low-detail areas can reduce tracking accuracy.
+- Reverse tracking keeps a Point track centred with 2D Position keyframes only; it is not a replacement for full warp stabilisation.
 - The plugin requires local file access only to analyse the selected media and create temporary previews. It does not upload media anywhere.
 - The panel warns when the source and sequence frame rates are not integer multiples (for example, 25 fps and 30 fps). This can cause stuttering in the applied tracking; pairs such as 25/50 or 30/60 are supported without a warning.
 

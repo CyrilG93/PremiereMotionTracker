@@ -101,6 +101,10 @@ When Motion Tracker opens, it checks the latest GitHub release. If a newer `.ccx
 
 ## Changelog
 
+### 0.7.2 — 26 August 2026
+
+- Added a clearer in-panel update banner that downloads the right installer for the current platform.
+
 ### 0.7.0 — 26 August 2026
 
 - Added Reverse tracking for 2D point stabilisation on the source clip.

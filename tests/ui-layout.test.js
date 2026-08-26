@@ -250,5 +250,5 @@ test("the panel offers only a newer platform-matched GitHub CCX update", () => {
   assert.match(uiSource, /compareVersions\(latestVersion, currentVersion\) > 0/);
   assert.match(uiSource, /pmt-download-update/);
   assert.match(uiSource, /Download the Motion Tracker update/);
-  assert.match(styles, /\.pmt-update-banner\s*\{[^}]*border-color:\s*var\(--pmt-accent\);/s);
+  assert.match(styles, /\.pmt-button\.pmt-update-banner\s*\{[^}]*border-color:\s*var\(--pmt-success\);/s);
 });

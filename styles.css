@@ -118,19 +118,19 @@ input {
 }
 
 /* Make the optional update notice look like a banner while retaining the skin-free button behavior. */
-.pmt-update-banner {
+.pmt-button.pmt-update-banner {
   min-height: 0;
   padding: 9px 10px;
-  border-color: var(--pmt-accent);
-  color: #dce8ff;
-  background: #2d3e5e;
+  border-color: var(--pmt-success);
+  color: #e2f7e9;
+  background: #28523a;
   text-align: left;
 }
 
-.pmt-update-banner:hover,
-.pmt-update-banner:focus {
-  border-color: var(--pmt-accent-hover);
-  background: #364d74;
+.pmt-button.pmt-update-banner:hover,
+.pmt-button.pmt-update-banner:focus {
+  border-color: #79d99a;
+  background: #326847;
 }
 
 .pmt-card {

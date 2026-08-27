@@ -7,7 +7,7 @@ Use Reverse tracking to keep a tracked point centred in its original clip.
 
 ## Compatibility
 
-- macOS on Apple Silicon (M-series Macs)
+- macOS Apple Silicon (M-series Macs)
 - Windows x64
 - Adobe Premiere Pro 25.6 or later
 - Adobe Creative Cloud Desktop

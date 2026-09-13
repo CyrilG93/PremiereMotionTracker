@@ -44,7 +44,7 @@ For Point and Surface tracking, the source and destination clips must be in the 
 8. Select one or more destination clips in the timeline.
 9. Click **Apply trajectory**.
 
-The plugin adds a Transform effect and Position keyframes to every selected destination clip. Use Premiere Pro's **Edit > Undo** to remove the applied result.
+The plugin adds a Transform effect and Position keyframes to every selected destination clip. The tracking timing is preserved; if a destination clip ends earlier, only the keys that fit before its Out point are added. Use Premiere Pro's **Edit > Undo** to remove the applied result.
 
 ## Track a Surface
 

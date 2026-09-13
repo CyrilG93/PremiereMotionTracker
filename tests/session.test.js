@@ -97,6 +97,21 @@ test("buildPositionKeyframes keeps the destination anchored to the first actual 
   assert.ok(Math.abs(keyframes[1].dy - 0.052) < 0.000001);
 });
 
+test("fitKeyframesToClipDuration preserves timing and discards keys after a shorter target Out", () => {
+  const fitted = trajectoryApi.fitKeyframesToClipDuration([
+    { seconds: 12, dx: 0 },
+    { seconds: 12.04, dx: 1 },
+    { seconds: 12.08, dx: 2 },
+    { seconds: 12.12, dx: 3 }
+  ], 0.081);
+  assert.deepEqual(fitted.map((keyframe) => Number(keyframe.clipOffsetSeconds.toFixed(3))), [0, 0.04, 0.08]);
+  assert.equal(fitted[2].dx, 2);
+});
+
+test("fitKeyframesToClipDuration rejects an invalid target duration", () => {
+  assert.throws(() => trajectoryApi.fitKeyframesToClipDuration([{ seconds: 1 }], -1), /durée du clip cible/);
+});
+
 test("buildSurfaceKeyframes retains four ordered corners and skips invalid surface frames", () => {
   const keyframes = trajectoryApi.buildSurfaceKeyframes([
     { frame: 10, seconds: 1, confidence: 1, valid: true, corners: [{ x: 0.1, y: 0.2 }, { x: 0.4, y: 0.2 }, { x: 0.4, y: 0.5 }, { x: 0.1, y: 0.5 }] },

@@ -149,7 +149,9 @@ test("destination clips are selected only when applying the finished tracking", 
   assert.match(uiSource, /buildPositionKeyframes/);
   assert.match(premiereSource, /applyTracking\(keyframes\)/);
   assert.match(premiereSource, /TickTime\.createWithSeconds/);
-  assert.match(premiereSource, /keyframes\.map\(\(sample\)/);
+  assert.match(premiereSource, /targetKeyframes\.map\(\(sample\)/);
+  assert.match(premiereSource, /getKeyframesForTarget/);
+  assert.doesNotMatch(premiereSource, /createTimeAtProgress/);
   assert.match(premiereSource, /getTargetMediaFrame/);
   assert.match(premiereSource, /getTargetMotionScale/);
   assert.match(premiereSource, /computeTargetPositionScale/);

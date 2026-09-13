@@ -249,6 +249,28 @@
     return prefix.concat(corrected);
   }
 
+  // Keep the tracked cadence when fitting a trajectory to a destination clip, discarding only keys past its Out point.
+  function fitKeyframesToClipDuration(keyframes, clipDurationSeconds) {
+    const duration = Number(clipDurationSeconds);
+    if (!Number.isFinite(duration) || duration < 0) {
+      throw new Error("La durée du clip cible est invalide.");
+    }
+    const source = Array.isArray(keyframes) ? keyframes : [];
+    if (!source.length || !Number.isFinite(Number(source[0].seconds))) {
+      throw new Error("La trajectoire ne contient aucune image clé exploitable.");
+    }
+    const firstSeconds = Number(source[0].seconds);
+    // Preserve source timing exactly; progress is intentionally not used because it stretches short targets.
+    return source.reduce((fitted, keyframe) => {
+      const seconds = Number(keyframe && keyframe.seconds);
+      const offsetSeconds = seconds - firstSeconds;
+      if (Number.isFinite(offsetSeconds) && offsetSeconds >= -0.000001 && offsetSeconds <= duration + 0.000001) {
+        fitted.push(Object.assign({}, keyframe, { clipOffsetSeconds: Math.max(0, offsetSeconds) }));
+      }
+      return fitted;
+    }, []);
+  }
+
   // Keep the approved tail and replace only the samples leading up to a manually corrected reference frame.
   function replaceTrackingHead(samples, replacement) {
     const original = Array.isArray(samples) ? samples : [];
@@ -280,6 +302,7 @@
     buildPositionKeyframes,
     buildReversePositionKeyframes,
     buildSurfaceKeyframes,
+    fitKeyframesToClipDuration,
     buildSurfaceMotionKeyframes,
     computeTargetPositionScale,
     computeCornerPinPoint,

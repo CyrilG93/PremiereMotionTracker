@@ -130,21 +130,30 @@
     return Number.isFinite(scalar) ? { x: scalar, y: scalar } : null;
   }
 
-  // Create a clip-relative TickTime for every native frame instead of retaining only both endpoints.
-  function createTimeAtProgress(app, inPoint, outPoint, progress) {
-    const safeProgress = Math.min(1, Math.max(0, Number(progress) || 0));
+  // Create a TickTime at the original tracked offset so a short destination never stretches the trajectory.
+  function createTimeAtTrackedOffset(app, inPoint, offsetSeconds) {
     const startSeconds = Number(describeTime(inPoint).seconds);
-    const endSeconds = Number(describeTime(outPoint).seconds);
-    if (app && app.TickTime && typeof app.TickTime.createWithSeconds === "function" && Number.isFinite(startSeconds) && Number.isFinite(endSeconds)) {
-      return app.TickTime.createWithSeconds(startSeconds + (endSeconds - startSeconds) * safeProgress);
+    const safeOffset = Math.max(0, Number(offsetSeconds) || 0);
+    if (app && app.TickTime && typeof app.TickTime.createWithSeconds === "function" && Number.isFinite(startSeconds)) {
+      return app.TickTime.createWithSeconds(startSeconds + safeOffset);
     }
-    if (safeProgress === 0) {
+    if (safeOffset === 0) {
       return inPoint;
     }
-    if (safeProgress === 1) {
-      return outPoint;
-    }
     throw new Error("Premiere n’expose pas TickTime.createWithSeconds(), nécessaire pour écrire chaque image clé.");
+  }
+
+  // Retain keys that fit in the selected target without changing the cadence of the tracked motion.
+  function getKeyframesForTarget(itemInPoint, itemOutPoint, keyframes) {
+    if (!root.PMT_TRAJECTORY || typeof root.PMT_TRAJECTORY.fitKeyframesToClipDuration !== "function") {
+      throw new Error("Le convertisseur de timing de trajectoire est indisponible.");
+    }
+    const duration = Number(describeTime(itemOutPoint).seconds) - Number(describeTime(itemInPoint).seconds);
+    const fitted = root.PMT_TRAJECTORY.fitKeyframesToClipDuration(keyframes, duration);
+    if (fitted.length < 2) {
+      throw new Error("Le clip cible est trop court pour recevoir au moins deux images clés de tracking sans modifier sa vitesse.");
+    }
+    return fitted;
   }
 
   // Convert normalized tracker motion into the Position unit used by the inserted Transform effect.
@@ -929,6 +938,7 @@
     const positionParam = positionResult.param;
     const inPoint = await item.getInPoint();
     const outPoint = await item.getOutPoint();
+    const targetKeyframes = getKeyframesForTarget(inPoint, outPoint, keyframes);
     const startValue = await positionParam.getStartValue();
     let initialPoint = readPointValue(startValue);
     if (!initialPoint && typeof positionParam.getValueAtTime === "function") {
@@ -945,18 +955,18 @@
     executeActions(context.project, [() => positionParam.createSetTimeVaryingAction(true)], "Motion Tracker : activer Position");
     await waitForHostPaint();
     // Create the keyframe and its action inside Premiere's locked transaction to avoid stale proxies.
-    executeActions(context.project, keyframes.map((sample) => () => {
+    executeActions(context.project, targetKeyframes.map((sample) => () => {
       const value = createPoint(
         context.app,
         initialPoint.x + Number(sample.dx) * positionScale.x,
         initialPoint.y + Number(sample.dy) * positionScale.y
       );
       const keyframe = positionParam.createKeyframe(value);
-      keyframe.position = createTimeAtProgress(context.app, inPoint, outPoint, sample.progress);
+      keyframe.position = createTimeAtTrackedOffset(context.app, inPoint, sample.clipOffsetSeconds);
       return positionParam.createAddKeyframeAction(keyframe);
     }), "Motion Tracker : appliquer la trajectoire");
     const clipName = await readMethod(item, "getName", "Clip cible");
-    const finalSample = keyframes[keyframes.length - 1];
+    const finalSample = targetKeyframes[targetKeyframes.length - 1];
     return {
       clipName: String(clipName),
       matchName: transform.matchName,
@@ -968,7 +978,7 @@
       normalized: looksNormalized,
       positionScale,
       targetCoordinateSpace: targetFrame ? targetFrame.coordinateSpace : "pixels",
-      keyframeCount: keyframes.length
+      keyframeCount: targetKeyframes.length
     };
   }
 
@@ -995,6 +1005,7 @@
     const params = parameterResult.params;
     const inPoint = await item.getInPoint();
     const outPoint = await item.getOutPoint();
+    const targetKeyframes = getKeyframesForTarget(inPoint, outPoint, keyframes);
     const initialCorners = [];
     for (const param of params) {
       let point = readPointValue(await param.getStartValue());
@@ -1008,8 +1019,8 @@
     }
     const targetFrame = await getTargetMediaFrame(context, item);
     const timedSamples = [];
-    for (const sample of keyframes) {
-      const time = createTimeAtProgress(context.app, inPoint, outPoint, sample.progress);
+    for (const sample of targetKeyframes) {
+      const time = createTimeAtTrackedOffset(context.app, inPoint, sample.clipOffsetSeconds);
       timedSamples.push({ sample, time, motion: await getTargetMotionGeometry(context, item, time, targetFrame) });
     }
     executeActions(context.project, params.map((param) => () => param.createSetTimeVaryingAction(true)), "Motion Tracker : activer Corner Pin");
@@ -1027,7 +1038,7 @@
     });
     executeActions(context.project, actions, "Motion Tracker : appliquer Surface Corner Pin");
     const clipName = await readMethod(item, "getName", "Clip cible");
-    return { clipName: String(clipName), matchName: cornerPin.matchName, keyframeCount: keyframes.length, coordinateSpace: "target-local-normalized", initialCorners };
+    return { clipName: String(clipName), matchName: cornerPin.matchName, keyframeCount: targetKeyframes.length, coordinateSpace: "target-local-normalized", initialCorners };
   }
 
   // Add Transform keys derived from a tracked surface while deliberately retaining the target's aspect ratio.
@@ -1050,6 +1061,7 @@
     }
     const inPoint = await item.getInPoint();
     const outPoint = await item.getOutPoint();
+    const targetKeyframes = getKeyframesForTarget(inPoint, outPoint, keyframes);
     const positionValue = await readMotionParamValue(params.position, inPoint);
     const initialPoint = readPointValue(positionValue);
     const scaleValue = await readMotionParamValue(params.scale, inPoint);
@@ -1070,8 +1082,8 @@
     ], "Motion Tracker : activer Transform Surface");
     await waitForHostPaint();
     const actions = [];
-    keyframes.forEach((sample) => {
-      const time = createTimeAtProgress(context.app, inPoint, outPoint, sample.progress);
+    targetKeyframes.forEach((sample) => {
+      const time = createTimeAtTrackedOffset(context.app, inPoint, sample.clipOffsetSeconds);
       actions.push(() => {
         const keyframe = params.position.createKeyframe(createPoint(context.app, initialPoint.x + Number(sample.dx) * positionScale.x, initialPoint.y + Number(sample.dy) * positionScale.y));
         keyframe.position = time;
@@ -1090,7 +1102,7 @@
     });
     executeActions(context.project, actions, "Motion Tracker : appliquer Mouvement Surface");
     const clipName = await readMethod(item, "getName", "Clip cible");
-    return { clipName: String(clipName), matchName: transform.matchName, keyframeCount: keyframes.length, mode: "shape-preserving", positionScale };
+    return { clipName: String(clipName), matchName: transform.matchName, keyframeCount: targetKeyframes.length, mode: "shape-preserving", positionScale };
   }
 
   // Apply the analysed frame-by-frame trajectory to every selected destination clip.

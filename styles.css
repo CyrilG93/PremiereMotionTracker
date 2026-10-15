@@ -117,6 +117,30 @@ input {
   color: var(--pmt-danger);
 }
 
+/* Keep preparation and analysis visibly active while the native worker processes source frames. */
+.pmt-operation-progress {
+  padding: 0 10px;
+}
+
+.pmt-operation-progress-track {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--pmt-border);
+}
+
+.pmt-operation-progress-fill {
+  height: 100%;
+  min-width: 4px;
+  border-radius: inherit;
+  background: var(--pmt-warning);
+  transition: width 120ms linear;
+}
+
+.pmt-operation-progress[data-indeterminate="true"] .pmt-operation-progress-fill {
+  opacity: 0.75;
+}
+
 /* Make the optional update notice look like a banner while retaining the skin-free button behavior. */
 .pmt-button.pmt-update-banner {
   min-height: 0;

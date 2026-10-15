@@ -34,6 +34,7 @@
     analysisTaskId: "",
     analysisSampleIndex: 0,
     analysisTotalFrames: 0,
+    preparationTotalFrames: 0,
     cancelRequested: false,
     busy: false,
     operation: "",
@@ -60,6 +61,7 @@
       sourcePathUnavailable: "Premiere did not expose a usable media path. Choose the original source file to continue.",
       video: "Video",
       selectCapture: "Select and capture the clip to analyze.",
+      preparingSource: "Preparing source preview… {percent}%",
       analysisRunning: "Analysis in progress… {percent}%",
       liveProgress: "Analyzing {count} frames…",
       analysisReady: "{count} frames analyzed · {uncertain} uncertain. Review them before applying.",
@@ -139,6 +141,7 @@
       sourcePathUnavailable: "Premiere ne fournit pas de chemin média exploitable. Choisissez le fichier source original pour continuer.",
       video: "Vidéo",
       selectCapture: "Sélectionnez puis capturez le clip à analyser.",
+      preparingSource: "Préparation de l’aperçu source… {percent}%",
       analysisRunning: "Analyse en cours… {percent}%",
       liveProgress: "Analyse de {count} images…",
       analysisReady: "{count} images analysées · {uncertain} incertaines. Vérifiez-les avant l’application.",
@@ -670,6 +673,10 @@
   // Compute the main readiness message from Premiere and native addon state.
   function getBanner() {
     const nativeStatus = root.PMT_NATIVE.probe();
+    if (state.operation === "preparation") {
+      const percent = state.preparationTotalFrames > 0 ? Math.min(99, Math.floor(state.liveSamples.length / state.preparationTotalFrames * 100)) : 0;
+      return { tone: "warning", text: t("preparingSource", { percent }) };
+    }
     if (state.operation === "analysis") {
       // Estimate progress from the durable samples already published by the native worker.
       const percent = state.analysisTotalFrames > 0 ? Math.min(99, Math.floor(state.liveSamples.length / state.analysisTotalFrames * 100)) : 0;
@@ -694,9 +701,25 @@
     return { tone: "success", text: t("readyToAnalyze") };
   }
 
+  // Expose native work immediately so waiting for a source cache never looks like an unresponsive panel.
+  function getOperationProgress() {
+    if (state.operation === "preparation") {
+      const total = Number(state.preparationTotalFrames);
+      const percent = total > 0 ? Math.min(99, Math.floor(state.liveSamples.length / total * 100)) : 0;
+      return { active: true, percent, indeterminate: total <= 0 };
+    }
+    if (state.operation === "analysis") {
+      const total = Number(state.analysisTotalFrames);
+      const percent = total > 0 ? Math.min(99, Math.floor(state.liveSamples.length / total * 100)) : 0;
+      return { active: true, percent, indeterminate: total <= 0 };
+    }
+    return { active: false, percent: 0, indeterminate: false };
+  }
+
   // Render the complete prototype panel after each state change.
   function render(rootNode) {
     const banner = getBanner();
+    const operationProgress = getOperationProgress();
     const nativeStatus = root.PMT_NATIVE.probe();
     const nativeLabel = nativeStatus.available
       ? nativeStatus.version + " · self-test " + nativeStatus.selfTest
@@ -734,6 +757,7 @@
       '  </div>',
       updateState.available ? '  ' + buttonMarkup("pmt-download-update", t("updateAvailable", { version: updateState.latestVersion, platform: updateState.platformLabel }), ["pmt-update-banner", "pmt-button-full"], false) : '',
       '  <div class="pmt-banner" data-tone="' + banner.tone + '">' + escapeHtml(banner.text) + '</div>',
+      operationProgress.active ? '  <div class="pmt-operation-progress" data-indeterminate="' + String(operationProgress.indeterminate) + '" aria-live="polite"><div class="pmt-operation-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + String(operationProgress.percent) + '"><div class="pmt-operation-progress-fill" style="width:' + String(operationProgress.indeterminate ? 35 : operationProgress.percent) + '%"></div></div></div>' : '',
       '  <div class="pmt-card">',
       '    <h2 class="pmt-card-title">' + escapeHtml(t("sourceTitle")) + '</h2>',
       '    <div class="pmt-slot">',
@@ -1088,6 +1112,8 @@
   // Read the sequence range and prefer its original media file over an exported still-image fallback.
   async function prepareSourceRange(rootNode) {
     state.range = await root.PMT_PREMIERE.getActiveRange();
+    // A fresh preparation must never point native decoding at a prior source cache, even after manual file selection.
+    state.nativePreview = null;
     state.tracking = null;
     state.liveSamples = [];
     state.analysisTaskId = "";
@@ -1103,6 +1129,7 @@
     try {
       const previewRange = getPreviewVideoRange();
       if (!previewRange) throw new Error("The source media range is unavailable.");
+      state.preparationTotalFrames = Math.max(1, Math.ceil((previewRange.endSeconds - previewRange.startSeconds) * Number(state.media && state.media.framesPerSecond || 0)) + 1);
       if (previewRange.usesClipRange) {
         // Do not reuse the unrelated sequence In-point image when a newly selected clip sits outside its markers.
         addLog("Sequence In/Out does not overlap this source; preparing the selected clip's visible range instead.");
@@ -1142,6 +1169,8 @@
   // Capture the selected source, inspect it, and immediately prepare its sequence range in one action.
   async function captureAndPrepare(rootNode) {
     state.busy = true;
+    state.operation = "preparation";
+    state.preparationTotalFrames = 0;
     render(rootNode);
     try {
       const clip = await root.PMT_PREMIERE.captureSelectedClip();
@@ -1184,6 +1213,8 @@
       addLog("Error: " + (error && error.message ? error.message : String(error)));
     } finally {
       state.busy = false;
+      state.operation = "";
+      state.preparationTotalFrames = 0;
       refreshAfterHostWork(rootNode, true);
     }
   }
@@ -1194,6 +1225,8 @@
       return;
     }
     state.busy = true;
+    state.operation = "preparation";
+    state.preparationTotalFrames = 0;
     render(rootNode);
     try {
       const selected = await root.PMT_PREMIERE.chooseSourceMediaFile();
@@ -1219,6 +1252,8 @@
       addLog("Manual source error: " + (error && error.message ? error.message : String(error)));
     } finally {
       state.busy = false;
+      state.operation = "";
+      state.preparationTotalFrames = 0;
       refreshAfterHostWork(rootNode, false);
     }
   }
@@ -1505,14 +1540,21 @@
     return new Promise((resolve) => setTimeout(resolve, 100));
   }
 
-  // Refresh only the short banner while native samples arrive, avoiding a panel re-render during analysis.
-  function updateAnalysisProgress(rootNode) {
+  // Refresh the status and bar in place while native samples arrive, avoiding a full panel re-render.
+  function updateOperationProgress(rootNode) {
     const banner = rootNode.querySelector(".pmt-banner");
-    if (!banner || state.operation !== "analysis") {
+    const progressFill = rootNode.querySelector(".pmt-operation-progress-fill");
+    const progressTrack = rootNode.querySelector(".pmt-operation-progress-track");
+    if (!banner || !progressFill || !progressTrack) {
       return;
     }
-    const percent = state.analysisTotalFrames > 0 ? Math.min(99, Math.floor(state.liveSamples.length / state.analysisTotalFrames * 100)) : 0;
-    banner.textContent = t("analysisRunning", { percent });
+    const progress = getOperationProgress();
+    if (!progress.active) return;
+    banner.textContent = state.operation === "preparation"
+      ? t("preparingSource", { percent: progress.percent })
+      : t("analysisRunning", { percent: progress.percent });
+    progressFill.style.width = String(progress.indeterminate ? 35 : progress.percent) + "%";
+    progressTrack.setAttribute("aria-valuenow", String(progress.percent));
   }
 
   // Keep user cancellation distinct from a native tracking failure so the diagnostic stays actionable.
@@ -1555,7 +1597,7 @@
         state.liveSamples = state.liveSamples.concat(cachedSamples);
         state.analysisSampleIndex = Number(progress.nextIndex || state.liveSamples.length);
         updateVideoPreview(rootNode);
-        updateAnalysisProgress(rootNode);
+        updateOperationProgress(rootNode);
       }
       if (progress.done) {
         if (progress.cancelled) {

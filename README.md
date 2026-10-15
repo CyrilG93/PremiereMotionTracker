@@ -101,6 +101,12 @@ When Motion Tracker opens, it checks the latest GitHub release. If a newer `.ccx
 
 ## Changelog
 
+### 1.0.0 — 15 October 2026
+
+- First public release of Motion Tracker for Premiere Pro.
+- Track points or flat surfaces, apply motion to selected clips, and use Reverse tracking for 2D stabilisation.
+- Includes the signed and notarized macOS Apple Silicon installer.
+
 ### 0.7.2 — 26 August 2026
 
 - Added a clearer in-panel update banner that downloads the right installer for the current platform.

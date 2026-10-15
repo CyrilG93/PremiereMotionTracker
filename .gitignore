@@ -7,5 +7,6 @@ docs/uxp-hybrid-plugin-sdk-main/
 *.uxpaddon
 *.dll
 *.dylib
+mac/arm64/bin/
 *.pdb
 .DS_Store

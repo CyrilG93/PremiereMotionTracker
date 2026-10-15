@@ -264,9 +264,11 @@
   async function prepareNativePreviewCache(startSeconds, endSeconds) {
     if (!state.media || !Number(state.media.framesPerSecond)) return "";
     if (!state.nativePreview) {
-      // The cache must own its temporary folder even when preparation skips the former single-frame decoder.
+      // Give every captured source an isolated folder so a persistent UXP panel cannot reuse PNGs from another project.
       const storage = require("uxp").storage.localFileSystem;
-      state.nativePreview = { folder: await storage.getTemporaryFolder(), serial: 0 };
+      const temporaryFolder = await storage.getTemporaryFolder();
+      const cacheFolder = await temporaryFolder.createFolder("pmt-native-cache-" + Date.now());
+      state.nativePreview = { folder: cacheFolder, serial: 0 };
     }
     const framesPerSecond = Number(state.media.framesPerSecond);
     const firstFrame = Math.max(0, Math.floor(Number(startSeconds) * framesPerSecond));

@@ -49,9 +49,12 @@ int main() {
     const std::filesystem::path imagePath = std::filesystem::temp_directory_path() / "pmt-media-inspector-target.png";
     const std::filesystem::path previewPath = std::filesystem::temp_directory_path() / "pmt-media-inspector-preview.png";
     const std::filesystem::path cachePath = std::filesystem::temp_directory_path() / "pmt-media-inspector-cache";
+    const std::filesystem::path offsetCachePath = std::filesystem::temp_directory_path() / "pmt-media-inspector-offset-cache";
     std::error_code directoryError;
     std::filesystem::remove_all(cachePath, directoryError);
+    std::filesystem::remove_all(offsetCachePath, directoryError);
     std::filesystem::create_directories(cachePath, directoryError);
+    std::filesystem::create_directories(offsetCachePath, directoryError);
     passed &= expect(!directoryError, "native preview cache directory should be created");
     cv::VideoWriter writer(samplePath.string(), cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), 12.0, cv::Size(96, 64));
     passed &= expect(writer.isOpened(), "OpenCV should create the temporary motion-tracking sample");
@@ -117,6 +120,9 @@ int main() {
 
             const std::vector<pmt::MediaTrackingSample> cachedPreview = pmt::cacheMediaPreview(samplePath.string(), 0.0, 0.3, {}, cachePath.string());
             passed &= expect(cachedPreview.size() >= 4, "preview preparation should write a local frame cache");
+            // Start after frame zero to prove cached source frame numbers never become image-sequence offsets.
+            const std::vector<pmt::MediaTrackingSample> offsetCachedPreview = pmt::cacheMediaPreview(samplePath.string(), 1.0 / 12.0, 0.25, {}, offsetCachePath.string());
+            passed &= expect(offsetCachedPreview.size() >= 3, "offset preview preparation should retain every requested cache frame");
             // Replace the source with blank frames: successful motion proves tracking prefers the completed local cache.
             cv::VideoWriter replacementWriter(samplePath.string(), cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), 12.0, cv::Size(96, 64));
             passed &= expect(replacementWriter.isOpened(), "test should replace the source after caching it");
@@ -126,6 +132,8 @@ int main() {
                 const std::vector<pmt::MediaTrackingSample> cachedTracking = pmt::trackMedia(samplePath.string(), 36.0 / 95.0, 31.0 / 63.0, 0.0, 0.3, {}, 10, cachePath.string());
                 passed &= expect(cachedTracking.back().valid, "tracking should keep using local cached frames after the source changes");
                 passed &= expect(std::abs(cachedTracking.back().x - 42.0 / 95.0) < 0.06 && std::abs(cachedTracking.back().y - 34.0 / 63.0) < 0.06, "local cached tracking should retain the original motion");
+                const std::vector<pmt::MediaTrackingSample> offsetCachedTracking = pmt::trackMedia(samplePath.string(), 36.0 / 95.0, 31.0 / 63.0, 1.0 / 12.0, 0.25, {}, 10, offsetCachePath.string());
+                passed &= expect(offsetCachedTracking.size() >= 3, "tracking should read every cached frame after a nonzero source offset");
             }
         } catch (const std::exception& error) {
             passed &= expect(false, std::string("decoder should open the generated sample: ") + error.what());
@@ -191,6 +199,8 @@ int main() {
     passed &= expect(!removeError, "temporary preview image should be removable");
     std::filesystem::remove_all(cachePath, removeError);
     passed &= expect(!removeError, "temporary preview cache should be removable");
+    std::filesystem::remove_all(offsetCachePath, removeError);
+    passed &= expect(!removeError, "temporary offset preview cache should be removable");
 
     if (!passed) {
         return 1;

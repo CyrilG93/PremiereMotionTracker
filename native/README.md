@@ -1,5 +1,7 @@
 # Module natif
 
+Chaque préparation crée un cache PNG temporaire distinct afin que des projets ouverts successivement ne partagent jamais leurs images de prévisualisation.
+
 Ce dossier contient le futur module C++ chargé par le plugin UXP Hybrid. Le cœur de tracking est indépendant d’Adobe et d’OpenCV : il suit déjà une zone texturée entre deux images en niveaux de gris avec un score de confiance. Cette séparation permet de le tester automatiquement sous Windows et macOS avant de connecter le décodage vidéo.
 
 ## Dépendances de développement

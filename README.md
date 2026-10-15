@@ -104,6 +104,12 @@ When Motion Tracker opens, it checks the latest GitHub release. If a newer `.ccx
 
 ## Changelog
 
+### 1.1.0 — 15 October 2026
+
+- Added clear progress feedback while preparing and analysing source media.
+- Added a Stop preparing control and made cancellation reliably reset the panel.
+- Improved preview-cache isolation and native cache-frame reading for more reliable tracking preparation.
+
 ### 1.0.0 — 15 October 2026
 
 - First public release of Motion Tracker for Premiere Pro.

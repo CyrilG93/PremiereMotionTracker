@@ -719,7 +719,6 @@
   // Render the complete prototype panel after each state change.
   function render(rootNode) {
     const banner = getBanner();
-    const operationProgress = getOperationProgress();
     const nativeStatus = root.PMT_NATIVE.probe();
     const nativeLabel = nativeStatus.available
       ? nativeStatus.version + " · self-test " + nativeStatus.selfTest
@@ -757,7 +756,6 @@
       '  </div>',
       updateState.available ? '  ' + buttonMarkup("pmt-download-update", t("updateAvailable", { version: updateState.latestVersion, platform: updateState.platformLabel }), ["pmt-update-banner", "pmt-button-full"], false) : '',
       '  <div class="pmt-banner" data-tone="' + banner.tone + '">' + escapeHtml(banner.text) + '</div>',
-      operationProgress.active ? '  <div class="pmt-operation-progress" data-indeterminate="' + String(operationProgress.indeterminate) + '" aria-live="polite"><div class="pmt-operation-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + String(operationProgress.percent) + '"><div class="pmt-operation-progress-fill" style="width:' + String(operationProgress.indeterminate ? 35 : operationProgress.percent) + '%"></div></div></div>' : '',
       '  <div class="pmt-card">',
       '    <h2 class="pmt-card-title">' + escapeHtml(t("sourceTitle")) + '</h2>',
       '    <div class="pmt-slot">',
@@ -1540,12 +1538,10 @@
     return new Promise((resolve) => setTimeout(resolve, 100));
   }
 
-  // Refresh the status and bar in place while native samples arrive, avoiding a full panel re-render.
+  // Refresh the compact status in place while native samples arrive, avoiding a full panel re-render.
   function updateOperationProgress(rootNode) {
     const banner = rootNode.querySelector(".pmt-banner");
-    const progressFill = rootNode.querySelector(".pmt-operation-progress-fill");
-    const progressTrack = rootNode.querySelector(".pmt-operation-progress-track");
-    if (!banner || !progressFill || !progressTrack) {
+    if (!banner) {
       return;
     }
     const progress = getOperationProgress();
@@ -1553,8 +1549,6 @@
     banner.textContent = state.operation === "preparation"
       ? t("preparingSource", { percent: progress.percent })
       : t("analysisRunning", { percent: progress.percent });
-    progressFill.style.width = String(progress.indeterminate ? 35 : progress.percent) + "%";
-    progressTrack.setAttribute("aria-valuenow", String(progress.percent));
   }
 
   // Keep user cancellation distinct from a native tracking failure so the diagnostic stays actionable.

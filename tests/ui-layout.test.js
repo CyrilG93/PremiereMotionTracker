@@ -217,8 +217,8 @@ test("native analysis visibly enters an in-progress state before tracking begins
   assert.match(uiSource, /OpenCV analysis in progress/);
   assert.match(uiSource, /Analyzing…/);
   assert.match(uiSource, /waitForPanelPaint\(\)/);
-  assert.match(uiSource, /pmt-operation-progress/);
-  assert.match(styles, /\.pmt-operation-progress-track/);
+  assert.match(uiSource, /preparingSource/);
+  assert.match(uiSource, /analysisRunning/);
 });
 
 test("point tracking exposes a real native cancellation control while analysis is running", () => {

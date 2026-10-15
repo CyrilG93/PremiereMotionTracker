@@ -233,6 +233,7 @@ test("source preparation can be stopped through its transformed capture button",
   assert.match(uiSource, /stopPreparation/);
   assert.match(uiSource, /cancelPreparation\(rootNode\)/);
   assert.match(uiSource, /Preparation cancellation requested/);
+  assert.match(uiSource, /never replace it with an unrelated Premiere still image/);
 });
 
 test("the header exposes the active language, product page badge, and enabled apply emphasis", () => {

@@ -1159,6 +1159,10 @@
       state.referenceSeconds = Number(state.trackingPreview.frames[0] && state.trackingPreview.frames[0].seconds || previewRange.startSeconds);
       addLog("Native reference preview ready: " + state.trackingPreview.frames.length + " frames. Choose a frame, then place the tracking reference.");
     } catch (nativePreviewError) {
+      if (isTrackingCancellation(nativePreviewError)) {
+        // Cancellation is final for this preparation: never replace it with an unrelated Premiere still image.
+        throw nativePreviewError;
+      }
       state.preview = null;
       addLog("Native source preview unavailable: " + (nativePreviewError && nativePreviewError.message ? nativePreviewError.message : String(nativePreviewError)) + ". Trying Premiere still image fallback.");
       await loadStillPreviewFallback(rootNode, "no direct source video URL");
@@ -1224,6 +1228,7 @@
       state.busy = false;
       state.operation = "";
       state.preparationTotalFrames = 0;
+      state.cancelRequested = false;
       refreshAfterHostWork(rootNode, true);
     }
   }

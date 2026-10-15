@@ -75,6 +75,7 @@ Reverse tracking is a 2D translation stabilisation. It does not compensate for r
 The preview decodes the original source media file directly with its native engine. During preparation, it builds a compact local preview cache for the selected In/Out range; use it to select any reference frame before tracking. The tracker follows that reference both backwards to In and forwards to Out. Play follows the source frame rate and the frame slider reads the cache instantly.
 
 Preparation and analysis show a visible status with a percentage. Preparation may take a few seconds on long or high-resolution clips.
+Use **Stop preparing** if you selected the wrong source or range.
 
 - The original-file preview only supports the selected source media; it does not include timeline effects, titles, or other clips composited in the sequence.
 - The Diagnostics log records the decoded source frame, source time, dimensions, and decoding time. Copy it after a failed test.

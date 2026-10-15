@@ -56,6 +56,8 @@
       noMedia: "Video metadata not read",
       sourceClip: "Clip to analyze",
       capturePrepare: "Capture and prepare",
+      stopPreparation: "Stop preparing",
+      stoppingPreparation: "Stopping preparation…",
       chooseSourceFile: "Choose source file…",
       sourceUsesProxy: "Premiere did not expose the original path; the attached proxy will be analyzed.",
       sourcePathUnavailable: "Premiere did not expose a usable media path. Choose the original source file to continue.",
@@ -136,6 +138,8 @@
       noMedia: "Métadonnées vidéo non lues",
       sourceClip: "Clip à analyser",
       capturePrepare: "Capturer et préparer",
+      stopPreparation: "Arrêter la préparation",
+      stoppingPreparation: "Arrêt de la préparation…",
       chooseSourceFile: "Choisir le fichier source…",
       sourceUsesProxy: "Premiere ne fournit pas le chemin original ; le proxy associé sera analysé.",
       sourcePathUnavailable: "Premiere ne fournit pas de chemin média exploitable. Choisissez le fichier source original pour continuer.",
@@ -310,7 +314,10 @@
     state.liveSamples = [];
     state.analysisTaskId = "";
     state.analysisSampleIndex = 0;
-    state.cancelRequested = false;
+    // Keep a stop request made during asynchronous source capture until preparation can observe it.
+    if (state.operation !== "preparation") {
+      state.cancelRequested = false;
+    }
   }
 
   // Keep the established point workflow separate from the four-corner planar workflow.
@@ -675,7 +682,7 @@
     const nativeStatus = root.PMT_NATIVE.probe();
     if (state.operation === "preparation") {
       const percent = state.preparationTotalFrames > 0 ? Math.min(99, Math.floor(state.liveSamples.length / state.preparationTotalFrames * 100)) : 0;
-      return { tone: "warning", text: t("preparingSource", { percent }) };
+      return { tone: "warning", text: state.cancelRequested ? t("stoppingPreparation") : t("preparingSource", { percent }) };
     }
     if (state.operation === "analysis") {
       // Estimate progress from the durable samples already published by the native worker.
@@ -760,7 +767,7 @@
       '    <h2 class="pmt-card-title">' + escapeHtml(t("sourceTitle")) + '</h2>',
       '    <div class="pmt-slot">',
       '      <div class="pmt-slot-copy"><div class="pmt-label">' + escapeHtml(t("sourceClip")) + '</div><div class="pmt-value">' + escapeHtml(clipLabel(state.source, t("noClip"))) + '</div></div>',
-      '      ' + buttonMarkup("pmt-capture-source", t("capturePrepare"), [], state.busy),
+      '      ' + buttonMarkup("pmt-capture-source", state.operation === "preparation" ? (state.cancelRequested ? t("stoppingPreparation") : t("stopPreparation")) : t("capturePrepare"), [], state.busy && state.operation !== "preparation" || state.cancelRequested),
       '    </div>',
       state.source ? '    <div class="pmt-label">' + escapeHtml(t("video")) + ': ' + escapeHtml(mediaLabel(state.media)) + '</div>' : '',
       getFrameRateWarning() ? '    <div class="pmt-rate-warning">' + escapeHtml(getFrameRateWarning()) + '</div>' : '',
@@ -1110,6 +1117,7 @@
   // Read the sequence range and prefer its original media file over an exported still-image fallback.
   async function prepareSourceRange(rootNode) {
     state.range = await root.PMT_PREMIERE.getActiveRange();
+    if (state.cancelRequested) throw new Error("Preparation cancelled.");
     // A fresh preparation must never point native decoding at a prior source cache, even after manual file selection.
     state.nativePreview = null;
     state.tracking = null;
@@ -1169,9 +1177,11 @@
     state.busy = true;
     state.operation = "preparation";
     state.preparationTotalFrames = 0;
+    state.cancelRequested = false;
     render(rootNode);
     try {
       const clip = await root.PMT_PREMIERE.captureSelectedClip();
+      if (state.cancelRequested) throw new Error("Preparation cancelled.");
       state.source = clip;
       state.media = null;
       state.range = null;
@@ -1199,6 +1209,7 @@
           addLog("OpenCV reading unavailable: " + (nativeStatus.error || "addon not loaded"));
         } else {
           state.media = await root.PMT_NATIVE.inspectMedia(clip.mediaPath);
+          if (state.cancelRequested) throw new Error("Preparation cancelled.");
           addLog("OpenCV media: " + mediaLabel(state.media) + ".");
         }
       }
@@ -1208,7 +1219,7 @@
       }
       await prepareSourceRange(rootNode);
     } catch (error) {
-      addLog("Error: " + (error && error.message ? error.message : String(error)));
+      addLog(isTrackingCancellation(error) ? "Preparation cancelled by user." : "Error: " + (error && error.message ? error.message : String(error)));
     } finally {
       state.busy = false;
       state.operation = "";
@@ -1574,6 +1585,24 @@
     }
   }
 
+  // Stop source preparation at the next safe boundary and cancel its native cache worker when it has started.
+  async function cancelPreparation(rootNode) {
+    if (state.operation !== "preparation" || state.cancelRequested) {
+      return;
+    }
+    state.cancelRequested = true;
+    addLog("Preparation cancellation requested.");
+    render(rootNode);
+    if (!state.analysisTaskId) {
+      return;
+    }
+    try {
+      await root.PMT_NATIVE.cancelTracking(state.analysisTaskId);
+    } catch (error) {
+      addLog("Preparation cancellation request failed: " + (error && error.message ? error.message : String(error)));
+    }
+  }
+
   // Drain native progress batches until the worker returns its final trajectory or a useful failure message.
   async function collectLiveTracking(rootNode, taskId) {
     while (true) {
@@ -1892,7 +1921,7 @@
       state.language = state.language === "en" ? "fr" : "en";
       render(rootNode);
     });
-    bindButton(rootNode, "pmt-capture-source", () => captureAndPrepare(rootNode));
+    bindButton(rootNode, "pmt-capture-source", () => state.operation === "preparation" ? cancelPreparation(rootNode) : captureAndPrepare(rootNode));
     bindButton(rootNode, "pmt-choose-source-media", () => chooseSourceMedia(rootNode));
     bindButton(rootNode, "pmt-mode-point", () => {
       const hadTracking = Boolean(state.tracking);

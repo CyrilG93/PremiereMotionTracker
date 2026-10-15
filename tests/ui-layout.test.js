@@ -229,6 +229,12 @@ test("point tracking exposes a real native cancellation control while analysis i
   assert.match(nativeSource, /async function cancelTracking/);
 });
 
+test("source preparation can be stopped through its transformed capture button", () => {
+  assert.match(uiSource, /stopPreparation/);
+  assert.match(uiSource, /cancelPreparation\(rootNode\)/);
+  assert.match(uiSource, /Preparation cancellation requested/);
+});
+
 test("the header exposes the active language, product page badge, and enabled apply emphasis", () => {
   assert.match(uiSource, /language: "en"/);
   assert.match(uiSource, /languageButton: "EN"/);

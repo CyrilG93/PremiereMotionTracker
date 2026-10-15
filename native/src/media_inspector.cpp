@@ -118,19 +118,15 @@ bool decodePreviewCacheWithFfmpeg(const std::string& mediaPath, double startSeco
 #endif
 }
 
-// Reopen compact cached PNGs from their local first image; source frame numbers are metadata, not image-sequence offsets.
-bool openCachedImageSequence(cv::VideoCapture& capture, const std::string& previewFolder) {
-    if (previewFolder.empty()) return false;
-    capture.release();
-    const std::string pattern = (std::filesystem::path(previewFolder) / "pmt-native-track-%d.png").string();
-    if (!capture.open(pattern, cv::CAP_IMAGES)) return false;
-    return capture.set(cv::CAP_PROP_POS_FRAMES, 0.0);
+// Confirm that this exact source frame was prepared before preferring the UXP-owned cache.
+bool hasLocalPreviewCache(const std::string& previewFolder, std::int64_t firstFrame) {
+    const std::filesystem::path firstPreview = std::filesystem::path(previewFolder) / ("pmt-native-track-" + std::to_string(firstFrame) + ".png");
+    return !previewFolder.empty() && std::filesystem::exists(firstPreview);
 }
 
-// Use the completed local cache for tracking so a NAS is read only once during preparation.
-bool openLocalPreviewCache(cv::VideoCapture& capture, const std::string& previewFolder, std::int64_t firstFrame) {
-    const std::filesystem::path firstPreview = std::filesystem::path(previewFolder) / ("pmt-native-track-" + std::to_string(firstFrame) + ".png");
-    return std::filesystem::exists(firstPreview) && openCachedImageSequence(capture, previewFolder);
+// Read cached PNGs by their source-frame number instead of relying on OpenCV's fragile image-sequence seeking.
+cv::Mat readCachedPreviewFrame(const std::string& previewFolder, std::int64_t frame) {
+    return cv::imread((std::filesystem::path(previewFolder) / ("pmt-native-track-" + std::to_string(frame) + ".png")).string(), cv::IMREAD_COLOR);
 }
 
 // Save a compact original-media frame while OpenCV already owns the sequential decoder position.
@@ -433,12 +429,19 @@ std::vector<MediaTrackingSample> trackMedia(
     if (lastFrame - firstFrame + 1 > maximumTrackedFrames) {
         throw std::runtime_error("La plage dépasse 3600 images ; réduisez les In/Out avant l’analyse.");
     }
-    if (!openLocalPreviewCache(capture, previewFolder, firstFrame) && !capture.set(cv::CAP_PROP_POS_FRAMES, static_cast<double>(firstFrame)) && !openCachedImageSequence(capture, previewFolder)) {
+    const bool useLocalCache = hasLocalPreviewCache(previewFolder, firstFrame);
+    if (!useLocalCache && !capture.set(cv::CAP_PROP_POS_FRAMES, static_cast<double>(firstFrame))) {
         throw std::runtime_error("OpenCV ne peut pas atteindre le début de la plage demandée.");
     }
 
-    cv::Mat decodedFrame;
-    if (!capture.read(decodedFrame) && (!openCachedImageSequence(capture, previewFolder) || !capture.read(decodedFrame))) {
+    const auto readTrackingFrame = [&capture, &previewFolder, useLocalCache](std::int64_t frame) {
+        if (useLocalCache) return readCachedPreviewFrame(previewFolder, frame);
+        cv::Mat decoded;
+        capture.read(decoded);
+        return decoded;
+    };
+    cv::Mat decodedFrame = readTrackingFrame(firstFrame);
+    if (decodedFrame.empty()) {
         throw std::runtime_error("OpenCV ne peut pas lire la première image de la plage demandée.");
     }
     cv::Mat previousGray = toGray(decodedFrame);
@@ -453,7 +456,9 @@ std::vector<MediaTrackingSample> trackMedia(
     if (progressCallback && !progressCallback(samples.back())) {
         throw std::runtime_error("Tracking cancelled.");
     }
-    for (std::int64_t frame = firstFrame + 1; frame <= lastFrame && capture.read(decodedFrame); frame += 1) {
+    for (std::int64_t frame = firstFrame + 1; frame <= lastFrame; frame += 1) {
+        decodedFrame = readTrackingFrame(frame);
+        if (decodedFrame.empty()) break;
         cv::Mat currentGray = toGray(decodedFrame);
         const std::vector<cv::Point2f> sourcePoint { trackedPoint };
         std::vector<cv::Point2f> forwardPoint;
@@ -528,11 +533,18 @@ std::vector<SurfaceTrackingSample> trackSurface(
     if (lastFrame - firstFrame + 1 > maximumTrackedFrames) {
         throw std::runtime_error("La plage dépasse 3600 images ; réduisez les In/Out avant l’analyse.");
     }
-    if (!openLocalPreviewCache(capture, previewFolder, firstFrame) && !capture.set(cv::CAP_PROP_POS_FRAMES, static_cast<double>(firstFrame)) && !openCachedImageSequence(capture, previewFolder)) {
+    const bool useLocalCache = hasLocalPreviewCache(previewFolder, firstFrame);
+    if (!useLocalCache && !capture.set(cv::CAP_PROP_POS_FRAMES, static_cast<double>(firstFrame))) {
         throw std::runtime_error("OpenCV ne peut pas atteindre le début de la plage demandée.");
     }
-    cv::Mat decodedFrame;
-    if (!capture.read(decodedFrame) && (!openCachedImageSequence(capture, previewFolder) || !capture.read(decodedFrame))) {
+    const auto readTrackingFrame = [&capture, &previewFolder, useLocalCache](std::int64_t frame) {
+        if (useLocalCache) return readCachedPreviewFrame(previewFolder, frame);
+        cv::Mat decoded;
+        capture.read(decoded);
+        return decoded;
+    };
+    cv::Mat decodedFrame = readTrackingFrame(firstFrame);
+    if (decodedFrame.empty()) {
         throw std::runtime_error("OpenCV ne peut pas lire la première image de la plage demandée.");
     }
     cv::Mat previousGray = toGray(decodedFrame);
@@ -562,7 +574,9 @@ std::vector<SurfaceTrackingSample> trackSurface(
         throw std::runtime_error("Tracking cancelled.");
     }
     const cv::Size searchWindow(searchRadius * 2 + 1, searchRadius * 2 + 1);
-    for (std::int64_t frame = firstFrame + 1; frame <= lastFrame && capture.read(decodedFrame); frame += 1) {
+    for (std::int64_t frame = firstFrame + 1; frame <= lastFrame; frame += 1) {
+        decodedFrame = readTrackingFrame(frame);
+        if (decodedFrame.empty()) break;
         cv::Mat currentGray = toGray(decodedFrame);
         if (trackedFeatures.size() < 8) {
             // A previous dropout left no points to flow; flag this frame and wait until texture returns.

@@ -53,7 +53,7 @@ The plugin adds a Transform effect and Position keyframes to every selected dest
 3. Click **Analyze**, then review both points and the confidence markers.
 4. Select one or more destination clips. Choose whether to apply **Rotation** and **Scale**, then click **Apply trajectory**.
 
-Position follows the first point. Rotation and uniform scale are measured from the line between the two points. Choose well-separated features on the same object and keep both visible throughout the shot. To change the reference, use **Reset corners**, prepare the source again, and repeat the analysis.
+Position follows the first point, and the destination turns and scales around it. Rotation and uniform scale are measured from the line between the two points. Choose well-separated features on the same object and keep both visible throughout the shot. To change the reference, use **Reset corners**, prepare the source again, and repeat the analysis.
 
 ## Track a Surface
 

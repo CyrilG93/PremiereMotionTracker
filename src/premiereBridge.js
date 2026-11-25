@@ -1078,6 +1078,30 @@
     const targetFrame = looksNormalized ? await getTargetMediaFrame(context, item) : null;
     const motionScale = looksNormalized ? await getTargetMotionScale(item, inPoint) : null;
     const positionScale = getPositionScale(context, looksNormalized, targetFrame, motionScale);
+    let trackedPivot = null;
+    let destinationPivot = null;
+    let sourceMotionScale = null;
+    if (options && options.sourceFrame && targetKeyframes[0].referencePoint && (applyRotation || applyScale)) {
+      // Convert the source reference and the target Transform position into the same sequence pixel space.
+      const sourceTime = await handles.source.item.getInPoint();
+      const sourceGeometry = await getTargetMotionGeometry(context, handles.source.item, sourceTime, options.sourceFrame);
+      const targetSize = targetFrame || await getTargetMediaFrame(context, item);
+      const targetGeometry = await getTargetMotionGeometry(context, item, inPoint, targetSize);
+      const reference = targetKeyframes[0].referencePoint;
+      sourceMotionScale = {
+        x: Number(options.sourceFrame.width) * sourceGeometry.scale.x / (100 * Number(context.frameSize.width)),
+        y: Number(options.sourceFrame.height) * sourceGeometry.scale.y / (100 * Number(context.frameSize.height))
+      };
+      trackedPivot = {
+        x: sourceGeometry.position.x + (Number(reference.x) * Number(options.sourceFrame.width) - sourceGeometry.anchor.x) * sourceGeometry.scale.x / 100,
+        y: sourceGeometry.position.y + (Number(reference.y) * Number(options.sourceFrame.height) - sourceGeometry.anchor.y) * sourceGeometry.scale.y / 100
+      };
+      const localPosition = getHostPointPixels(initialPoint, targetSize);
+      destinationPivot = {
+        x: targetGeometry.position.x + (localPosition.x - targetGeometry.anchor.x) * targetGeometry.scale.x / 100,
+        y: targetGeometry.position.y + (localPosition.y - targetGeometry.anchor.y) * targetGeometry.scale.y / 100
+      };
+    }
     executeActions(context.project, [
       () => params.position.createSetTimeVaryingAction(true),
       ...(applyScale ? [() => params.scale.createSetTimeVaryingAction(true)] : []),
@@ -1087,8 +1111,14 @@
     const actions = [];
     targetKeyframes.forEach((sample) => {
       const time = createTimeAtTrackedOffset(context.app, inPoint, sample.clipOffsetSeconds);
+      const movement = trackedPivot
+        ? root.PMT_TRAJECTORY.compensateTrackingPivot(Object.assign({}, sample, {
+          dx: Number(sample.dx) * sourceMotionScale.x,
+          dy: Number(sample.dy) * sourceMotionScale.y
+        }), trackedPivot, destinationPivot, context.frameSize)
+        : sample;
       actions.push(() => {
-        const keyframe = params.position.createKeyframe(createPoint(context.app, initialPoint.x + Number(sample.dx) * positionScale.x, initialPoint.y + Number(sample.dy) * positionScale.y));
+        const keyframe = params.position.createKeyframe(createPoint(context.app, initialPoint.x + Number(movement.dx) * positionScale.x, initialPoint.y + Number(movement.dy) * positionScale.y));
         keyframe.position = time;
         return params.position.createAddKeyframeAction(keyframe);
       });

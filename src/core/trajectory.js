@@ -220,11 +220,28 @@
       rotation += delta;
       previousAngle = angle;
       return { frame: Number(sample.frame), seconds: Number(sample.seconds), confidence: Number(sample.confidence),
+        // Keep the tracked pivot so the destination can orbit around it instead of its own centre.
+        referencePoint: { x: Number(first.corners[0].x), y: Number(first.corners[0].y) },
         dx: Number(sample.corners[0].x) - Number(first.corners[0].x),
         dy: Number(sample.corners[0].y) - Number(first.corners[0].y),
         scale: options && options.scale === false ? 1 : currentDistance / distance,
         rotation: options && options.rotation === false ? 0 : rotation * 180 / Math.PI };
     });
+  }
+
+  // Translate the target pivot along the circular/scaled path around the tracked reference point.
+  function compensateTrackingPivot(sample, reference, pivot, frame) {
+    const width = Number(frame && frame.width);
+    const height = Number(frame && frame.height);
+    if (!(width > 0 && height > 0) || !reference || !pivot) throw new Error("La géométrie du tracking est invalide.");
+    const x = Number(pivot.x) - Number(reference.x);
+    const y = Number(pivot.y) - Number(reference.y);
+    const angle = Number(sample.rotation) * Math.PI / 180;
+    const scale = Number(sample.scale);
+    if (![x, y, angle, scale].every(Number.isFinite)) throw new Error("La géométrie du tracking est invalide.");
+    const rotatedX = scale * (x * Math.cos(angle) - y * Math.sin(angle));
+    const rotatedY = scale * (x * Math.sin(angle) + y * Math.cos(angle));
+    return { dx: Number(sample.dx) + (rotatedX - x) / width, dy: Number(sample.dy) + (rotatedY - y) / height };
   }
 
   // Convert sequence-normalized motion into a target clip's normalized Transform coordinate space.
@@ -359,6 +376,7 @@
     buildSurfaceMotionKeyframes,
     combinePointTracks,
     buildTwoPointKeyframes,
+    compensateTrackingPivot,
     computeTargetPositionScale,
     computeCornerPinPoint,
     replaceTrackingTail,

@@ -265,3 +265,19 @@ test("two-point rotation unwraps across 180 degrees and rejects coincident point
   coincident.corners[1] = coincident.corners[0];
   assert.throws(() => trajectoryApi.buildTwoPointKeyframes([coincident, sample(1, 0)], { width: 100, height: 100 }));
 });
+
+// A stationary first point must remain fixed when the destination rotates around it.
+test("two-point pivot compensation follows rotation and optional scale", () => {
+  const frame = {width: 200, height: 100};
+  const tracked = {x: 50, y: 50};
+  const pivot = {x: 100, y: 50};
+  const rotation = trajectoryApi.compensateTrackingPivot({dx: 0, dy: 0, scale: 1, rotation: 90}, tracked, pivot, frame);
+  assert.ok(Math.abs(rotation.dx + 0.25) < 1e-10);
+  assert.ok(Math.abs(rotation.dy - 0.5) < 1e-10);
+  const zoom = trajectoryApi.compensateTrackingPivot({dx: 0.1, dy: 0, scale: 2, rotation: 0}, tracked, pivot, frame);
+  assert.ok(Math.abs(zoom.dx - 0.35) < 1e-10);
+  assert.equal(zoom.dy, 0);
+  const identity = trajectoryApi.compensateTrackingPivot({dx: 0.1, dy: -0.2, scale: 1, rotation: 0}, tracked, pivot, frame);
+  assert.equal(identity.dx, 0.1);
+  assert.equal(identity.dy, -0.2);
+});

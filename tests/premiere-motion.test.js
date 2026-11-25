@@ -15,12 +15,14 @@ function loadBridge() {
     waitForHostPaint = async () => {};
     getKeyframesForTarget = (start, end, keys) => keys.map((key) => Object.assign({clipOffsetSeconds: key.seconds}, key));
     readMotionParamValue = async (param) => param.value;
-    getPositionScale = () => ({x: 1, y: 1});
+    getPositionScale = (context, normalized) => normalized || !context.frameSize ? ({x: 1, y: 1}) : ({x: context.frameSize.width, y: context.frameSize.height});
     createTimeAtTrackedOffset = (app, start, offset) => offset;
     createPoint = (app, x, y) => ({x, y});
-    root.testBridge = { applySurfaceMotionTrackingToItem, findSurfaceMotionParams };
+    getTargetMediaFrame = async () => ({width: 200, height: 100});
+    getTargetMotionGeometry = async (context, item) => item.geometry;
+    root.testBridge = { applySurfaceMotionTrackingToItem, findSurfaceMotionParams, setSource: (item) => { handles.source = {item}; } };
   `;
-  const window = {};
+  const window = { PMT_TRAJECTORY: require("../src/core/trajectory.js") };
   vm.runInNewContext(source.replace("  root.PMT_PREMIERE = {", injection + "\n  root.PMT_PREMIERE = {"), { window, setTimeout });
   return window.testBridge;
 }
@@ -62,4 +64,24 @@ test("disabled scale and rotation do not create their keyframes", async () => {
   const log = await apply({scale: false, rotation: false});
   assert.equal(log.some((action) => action.name === "Scale Height" || action.name === "Rotation"), false);
   assert.equal(log.filter((action) => action.name === "Position" && action.type === "key").length, 2);
+});
+
+// Verify that the bridge applies the pivot compensation to actual Position keyframe values.
+test("Transform position follows the tracked pivot while rotating", async () => {
+  const log = [];
+  const params = [parameter("Position", {x: 100, y: 50}), parameter("Scale Height", 100), parameter("Rotation", 0)];
+  const component = { getParamCount: () => params.length, getParam: (index) => params[index] };
+  const chain = { component, getComponentCount: () => 0, createInsertComponentAction: () => ({type: "insert"}) };
+  const geometry = {position: {x: 100, y: 50}, anchor: {x: 100, y: 50}, scale: {x: 100, y: 100}};
+  const item = {geometry, getComponentChain: async () => chain, getInPoint: async () => ({}), getOutPoint: async () => ({}), getName: async () => "Target"};
+  const bridge = loadBridge();
+  bridge.setSource({geometry, getInPoint: async () => ({})});
+  const project = {executeTransaction: (callback) => callback({addAction: (action) => log.push(action)})};
+  await bridge.applySurfaceMotionTrackingToItem({project, app: {}, frameSize: {width: 200, height: 100}}, item, [
+    {seconds: 0, dx: 0, dy: 0, scale: 1, rotation: 0, referencePoint: {x: 0.25, y: 0.5}},
+    {seconds: 1, dx: 0, dy: 0, scale: 1, rotation: 90, referencePoint: {x: 0.25, y: 0.5}}
+  ], {rotation: true, scale: false, sourceFrame: {width: 200, height: 100}});
+  const keys = log.filter((action) => action.name === "Position" && action.type === "key");
+  assert.ok(Math.abs(keys[1].value.x - 50) < 1e-10);
+  assert.ok(Math.abs(keys[1].value.y - 100) < 1e-10);
 });

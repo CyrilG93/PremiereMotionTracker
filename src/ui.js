@@ -1858,7 +1858,7 @@
       // Apply the exact reviewed point trajectory; users can now rely on their visible corrections directly.
       const trajectoryForApply = state.tracking;
       const twoPointMode = isTwoPointMode();
-      const options = { rotation: state.twoPointRotation, scale: state.twoPointScale };
+      const options = { rotation: state.twoPointRotation, scale: state.twoPointScale, sourceFrame: state.media };
       const keyframes = twoPointMode ? root.PMT_TRAJECTORY.buildTwoPointKeyframes(trajectoryForApply, state.media, options)
         : surfaceMode ? root.PMT_TRAJECTORY.buildSurfaceKeyframes(trajectoryForApply) : root.PMT_TRAJECTORY.buildPositionKeyframes(trajectoryForApply);
       const results = twoPointMode ? await root.PMT_PREMIERE.applySurfaceMotionTracking(keyframes, options)

@@ -472,7 +472,7 @@
         matches.position = param;
       } else if (!matches.rotation && (normalized.includes("rotation") || normalized.includes("rotate"))) {
         matches.rotation = param;
-      } else if (!matches.scale && (normalized === "scale" || normalized === "chelle")) {
+      } else if (!matches.scale && ["scale", "chelle", "scaleheight", "chellehauteur", "hauteurdchelle"].includes(normalized)) {
         matches.scale = param;
       }
     }
@@ -1056,19 +1056,22 @@
     const insertedComponent = await resolveInsertedTransform(updatedChain, preferredIndex, transform.matchName);
     const parameterResult = findSurfaceMotionParams(insertedComponent);
     const params = parameterResult.params;
-    if (!params.position || !params.scale || !params.rotation) {
-      throw new Error("Les paramètres Position, Échelle et Rotation de Transform sont introuvables. Paramètres exposés : " + (parameterResult.names.join(", ") || "aucun"));
+    // Transform exposes uniform scale as Scale Height; skip controls the user did not request.
+    const applyScale = !options || options.scale !== false;
+    const applyRotation = !options || options.rotation !== false;
+    if (!params.position || (applyScale && !params.scale) || (applyRotation && !params.rotation)) {
+      throw new Error("Les paramètres Transform demandés sont introuvables. Paramètres exposés : " + (parameterResult.names.join(", ") || "aucun"));
     }
     const inPoint = await item.getInPoint();
     const outPoint = await item.getOutPoint();
     const targetKeyframes = getKeyframesForTarget(inPoint, outPoint, keyframes);
     const positionValue = await readMotionParamValue(params.position, inPoint);
     const initialPoint = readPointValue(positionValue);
-    const scaleValue = await readMotionParamValue(params.scale, inPoint);
-    const initialScale = readScaleValue(scaleValue);
-    const rotationValue = await readMotionParamValue(params.rotation, inPoint);
-    const initialRotation = readScalarValue(rotationValue);
-    if (!initialPoint || !initialScale || initialScale.x <= 0 || initialScale.y <= 0 || initialRotation === null) {
+    const scaleValue = applyScale ? await readMotionParamValue(params.scale, inPoint) : null;
+    const initialScale = applyScale ? readScaleValue(scaleValue) : null;
+    const rotationValue = applyRotation ? await readMotionParamValue(params.rotation, inPoint) : null;
+    const initialRotation = applyRotation ? readScalarValue(rotationValue) : null;
+    if (!initialPoint || (applyScale && (!initialScale || initialScale.x <= 0 || initialScale.y <= 0)) || (applyRotation && initialRotation === null)) {
       throw new Error("Premiere n’a pas renvoyé les valeurs Transform initiales compatibles.");
     }
     const looksNormalized = Math.abs(initialPoint.x) <= 1.5 && Math.abs(initialPoint.y) <= 1.5;
@@ -1077,8 +1080,8 @@
     const positionScale = getPositionScale(context, looksNormalized, targetFrame, motionScale);
     executeActions(context.project, [
       () => params.position.createSetTimeVaryingAction(true),
-      ...(options && options.scale === false ? [] : [() => params.scale.createSetTimeVaryingAction(true)]),
-      ...(options && options.rotation === false ? [] : [() => params.rotation.createSetTimeVaryingAction(true)])
+      ...(applyScale ? [() => params.scale.createSetTimeVaryingAction(true)] : []),
+      ...(applyRotation ? [() => params.rotation.createSetTimeVaryingAction(true)] : [])
     ], "Motion Tracker : activer Transform Surface");
     await waitForHostPaint();
     const actions = [];
@@ -1089,12 +1092,12 @@
         keyframe.position = time;
         return params.position.createAddKeyframeAction(keyframe);
       });
-      if (!options || options.scale !== false) actions.push(() => {
+      if (applyScale) actions.push(() => {
         const keyframe = params.scale.createKeyframe(createScaledValue(context.app, scaleValue, initialScale, Number(sample.scale)));
         keyframe.position = time;
         return params.scale.createAddKeyframeAction(keyframe);
       });
-      if (!options || options.rotation !== false) actions.push(() => {
+      if (applyRotation) actions.push(() => {
         const keyframe = params.rotation.createKeyframe(initialRotation + Number(sample.rotation));
         keyframe.position = time;
         return params.rotation.createAddKeyframeAction(keyframe);

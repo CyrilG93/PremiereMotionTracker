@@ -191,9 +191,8 @@ test("manifest v6 loads the platform Hybrid addon and exposes its startup diagno
   assert.equal(manifest.manifestVersion, 6);
   assert.equal(manifest.requiredPermissions.enableAddon, true);
   assert.equal(manifest.requiredPermissions.localFileSystem, "fullAccess");
-  assert.equal(manifest.addon.name, "premiere-motion-tracker-" + manifest.version + ".uxpaddon");
-  // Keep the asserted Hybrid module filename aligned with the manifest version.
-  const addonPattern = new RegExp('await require\\("premiere-motion-tracker-' + manifest.version.replace(/\./g, '\\.') + '\\.uxpaddon"\\)');
+  // A panel-only update may reuse the existing native binary.
+  const addonPattern = new RegExp('await require\\("' + manifest.addon.name.replace(/\./g, '\\.') + '"\\)');
   assert.match(nativeSource, addonPattern);
   assert.match(nativeSource, /loadedAddon\.runSelfTest\(\)/);
   assert.match(nativeSource, /addon\.inspectMedia/);

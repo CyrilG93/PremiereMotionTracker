@@ -1042,7 +1042,7 @@
   }
 
   // Add Transform keys derived from a tracked surface while deliberately retaining the target's aspect ratio.
-  async function applySurfaceMotionTrackingToItem(context, item, keyframes) {
+  async function applySurfaceMotionTrackingToItem(context, item, keyframes, options) {
     const chain = await item.getComponentChain();
     const previousCount = chain && typeof chain.getComponentCount === "function" ? chain.getComponentCount() : 0;
     const transform = await createTransformComponent(context.app);
@@ -1077,8 +1077,8 @@
     const positionScale = getPositionScale(context, looksNormalized, targetFrame, motionScale);
     executeActions(context.project, [
       () => params.position.createSetTimeVaryingAction(true),
-      () => params.scale.createSetTimeVaryingAction(true),
-      () => params.rotation.createSetTimeVaryingAction(true)
+      ...(options && options.scale === false ? [] : [() => params.scale.createSetTimeVaryingAction(true)]),
+      ...(options && options.rotation === false ? [] : [() => params.rotation.createSetTimeVaryingAction(true)])
     ], "Motion Tracker : activer Transform Surface");
     await waitForHostPaint();
     const actions = [];
@@ -1089,12 +1089,12 @@
         keyframe.position = time;
         return params.position.createAddKeyframeAction(keyframe);
       });
-      actions.push(() => {
+      if (!options || options.scale !== false) actions.push(() => {
         const keyframe = params.scale.createKeyframe(createScaledValue(context.app, scaleValue, initialScale, Number(sample.scale)));
         keyframe.position = time;
         return params.scale.createAddKeyframeAction(keyframe);
       });
-      actions.push(() => {
+      if (!options || options.rotation !== false) actions.push(() => {
         const keyframe = params.rotation.createKeyframe(initialRotation + Number(sample.rotation));
         keyframe.position = time;
         return params.rotation.createAddKeyframeAction(keyframe);
@@ -1196,7 +1196,7 @@
   }
 
   // Apply a tracked surface as translation, rotation and uniform scale instead of a Corner Pin warp.
-  async function applySurfaceMotionTracking(keyframes) {
+  async function applySurfaceMotionTracking(keyframes, options) {
     if (!getHandleStatus().source) {
       throw new Error("Capturez d’abord le clip source.");
     }
@@ -1218,7 +1218,7 @@
     }
     const results = [];
     for (const item of targets) {
-      results.push(await applySurfaceMotionTrackingToItem(context, item, keyframes));
+      results.push(await applySurfaceMotionTrackingToItem(context, item, keyframes, options));
     }
     return results;
   }

@@ -5,7 +5,8 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "$0")" && pwd)"
 project_dir="$(cd "$script_dir/.." && pwd)"
 version="$(node -p "require('$project_dir/package.json').version")"
-addon_name="premiere-motion-tracker-${version}.uxpaddon"
+# Use the manifest addon when the panel changes without a native rebuild.
+addon_name="$(node -p "require('$project_dir/manifest.json').addon.name")"
 source_addon="$project_dir/mac/arm64/$addon_name"
 source_ffmpeg="$project_dir/mac/arm64/bin/ffmpeg"
 source_ffmpeg_license="$project_dir/mac/arm64/bin/FFMPEG-LICENSE.txt"

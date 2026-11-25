@@ -1,9 +1,9 @@
 # Premiere Motion Tracker
 
-Premiere Motion Tracker tracks a point or a flat surface in a Premiere Pro sequence and applies that motion to one or more other clips.
+Premiere Motion Tracker tracks points or a flat surface in a Premiere Pro sequence and applies that motion to one or more other clips.
 
 Use Point mode to transfer position movement to a logo, title, image, or video. Use Surface mode to place a clip onto a tracked four-corner surface with Corner Pin.
-Use Reverse tracking to keep a tracked point centred in its original clip.
+Use **2 points** to transfer position with optional rotation and scale. Use Reverse tracking to keep a tracked point centred in its original clip.
 
 ## Compatibility
 
@@ -45,6 +45,15 @@ For Point and Surface tracking, the source and destination clips must be in the 
 9. Click **Apply trajectory**.
 
 The plugin adds a Transform effect and Position keyframes to every selected destination clip. The tracking timing is preserved; if a destination clip ends earlier, only the keys that fit before its Out point are added. Use Premiere Pro's **Edit > Undo** to remove the applied result.
+
+## Track Two Points
+
+1. Capture and prepare the source clip, then choose **2 points**.
+2. Choose a reference frame and click two distinct, visible features. Drag the numbered handles to adjust them.
+3. Click **Analyze**, then review both points and the confidence markers.
+4. Select one or more destination clips. Choose whether to apply **Rotation** and **Scale**, then click **Apply trajectory**.
+
+Position follows the first point. Rotation and uniform scale are measured from the line between the two points. Choose well-separated features on the same object and keep both visible throughout the shot. To change the reference, use **Reset corners**, prepare the source again, and repeat the analysis.
 
 ## Track a Surface
 

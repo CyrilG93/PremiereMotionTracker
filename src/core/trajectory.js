@@ -174,6 +174,59 @@
     });
   }
 
+  // Combine independently tracked points by source frame and reject incomplete measurements.
+  function combinePointTracks(first, second) {
+    if (!Array.isArray(first) || !Array.isArray(second) || first.length !== second.length) {
+      throw new Error("Les deux trajectoires ne contiennent pas le même nombre d’images.");
+    }
+    const byFrame = new Map(second.map((sample) => [Number(sample.frame), sample]));
+    return (Array.isArray(first) ? first : []).map((sample) => {
+      const other = byFrame.get(Number(sample.frame));
+      if (!other || Math.abs(Number(sample.seconds) - Number(other.seconds)) > 0.0001) {
+        throw new Error("Les deux trajectoires ne correspondent pas aux mêmes images.");
+      }
+      return Object.assign({}, sample, {
+        corners: [{ x: Number(sample.x), y: Number(sample.y) }, { x: Number(other.x), y: Number(other.y) }],
+        valid: sample.valid !== false && other.valid !== false,
+        confidence: Math.min(Number(sample.confidence), Number(other.confidence))
+      });
+    });
+  }
+
+  // Measure rotation in source pixels and unwrap angles across full turns.
+  function buildTwoPointKeyframes(samples, frameSize, options) {
+    const width = Number(frameSize && frameSize.width);
+    const height = Number(frameSize && frameSize.height);
+    if (!(width > 0 && height > 0)) throw new Error("La taille du média source est invalide.");
+    const valid = (Array.isArray(samples) ? samples : []).filter((sample) => sample && sample.valid !== false
+      && Number.isFinite(Number(sample.seconds)) && Array.isArray(sample.corners) && sample.corners.length === 2
+      && sample.corners.every((point) => Number.isFinite(Number(point.x)) && Number.isFinite(Number(point.y))));
+    if (valid.length < 2) throw new Error("Le tracking doit contenir au moins deux images valides.");
+    const vector = (sample) => ({ x: (sample.corners[1].x - sample.corners[0].x) * width, y: (sample.corners[1].y - sample.corners[0].y) * height });
+    const initial = vector(valid[0]);
+    const distance = Math.hypot(initial.x, initial.y);
+    if (distance < 1) throw new Error("Les deux points de référence sont trop proches.");
+    let previousAngle = Math.atan2(initial.y, initial.x);
+    let rotation = 0;
+    const first = valid[0];
+    return valid.map((sample) => {
+      const current = vector(sample);
+      const currentDistance = Math.hypot(current.x, current.y);
+      if (currentDistance < 1) throw new Error("Les deux points suivis sont trop proches.");
+      const angle = Math.atan2(current.y, current.x);
+      let delta = angle - previousAngle;
+      while (delta > Math.PI) delta -= 2 * Math.PI;
+      while (delta < -Math.PI) delta += 2 * Math.PI;
+      rotation += delta;
+      previousAngle = angle;
+      return { frame: Number(sample.frame), seconds: Number(sample.seconds), confidence: Number(sample.confidence),
+        dx: Number(sample.corners[0].x) - Number(first.corners[0].x),
+        dy: Number(sample.corners[0].y) - Number(first.corners[0].y),
+        scale: options && options.scale === false ? 1 : currentDistance / distance,
+        rotation: options && options.rotation === false ? 0 : rotation * 180 / Math.PI };
+    });
+  }
+
   // Convert sequence-normalized motion into a target clip's normalized Transform coordinate space.
   function computeTargetPositionScale(sequenceFrame, targetFrame, motionScale) {
     const sequenceWidth = Number(sequenceFrame && sequenceFrame.width);
@@ -304,6 +357,8 @@
     buildSurfaceKeyframes,
     fitKeyframesToClipDuration,
     buildSurfaceMotionKeyframes,
+    combinePointTracks,
+    buildTwoPointKeyframes,
     computeTargetPositionScale,
     computeCornerPinPoint,
     replaceTrackingTail,

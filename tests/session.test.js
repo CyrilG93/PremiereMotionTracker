@@ -231,3 +231,37 @@ test("replaceTrackingTail also preserves ordered surface samples around a correc
   assert.deepEqual(merged.map((sample) => sample.frame), [10, 11, 12]);
   assert.equal(merged[1].corners[0].x, 0.21);
 });
+
+// Verify two-point motion in pixel space and continuity through the 180-degree boundary.
+test("two-point tracking derives translation, rotation and scale on non-square frames", () => {
+  const first = [
+    { frame: 1, seconds: 0, x: 0.2, y: 0.3, confidence: 0.9 },
+    { frame: 2, seconds: 1, x: 0.3, y: 0.4, confidence: 0.8 }
+  ];
+  const second = [
+    { frame: 1, seconds: 0, x: 0.3, y: 0.3, confidence: 0.8 },
+    { frame: 2, seconds: 1, x: 0.3, y: 0.8, confidence: 0.7 }
+  ];
+  const samples = trajectoryApi.combinePointTracks(first, second);
+  const keys = trajectoryApi.buildTwoPointKeyframes(samples, { width: 200, height: 100 });
+  assert.ok(Math.abs(keys[1].dx - 0.1) < 1e-10);
+  assert.ok(Math.abs(keys[1].rotation - 90) < 1e-10);
+  assert.ok(Math.abs(keys[1].scale - 2) < 1e-10);
+  assert.equal(samples[1].confidence, 0.7);
+  const disabled = trajectoryApi.buildTwoPointKeyframes(samples, { width: 200, height: 100 }, { rotation: false, scale: false });
+  assert.equal(disabled[1].rotation, 0);
+  assert.equal(disabled[1].scale, 1);
+  assert.throws(() => trajectoryApi.combinePointTracks(first, second.slice(0, 1)));
+});
+
+test("two-point rotation unwraps across 180 degrees and rejects coincident points", () => {
+  const sample = (frame, degrees) => ({ frame, seconds: frame, valid: true, confidence: 1, corners: [
+    { x: 0.5, y: 0.5 },
+    { x: 0.5 + 0.2 * Math.cos(degrees * Math.PI / 180), y: 0.5 + 0.2 * Math.sin(degrees * Math.PI / 180) }
+  ] });
+  const keys = trajectoryApi.buildTwoPointKeyframes([sample(0, 170), sample(1, -170)], { width: 100, height: 100 });
+  assert.ok(Math.abs(keys[1].rotation - 20) < 1e-9);
+  const coincident = sample(0, 0);
+  coincident.corners[1] = coincident.corners[0];
+  assert.throws(() => trajectoryApi.buildTwoPointKeyframes([coincident, sample(1, 0)], { width: 100, height: 100 }));
+});

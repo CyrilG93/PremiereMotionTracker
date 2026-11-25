@@ -26,6 +26,8 @@
     searchRadius: 10,
     surfaceFeatureCount: 240,
     trackingMode: "point",
+    twoPointRotation: true,
+    twoPointScale: true,
     referencePoint: null,
     referenceCorners: [],
     referenceSeconds: 0,
@@ -73,6 +75,12 @@
       trackingMode: "Tracking mode",
       pointMode: "Point",
       surfaceMode: "Surface",
+      twoPointMode: "2 points",
+      twoPointHelp: "Select two distinct points, then drag the handles to adjust them.",
+      twoPointReview: "Review both points. Reset the selection to choose new points.",
+      twoPointApplyHelp: "Apply Position and the selected rotation and scale to Transform.",
+      twoPointRotation: "Rotation",
+      twoPointScale: "Scale",
       surfaceHelp: "Click the four corners in order, then drag each blue handle independently to refine the surface.",
       resetSurface: "Reset corners",
       readyToAnalyze: "Ready to analyze the In/Out range.",
@@ -155,6 +163,12 @@
       trackingMode: "Mode de tracking",
       pointMode: "Point",
       surfaceMode: "Surface",
+      twoPointMode: "2 points",
+      twoPointHelp: "Sélectionnez deux points distincts, puis ajustez-les en déplaçant les poignées.",
+      twoPointReview: "Vérifiez les deux points. Réinitialisez la sélection pour choisir de nouveaux points.",
+      twoPointApplyHelp: "Applique Position et les options Rotation et Échelle à Transform.",
+      twoPointRotation: "Rotation",
+      twoPointScale: "Échelle",
       surfaceHelp: "Cliquez les quatre coins dans l’ordre, puis déplacez chaque poignée bleue indépendamment pour ajuster la surface.",
       resetSurface: "Réinitialiser les coins",
       readyToAnalyze: "Prêt à analyser la plage In/Out.",
@@ -325,9 +339,14 @@
     return state.trackingMode === "surface";
   }
 
-  // Surface analysis is enabled only after the user has deliberately placed all four corners.
+  // Two-point mode reuses the numbered handles used by the surface preview.
+  function isTwoPointMode() { return state.trackingMode === "two-point"; }
+
+  function hasMultiplePoints() { return isSurfaceMode() || isTwoPointMode(); }
+
+  // Enable analysis only after all reference points have been selected.
   function hasTrackingReference() {
-    return isSurfaceMode() ? state.referenceCorners.length === 4 : Boolean(state.referencePoint);
+    return isTwoPointMode() ? state.referenceCorners.length === 2 : isSurfaceMode() ? state.referenceCorners.length === 4 : Boolean(state.referencePoint);
   }
 
   // Format one captured clip for compact display in a docked panel.
@@ -732,6 +751,8 @@
       : (nativeStatus.loading ? t("loading") : t("unavailable"));
     const canPrepare = Boolean(state.source && !state.busy);
     const surfaceMode = isSurfaceMode();
+    const twoPointMode = isTwoPointMode();
+    const multiPointMode = hasMultiplePoints();
     const canAnalyze = Boolean(canPrepare && state.media && state.range && hasInitialPreview() && hasTrackingReference());
     const canApplyTracking = Boolean(canPrepare && state.tracking && state.tracking.length >= 2 && state.range && state.range.sequenceId === state.source.sequenceId);
     const canPlayPreview = Boolean(!state.busy && ((state.previewVideo && !state.videoUnavailable) || (state.trackingPreview && state.trackingPreview.frames.length > 1)));
@@ -743,15 +764,15 @@
     const canRetrack = Boolean(!state.busy && hasCorrection && state.tracking && state.tracking.length > 1 && Number(playbackFrame.seconds) < Number(state.tracking[state.tracking.length - 1].seconds));
     const uncertainIndexes = getPreviewUncertainIndexes();
     const currentConfidence = confidencePercent(playbackFrame);
-    const previewSurfaceCorners = surfaceMode ? surfaceCornersForPreview(playbackFrame) : (state.tracking && playbackFrame ? playbackFrame.corners : state.referenceCorners);
+    const previewSurfaceCorners = multiPointMode ? (state.tracking ? surfaceCornersForPreview(playbackFrame) : state.referenceCorners) : (state.tracking && playbackFrame ? playbackFrame.corners : state.referenceCorners);
     const previewContent = playbackFrame
-      ? '<div class="pmt-preview-stage"><img class="pmt-preview-buffer pmt-preview-buffer-active" id="pmt-tracking-image-a" src="' + escapeHtml(playbackFrame.url) + '" alt="' + escapeHtml(t("trackingPreviewAlt")) + '"><img class="pmt-preview-buffer" id="pmt-tracking-image-b" alt=""></div>' + (surfaceMode ? (Array.isArray(previewSurfaceCorners) ? previewSurfaceCorners.map(searchAreaMarkup).join("") : "") + surfaceCornersMarkup(previewSurfaceCorners, true) : searchAreaMarkup(displayedPoint) + '<div class="pmt-tracking-point" id="pmt-preview-point" style="left:' + (Number(displayedPoint.x) * 100).toFixed(3) + '%;top:' + (Number(displayedPoint.y) * 100).toFixed(3) + '%"></div>') + '<div class="pmt-preview-status" id="pmt-preview-status">' + escapeHtml(t("trackingPreview", { current: state.previewFrameIndex + 1, total: state.trackingPreview.frames.length, confidence: currentConfidence })) + '</div>'
+      ? '<div class="pmt-preview-stage"><img class="pmt-preview-buffer pmt-preview-buffer-active" id="pmt-tracking-image-a" src="' + escapeHtml(playbackFrame.url) + '" alt="' + escapeHtml(t("trackingPreviewAlt")) + '"><img class="pmt-preview-buffer" id="pmt-tracking-image-b" alt=""></div>' + (multiPointMode ? (Array.isArray(previewSurfaceCorners) ? previewSurfaceCorners.map(searchAreaMarkup).join("") : "") + surfaceCornersMarkup(previewSurfaceCorners, !twoPointMode || !state.tracking) : searchAreaMarkup(displayedPoint) + '<div class="pmt-tracking-point" id="pmt-preview-point" style="left:' + (Number(displayedPoint.x) * 100).toFixed(3) + '%;top:' + (Number(displayedPoint.y) * 100).toFixed(3) + '%"></div>') + '<div class="pmt-preview-status" id="pmt-preview-status">' + escapeHtml(t("trackingPreview", { current: state.previewFrameIndex + 1, total: state.trackingPreview.frames.length, confidence: currentConfidence })) + '</div>'
       : state.previewVideo && !state.videoUnavailable
-      ? '<video class="pmt-preview-video" id="pmt-preview-video" src="' + escapeHtml(state.previewVideo.url) + '" muted playsinline preload="metadata"></video>' + (surfaceMode
+      ? '<video class="pmt-preview-video" id="pmt-preview-video" src="' + escapeHtml(state.previewVideo.url) + '" muted playsinline preload="metadata"></video>' + (multiPointMode
         ? state.referenceCorners.map(searchAreaMarkup).join("") + surfaceCornersMarkup(state.referenceCorners, true)
         : state.referencePoint ? searchAreaMarkup(state.referencePoint) + '<div class="pmt-tracking-point" id="pmt-preview-point" style="left:' + (state.referencePoint.x * 100).toFixed(3) + '%;top:' + (state.referencePoint.y * 100).toFixed(3) + '%"></div>' : "") + '<div class="pmt-preview-status" id="pmt-preview-status">' + escapeHtml(t("readyToAnalyze")) + '</div>'
       : state.preview
-      ? '<img class="pmt-preview-image" src="' + escapeHtml(state.preview.url) + '" alt="' + escapeHtml(t("inImageAlt")) + '">' + (surfaceMode
+      ? '<img class="pmt-preview-image" src="' + escapeHtml(state.preview.url) + '" alt="' + escapeHtml(t("inImageAlt")) + '">' + (multiPointMode
         ? state.referenceCorners.map(searchAreaMarkup).join("") + surfaceCornersMarkup(state.referenceCorners, true)
         : state.referencePoint ? searchAreaMarkup(state.referencePoint) + '<div class="pmt-tracking-point" style="left:' + (state.referencePoint.x * 100).toFixed(3) + '%;top:' + (state.referencePoint.y * 100).toFixed(3) + '%"></div>' : "")
       : '<div class="pmt-preview-grid"></div><div class="pmt-preview-copy">' + escapeHtml(t("emptyPreview")) + '</div>';
@@ -772,7 +793,7 @@
       state.source ? '    <div class="pmt-label">' + escapeHtml(t("video")) + ': ' + escapeHtml(mediaLabel(state.media)) + '</div>' : '',
       getFrameRateWarning() ? '    <div class="pmt-rate-warning">' + escapeHtml(getFrameRateWarning()) + '</div>' : '',
       state.source && !state.media && nativeStatus.available ? '    <div class="pmt-label">' + escapeHtml(t("sourcePathUnavailable")) + '</div>' + buttonMarkup("pmt-choose-source-media", t("chooseSourceFile"), ["pmt-button-full"], state.busy) : '',
-      state.source ? '    <div class="pmt-settings"><div class="pmt-label">' + escapeHtml(t("trackingMode")) + '</div><div class="pmt-actions">' + buttonMarkup("pmt-mode-point", t("pointMode"), [], !canPrepare || !surfaceMode) + buttonMarkup("pmt-mode-surface", t("surfaceMode"), [], !canPrepare || surfaceMode) + '</div></div>' : '',
+      state.source ? '    <div class="pmt-settings"><div class="pmt-label">' + escapeHtml(t("trackingMode")) + '</div><div class="pmt-actions">' + buttonMarkup("pmt-mode-point", t("pointMode"), [], !canPrepare || state.trackingMode === "point") + buttonMarkup("pmt-mode-two-point", t("twoPointMode"), [], !canPrepare || twoPointMode) + buttonMarkup("pmt-mode-surface", t("surfaceMode"), [], !canPrepare || surfaceMode) + '</div></div>' : '',
       state.source ? '    <div class="pmt-settings"><div class="pmt-label" id="pmt-search-radius-label">' + escapeHtml(t("searchArea", { value: state.searchRadius })) + '</div><sp-slider class="pmt-setting-slider" id="pmt-search-radius" min="5" max="40" step="1" value="' + String(state.searchRadius) + '"' + (canPrepare ? '' : ' disabled') + ' aria-label="' + escapeHtml(t("searchArea", { value: state.searchRadius })) + '"></sp-slider></div>' : '',
       state.source && surfaceMode ? '    <div class="pmt-settings"><div class="pmt-label" id="pmt-surface-feature-count-label">' + escapeHtml(t("surfaceDetail", { value: state.surfaceFeatureCount })) + '</div><div class="pmt-label">' + escapeHtml(t("surfaceDetailHelp")) + '</div><sp-slider class="pmt-setting-slider" id="pmt-surface-feature-count" min="80" max="400" step="20" value="' + String(state.surfaceFeatureCount) + '"' + (canPrepare ? '' : ' disabled') + ' aria-label="' + escapeHtml(t("surfaceDetail", { value: state.surfaceFeatureCount })) + '"></sp-slider></div>' : '',
       state.source ? '    <div class="pmt-settings"><div class="pmt-label" id="pmt-confidence-threshold-label">' + escapeHtml(t("confidenceThreshold", { value: Math.round(state.confidenceThreshold * 100) })) + '</div><sp-slider class="pmt-setting-slider" id="pmt-confidence-threshold" min="0.1" max="1" step="0.05" value="' + String(state.confidenceThreshold) + '"' + (canPrepare ? '' : ' disabled') + ' aria-label="' + escapeHtml(t("confidenceThreshold", { value: Math.round(state.confidenceThreshold * 100) })) + '"></sp-slider></div>' : '',
@@ -782,24 +803,25 @@
        '    <div class="pmt-preview" id="pmt-preview" data-ready="' + String(Boolean(hasInitialPreview() || playbackFrame)) + '">' + previewContent + '</div>',
       playbackFrame ? '    <div class="pmt-preview-navigation"><div class="pmt-label">' + escapeHtml(t("previewNavigation")) + '</div><sp-slider class="pmt-preview-slider" id="pmt-preview-slider" min="0" max="' + String(Math.max(0, state.trackingPreview.frames.length - 1)) + '" step="1" value="' + String(state.previewFrameIndex) + '"' + (canPlayPreview ? '' : ' disabled') + ' aria-label="' + escapeHtml(t("previewNavigation")) + '"></sp-slider></div>' : '',
       playbackFrame ? '    <div class="pmt-uncertain-review">' + uncertainMarkersMarkup(uncertainIndexes, state.trackingPreview.frames.length) + '</div>' : '',
-      playbackFrame ? '    <div class="pmt-label">' + escapeHtml(surfaceMode ? t("surfaceCorrectionHelp") : t("correctionHelp")) + '</div>' : '',
-       !playbackFrame && surfaceMode && hasInitialPreview() ? '    <div class="pmt-label">' + escapeHtml(t("surfaceHelp")) + ' (' + String(state.referenceCorners.length) + '/4)</div>' : '',
+      playbackFrame && state.tracking ? '    <div class="pmt-label">' + escapeHtml(twoPointMode ? t("twoPointReview") : surfaceMode ? t("surfaceCorrectionHelp") : t("correctionHelp")) + '</div>' : '',
+       !state.tracking && multiPointMode && hasInitialPreview() ? '    <div class="pmt-label">' + escapeHtml(twoPointMode ? t("twoPointHelp") : t("surfaceHelp")) + ' (' + String(state.referenceCorners.length) + (twoPointMode ? '/2)</div>' : '/4)</div>') : '',
       '    <div class="pmt-actions">',
       '      ' + buttonMarkup("pmt-analyze", analyzeLabel, ["pmt-button-primary"], !canAnalyze),
       state.operation === "analysis" ? '      ' + buttonMarkup("pmt-cancel-analysis", t("cancelAnalysis"), [], state.cancelRequested) : '',
       '      ' + buttonMarkup("pmt-play-preview", state.previewPlaying ? t("pause") : t("play"), [], !canPlayPreview),
-      !surfaceMode ? '      ' + buttonMarkup("pmt-reverse-tracking", t("reverseTracking"), ["pmt-button-primary"], !canApplyTracking) : '',
-      !playbackFrame && surfaceMode ? '      ' + buttonMarkup("pmt-reset-surface", t("resetSurface"), [], !state.referenceCorners.length || state.busy) : '',
+      !multiPointMode ? '      ' + buttonMarkup("pmt-reverse-tracking", t("reverseTracking"), ["pmt-button-primary"], !canApplyTracking) : '',
+      multiPointMode ? '      ' + buttonMarkup("pmt-reset-surface", t("resetSurface"), [], !state.referenceCorners.length || state.busy) : '',
       state.operation === "preview" ? '      ' + buttonMarkup("pmt-skip-preview", t("skipPreview"), [], state.previewSkipRequested) : '',
       !playbackFrame && state.preview && (state.operation === "" || state.operation === "analysis") ? '      ' + buttonMarkup("pmt-toggle-preview-generation", state.previewGenerationSkipped ? t("previewSkippedBefore") : t("skipPreviewBefore"), state.previewGenerationSkipped ? ["pmt-button-primary"] : [], false) : '',
       playbackFrame ? '      ' + buttonMarkup("pmt-next-uncertain", t("nextUncertain"), [], !uncertainIndexes.length || state.busy) : '',
       '    </div>',
       state.previewGenerationDeferred ? '    <div class="pmt-label">' + escapeHtml(t("longPreviewWarning", { count: state.previewBuildTotal })) + '</div>' + buttonMarkup("pmt-generate-long-preview", t("generatePreview"), ["pmt-button-full", "pmt-button-primary"], state.busy) : '',
-      playbackFrame ? '    <div class="pmt-actions">' + buttonMarkup("pmt-retrack-before", t("retrackBefore"), [], !hasCorrection || state.previewFrameIndex <= 0) + buttonMarkup("pmt-retrack-from-here", t("retrackAfter"), [], !canRetrack) + '</div>' : '',
+      playbackFrame && state.tracking && !twoPointMode ? '    <div class="pmt-actions">' + buttonMarkup("pmt-retrack-before", t("retrackBefore"), [], !hasCorrection || state.previewFrameIndex <= 0) + buttonMarkup("pmt-retrack-from-here", t("retrackAfter"), [], !canRetrack) + '</div>' : '',
       '  </div>',
       '  <div class="pmt-card">',
       '    <h2 class="pmt-card-title">' + escapeHtml(t("applyTitle")) + '</h2>',
-      '    <div class="pmt-label">' + escapeHtml(surfaceMode ? t("applySurfaceHelp") : t("applyHelp")) + '</div>',
+      '    <div class="pmt-label">' + escapeHtml(twoPointMode ? t("twoPointApplyHelp") : surfaceMode ? t("applySurfaceHelp") : t("applyHelp")) + '</div>',
+      twoPointMode ? '    <div class="pmt-actions">' + buttonMarkup("pmt-two-rotation", (state.twoPointRotation ? "☑ " : "☐ ") + t("twoPointRotation"), [], state.busy) + buttonMarkup("pmt-two-scale", (state.twoPointScale ? "☑ " : "☐ ") + t("twoPointScale"), [], state.busy) + '</div>' : '',
       canApplyTracking ? '    <div class="pmt-label">' + escapeHtml(t("selectDestination")) + '</div>' : '',
       '    ' + buttonMarkup("pmt-apply-tracking", surfaceMode ? t("applySurfacePerspective") : t("applyTrajectory"), canApplyTracking ? ["pmt-button-full", "pmt-button-primary"] : ["pmt-button-full"], !canApplyTracking),
       '  </div>',
@@ -887,16 +909,16 @@
         const searchArea = rootNode.querySelector(".pmt-search-area");
         const status = rootNode.querySelector("#pmt-preview-status");
         const slider = rootNode.querySelector("#pmt-preview-slider");
-        if (!isSurfaceMode() && point) {
+        if (!hasMultiplePoints() && point) {
           point.style.left = (Number(correction.x) * 100).toFixed(3) + "%";
           point.style.top = (Number(correction.y) * 100).toFixed(3) + "%";
         }
-        if (!isSurfaceMode() && searchArea) {
+        if (!hasMultiplePoints() && searchArea) {
           searchArea.style.left = (Number(correction.x) * 100).toFixed(3) + "%";
           searchArea.style.top = (Number(correction.y) * 100).toFixed(3) + "%";
         }
-        const surfaceCorners = isSurfaceMode() ? surfaceCornersForPreview(frame) : null;
-        if (isSurfaceMode() && Array.isArray(surfaceCorners)) {
+        const surfaceCorners = hasMultiplePoints() ? (state.tracking ? surfaceCornersForPreview(frame) : state.referenceCorners) : null;
+        if (hasMultiplePoints() && Array.isArray(surfaceCorners)) {
           // Keep the translucent surface polygon in lockstep with the four tracked corner handles.
           const polygon = rootNode.querySelector("#pmt-surface-polygon");
           if (polygon) {
@@ -1294,8 +1316,8 @@
     if (!selectedPoint) {
       return;
     }
-    if (isSurfaceMode()) {
-      if (state.referenceCorners.length >= 4) {
+    if (hasMultiplePoints()) {
+      if (state.referenceCorners.length >= (isTwoPointMode() ? 2 : 4)) {
         return;
       }
       state.referenceCorners = state.referenceCorners.concat([selectedPoint]);
@@ -1371,7 +1393,7 @@
   function beginSurfaceCornerDrag(rootNode, cornerIndex, event) {
     const reviewFrame = state.trackingPreview && state.trackingPreview.frames[state.previewFrameIndex];
     const editableCorners = state.tracking ? surfaceCornersForPreview(reviewFrame) : state.referenceCorners;
-    if (state.busy || !isSurfaceMode() || !hasInitialPreview() || !editableCorners[cornerIndex]) {
+    if (state.busy || !hasMultiplePoints() || (isTwoPointMode() && state.tracking) || !hasInitialPreview() || !editableCorners[cornerIndex]) {
       return;
     }
     event.preventDefault();
@@ -1404,7 +1426,7 @@
     const change = changes[event.key];
     const reviewFrame = state.trackingPreview && state.trackingPreview.frames[state.previewFrameIndex];
     const editableCorners = state.tracking ? surfaceCornersForPreview(reviewFrame) : state.referenceCorners;
-    if (!change || state.busy || !editableCorners[cornerIndex]) {
+    if (!change || state.busy || (isTwoPointMode() && state.tracking) || !editableCorners[cornerIndex]) {
       return;
     }
     event.preventDefault();
@@ -1665,7 +1687,36 @@
       // Use the inspected media rate to turn incoming samples into a lightweight, monotonic percentage.
       state.analysisTotalFrames = Math.max(1, Math.ceil((mediaRange.endSeconds - mediaRange.startSeconds) * Number(state.media && state.media.framesPerSecond || 0)) + 1);
       let samples;
-      if (isSurfaceMode()) {
+      if (isTwoPointMode()) {
+        const previewFolder = state.nativePreview && state.nativePreview.folder && state.nativePreview.folder.nativePath;
+        const referenceSeconds = Math.min(mediaRange.endSeconds, Math.max(mediaRange.startSeconds, Number(state.referenceSeconds) || mediaRange.startSeconds));
+        const tracks = [];
+        // Track each reference with the existing native worker in both directions from the same frame.
+        for (const point of state.referenceCorners) {
+          let before = [];
+          state.liveSamples = [];
+          state.analysisSampleIndex = 0;
+          if (state.cancelRequested) throw new Error("Tracking cancelled.");
+          if (referenceSeconds > mediaRange.startSeconds + 0.000001) {
+            state.analysisTaskId = await root.PMT_NATIVE.startTrackingReverse(state.source.mediaPath, point, mediaRange.startSeconds, referenceSeconds, state.searchRadius, previewFolder);
+            before = await collectLiveTracking(rootNode, state.analysisTaskId);
+            state.analysisTaskId = "";
+          }
+          if (state.cancelRequested) throw new Error("Tracking cancelled.");
+          state.liveSamples = [];
+          state.analysisSampleIndex = 0;
+          state.analysisTaskId = await root.PMT_NATIVE.startTracking(state.source.mediaPath, point, referenceSeconds, mediaRange.endSeconds, state.searchRadius, previewFolder);
+          if (state.cancelRequested) {
+            await root.PMT_NATIVE.cancelTracking(state.analysisTaskId);
+            throw new Error("Tracking cancelled.");
+          }
+          const after = await collectLiveTracking(rootNode, state.analysisTaskId);
+          state.analysisTaskId = "";
+          tracks.push(before.concat(after.filter((sample) => !before.length || Number(sample.seconds) > Number(before[before.length - 1].seconds) + 0.000001)));
+        }
+        samples = root.PMT_TRAJECTORY.combinePointTracks(tracks[0], tracks[1]);
+        addLog("Two-point tracking: " + samples.length + " frames.");
+      } else if (isSurfaceMode()) {
         const previewFolder = state.nativePreview && state.nativePreview.folder && state.nativePreview.folder.nativePath;
         const referenceSeconds = Math.min(mediaRange.endSeconds, Math.max(mediaRange.startSeconds, Number(state.referenceSeconds) || mediaRange.startSeconds));
         let beforeSamples = [];
@@ -1806,10 +1857,18 @@
       // Anchor point trajectories to their first actual sample; surface trajectories retain their exact four-corner shape.
       // Apply the exact reviewed point trajectory; users can now rely on their visible corrections directly.
       const trajectoryForApply = state.tracking;
-      const keyframes = surfaceMode ? root.PMT_TRAJECTORY.buildSurfaceKeyframes(trajectoryForApply) : root.PMT_TRAJECTORY.buildPositionKeyframes(trajectoryForApply);
-      const results = surfaceMode ? await root.PMT_PREMIERE.applySurfaceTracking(keyframes) : await root.PMT_PREMIERE.applyTracking(keyframes);
+      const twoPointMode = isTwoPointMode();
+      const options = { rotation: state.twoPointRotation, scale: state.twoPointScale };
+      const keyframes = twoPointMode ? root.PMT_TRAJECTORY.buildTwoPointKeyframes(trajectoryForApply, state.media, options)
+        : surfaceMode ? root.PMT_TRAJECTORY.buildSurfaceKeyframes(trajectoryForApply) : root.PMT_TRAJECTORY.buildPositionKeyframes(trajectoryForApply);
+      const results = twoPointMode ? await root.PMT_PREMIERE.applySurfaceMotionTracking(keyframes, options)
+        : surfaceMode ? await root.PMT_PREMIERE.applySurfaceTracking(keyframes) : await root.PMT_PREMIERE.applyTracking(keyframes);
       addLog((surfaceMode ? "Surface perspective" : "Trajectory") + " applied to " + results.length + " selected clip(s). " + keyframes.length + " keyframes per clip.");
       results.forEach((result) => {
+        if (twoPointMode) {
+          addLog(result.clipName + ": " + result.keyframeCount + " Transform keys.");
+          return;
+        }
         if (surfaceMode) {
           addLog(result.clipName + ": " + result.keyframeCount + " Corner Pin keys · " + result.matchName + ".");
           return;
@@ -1936,6 +1995,17 @@
       addLog("Tracking mode: point.");
       render(rootNode);
     });
+    bindButton(rootNode, "pmt-mode-two-point", () => {
+      const hadTracking = Boolean(state.tracking);
+      state.trackingMode = "two-point";
+      state.referenceCorners = [];
+      state.tracking = null;
+      if (hadTracking) clearTrackingPreview();
+      addLog("Tracking mode: two points. Select two points before Analyze.");
+      render(rootNode);
+    });
+    bindButton(rootNode, "pmt-two-rotation", () => { state.twoPointRotation = !state.twoPointRotation; render(rootNode); });
+    bindButton(rootNode, "pmt-two-scale", () => { state.twoPointScale = !state.twoPointScale; render(rootNode); });
     bindButton(rootNode, "pmt-mode-surface", () => {
       const hadTracking = Boolean(state.tracking);
       state.trackingMode = "surface";
@@ -1955,7 +2025,7 @@
       state.referenceCorners = [];
       state.tracking = null;
       clearTrackingPreview();
-      addLog("Surface corner selection reset.");
+      addLog("Reference selection reset. Capture and prepare again to choose a reference frame.");
       render(rootNode);
     });
     bindButton(rootNode, "pmt-next-uncertain", () => showNextUncertainPreview(rootNode));
@@ -2042,9 +2112,9 @@
       cornerElement.addEventListener("mousedown", (event) => beginSurfaceCornerDrag(rootNode, cornerIndex, event));
       cornerElement.addEventListener("keydown", (event) => nudgeSurfaceCorner(rootNode, cornerIndex, event));
     });
-    if (preview && state.trackingPreview && state.tracking && !state.busy && !isSurfaceMode()) {
+    if (preview && state.trackingPreview && state.tracking && !state.busy && !hasMultiplePoints()) {
       preview.addEventListener("click", (event) => chooseCorrectionPoint(rootNode, event));
-    } else if (preview && hasInitialPreview() && !state.busy) {
+    } else if (preview && !state.tracking && hasInitialPreview() && !state.busy) {
       preview.addEventListener("click", (event) => {
         // Accept the cache's double-buffer image as well as the legacy still and video preview surfaces.
         const targetClass = String(event.target && event.target.className || "");

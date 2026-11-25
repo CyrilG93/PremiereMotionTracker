@@ -11,7 +11,9 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $package = Get-Content -LiteralPath (Join-Path $projectRoot 'package.json') -Raw | ConvertFrom-Json
 $version = $package.version
-$addonName = "premiere-motion-tracker-$version.uxpaddon"
+# Use the manifest addon when the panel changes without a native rebuild.
+$manifest = Get-Content -LiteralPath (Join-Path $projectRoot 'manifest.json') -Raw | ConvertFrom-Json
+$addonName = $manifest.addon.name
 $runtimeDirectory = Join-Path $projectRoot 'win\x64'
 $sourceAddon = Join-Path $runtimeDirectory $addonName
 $sourceFfmpeg = Join-Path $runtimeDirectory 'ffmpeg.exe'

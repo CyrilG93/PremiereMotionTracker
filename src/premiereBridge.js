@@ -290,7 +290,8 @@
       // Defaults reproduce Premiere's unmodified intrinsic Motion values.
       position: { x: sequenceWidth / 2, y: sequenceHeight / 2 },
       anchor: { x: targetWidth / 2, y: targetHeight / 2 },
-      scale: { x: 100, y: 100 }
+      scale: { x: 100, y: 100 },
+      rotation: 0
     };
     const chain = await item.getComponentChain();
     const componentCount = chain && typeof chain.getComponentCount === "function" ? chain.getComponentCount() : 0;
@@ -322,11 +323,20 @@
           if (scale && scale.x > 0 && scale.y > 0) {
             geometry.scale = scale;
           }
+        } else if (paramName.includes("rotation")) {
+          const rotation = readScalarValue(value);
+          if (rotation !== null) geometry.rotation = rotation;
         }
       }
       break;
     }
     return geometry;
+  }
+
+  // Rotate pixel-space vectors using Premiere's clockwise-positive screen coordinates.
+  function rotateMotionVector(vector, degrees) {
+    const angle = Number(degrees || 0) * Math.PI / 180;
+    return { x: vector.x * Math.cos(angle) - vector.y * Math.sin(angle), y: vector.x * Math.sin(angle) + vector.y * Math.cos(angle) };
   }
 
   // Convert Premiere's RectF frame size into safe export dimensions.
@@ -1081,7 +1091,9 @@
     let trackedPivot = null;
     let destinationPivot = null;
     let sourceMotionScale = null;
-    if (options && options.sourceFrame && targetKeyframes[0].referencePoint && (applyRotation || applyScale)) {
+    let sourceMotionRotation = 0;
+    let targetMotionRotation = 0;
+    if (options && options.sourceFrame && targetKeyframes[0].referencePoint) {
       // Convert the source reference and the target Transform position into the same sequence pixel space.
       const sourceTime = await handles.source.item.getInPoint();
       const sourceGeometry = await getTargetMotionGeometry(context, handles.source.item, sourceTime, options.sourceFrame);
@@ -1092,15 +1104,19 @@
         x: Number(options.sourceFrame.width) * sourceGeometry.scale.x / (100 * Number(context.frameSize.width)),
         y: Number(options.sourceFrame.height) * sourceGeometry.scale.y / (100 * Number(context.frameSize.height))
       };
-      trackedPivot = {
-        x: sourceGeometry.position.x + (Number(reference.x) * Number(options.sourceFrame.width) - sourceGeometry.anchor.x) * sourceGeometry.scale.x / 100,
-        y: sourceGeometry.position.y + (Number(reference.y) * Number(options.sourceFrame.height) - sourceGeometry.anchor.y) * sourceGeometry.scale.y / 100
-      };
+      sourceMotionRotation = Number(sourceGeometry.rotation || 0);
+      targetMotionRotation = Number(targetGeometry.rotation || 0);
+      const sourceOffset = rotateMotionVector({
+        x: (Number(reference.x) * Number(options.sourceFrame.width) - sourceGeometry.anchor.x) * sourceGeometry.scale.x / 100,
+        y: (Number(reference.y) * Number(options.sourceFrame.height) - sourceGeometry.anchor.y) * sourceGeometry.scale.y / 100
+      }, sourceMotionRotation);
+      trackedPivot = { x: sourceGeometry.position.x + sourceOffset.x, y: sourceGeometry.position.y + sourceOffset.y };
       const localPosition = getHostPointPixels(initialPoint, targetSize);
-      destinationPivot = {
-        x: targetGeometry.position.x + (localPosition.x - targetGeometry.anchor.x) * targetGeometry.scale.x / 100,
-        y: targetGeometry.position.y + (localPosition.y - targetGeometry.anchor.y) * targetGeometry.scale.y / 100
-      };
+      const targetOffset = rotateMotionVector({
+        x: (localPosition.x - targetGeometry.anchor.x) * targetGeometry.scale.x / 100,
+        y: (localPosition.y - targetGeometry.anchor.y) * targetGeometry.scale.y / 100
+      }, targetMotionRotation);
+      destinationPivot = { x: targetGeometry.position.x + targetOffset.x, y: targetGeometry.position.y + targetOffset.y };
     }
     executeActions(context.project, [
       () => params.position.createSetTimeVaryingAction(true),
@@ -1111,12 +1127,21 @@
     const actions = [];
     targetKeyframes.forEach((sample) => {
       const time = createTimeAtTrackedOffset(context.app, inPoint, sample.clipOffsetSeconds);
-      const movement = trackedPivot
-        ? root.PMT_TRAJECTORY.compensateTrackingPivot(Object.assign({}, sample, {
-          dx: Number(sample.dx) * sourceMotionScale.x,
-          dy: Number(sample.dy) * sourceMotionScale.y
-        }), trackedPivot, destinationPivot, context.frameSize)
-        : sample;
+      let movement = sample;
+      if (trackedPivot) {
+        // Motion rotates the effect's local translation; undo it before writing Transform Position.
+        const width = Number(context.frameSize.width);
+        const height = Number(context.frameSize.height);
+        const sourceDelta = rotateMotionVector({
+          x: Number(sample.dx) * sourceMotionScale.x * width,
+          y: Number(sample.dy) * sourceMotionScale.y * height
+        }, sourceMotionRotation);
+        const sequenceMovement = root.PMT_TRAJECTORY.compensateTrackingPivot(Object.assign({}, sample, {
+          dx: sourceDelta.x / width, dy: sourceDelta.y / height
+        }), trackedPivot, destinationPivot, context.frameSize);
+        const localDelta = rotateMotionVector({ x: sequenceMovement.dx * width, y: sequenceMovement.dy * height }, -targetMotionRotation);
+        movement = { dx: localDelta.x / width, dy: localDelta.y / height };
+      }
       actions.push(() => {
         const keyframe = params.position.createKeyframe(createPoint(context.app, initialPoint.x + Number(movement.dx) * positionScale.x, initialPoint.y + Number(movement.dy) * positionScale.y));
         keyframe.position = time;

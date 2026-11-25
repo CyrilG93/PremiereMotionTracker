@@ -172,23 +172,26 @@
     return { x: width, y: height };
   }
 
-  // Read a file target's dimensions, or use the sequence canvas for Graphics Layers without a media path.
+  // Read target dimensions; adjustment layers and Graphics Layers use the sequence canvas.
   async function getTargetMediaFrame(context, item) {
+    const isAdjustmentLayer = await readMethod(item, "isAdjustmentLayer", false);
     let mediaPath = "";
-    try {
-      const projectItem = await item.getProjectItem();
-      const clipProjectItem = context.app && context.app.ClipProjectItem && typeof context.app.ClipProjectItem.cast === "function"
-        ? context.app.ClipProjectItem.cast(projectItem)
-        : projectItem;
-      mediaPath = await readMethod(clipProjectItem, "getMediaFilePath", "");
-    } catch (error) {
-      // Graphics Layers can expose a project item but no readable media proxy.
+    if (!isAdjustmentLayer) {
+      try {
+        const projectItem = await item.getProjectItem();
+        const clipProjectItem = context.app && context.app.ClipProjectItem && typeof context.app.ClipProjectItem.cast === "function"
+          ? context.app.ClipProjectItem.cast(projectItem)
+          : projectItem;
+        mediaPath = await readMethod(clipProjectItem, "getMediaFilePath", "");
+      } catch (error) {
+        // Graphics Layers can expose a project item but no readable media proxy.
+      }
     }
-    if (!mediaPath) {
+    if (isAdjustmentLayer || !mediaPath) {
       const width = Number(context.frameSize && context.frameSize.width);
       const height = Number(context.frameSize && context.frameSize.height);
       if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) {
-        throw new Error("La Graphics Layer ne fournit pas de média et la taille de séquence est indisponible.");
+        throw new Error("La taille de séquence nécessaire au calque cible est indisponible.");
       }
       return { width, height, coordinateSpace: "sequence" };
     }

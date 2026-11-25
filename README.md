@@ -30,7 +30,7 @@ To remove the plugin, open Creative Cloud Desktop, go to **Plugins > Manage Plug
 2. Set the sequence In and Out points to the part you want to track. If they do not overlap the selected clip, Motion Tracker automatically uses that clip's visible duration instead.
 3. Put the source clip in the timeline and select it.
 
-For Point and Surface tracking, the source and destination clips must be in the same sequence.
+For Point and Surface tracking, the source and destination clips must be in the same sequence. Adjustment layers can also be used as destinations; create them at the sequence dimensions.
 
 ## Track a Point
 

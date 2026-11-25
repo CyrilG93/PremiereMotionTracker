@@ -109,3 +109,25 @@ test("two-point translation compensates existing Motion rotation and scale", asy
   assert.ok(Math.abs(keys[1].value.x - 0.5) < 1e-10);
   assert.ok(Math.abs(keys[1].value.y + 0.5) < 1e-10);
 });
+
+// Adjustment layers may expose a synthetic media path that OpenCV cannot inspect.
+test("adjustment layers use sequence dimensions without inspecting their synthetic media", async () => {
+  const source = fs.readFileSync(path.join(__dirname, "../src/premiereBridge.js"), "utf8");
+  const window = {PMT_NATIVE: {inspectMedia: async () => { throw new Error("Unexpected media inspection"); }}};
+  const injected = source.replace("  root.PMT_PREMIERE = {", "  root.testFrame = getTargetMediaFrame;\n  root.PMT_PREMIERE = {");
+  vm.runInNewContext(injected, {window, setTimeout});
+  const item = {isAdjustmentLayer: async () => true, getProjectItem: async () => { throw new Error("Unexpected project item read"); }};
+  const result = await window.testFrame({frameSize: {width: 4096, height: 2160}}, item);
+  assert.equal(result.width, 4096);
+  assert.equal(result.height, 2160);
+  assert.equal(result.coordinateSpace, "sequence");
+});
+
+test("invalid ordinary media dimensions still produce an error", async () => {
+  const source = fs.readFileSync(path.join(__dirname, "../src/premiereBridge.js"), "utf8");
+  const window = {PMT_NATIVE: {inspectMedia: async () => ({width: 0, height: 0})}};
+  const injected = source.replace("  root.PMT_PREMIERE = {", "  root.testFrame = getTargetMediaFrame;\n  root.PMT_PREMIERE = {");
+  vm.runInNewContext(injected, {window, setTimeout});
+  const item = {isAdjustmentLayer: async () => false, getProjectItem: async () => ({getMediaFilePath: async () => "/video.mov"})};
+  await assert.rejects(window.testFrame({frameSize: {width: 4096, height: 2160}}, item), /dimensions exploitables/);
+});

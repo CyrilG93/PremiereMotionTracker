@@ -73,7 +73,7 @@
       directVideoLoaded: "Original source video ready. Click the video to place the tracking point.",
       sourceReady: "Selection confirmed. The OpenCV engine is the next milestone.",
       trackingMode: "Tracking mode",
-      pointMode: "Point",
+      pointMode: "1 point",
       surfaceMode: "Surface",
       twoPointMode: "2 points",
       twoPointHelp: "Select two distinct points, then drag the handles to adjust them.",
@@ -161,7 +161,7 @@
       directVideoLoaded: "Vidéo source originale prête. Cliquez dans la vidéo pour placer le point de tracking.",
       sourceReady: "Sélection validée. Le moteur OpenCV constitue le prochain jalon.",
       trackingMode: "Mode de tracking",
-      pointMode: "Point",
+      pointMode: "1 point",
       surfaceMode: "Surface",
       twoPointMode: "2 points",
       twoPointHelp: "Sélectionnez deux points distincts, puis ajustez-les en déplaçant les poignées.",
@@ -577,9 +577,10 @@
   }
 
   // Render a skin-free accessible control because Premiere adds an inner box to native buttons.
-  function buttonMarkup(id, label, classNames, disabled) {
+  function buttonMarkup(id, label, classNames, disabled, selected) {
     const classes = ["pmt-button"].concat(classNames || []).join(" ");
-    return '<div class="' + classes + '" id="' + id + '" role="button" aria-disabled="' + String(Boolean(disabled)) + '" data-disabled="' + String(Boolean(disabled)) + '" tabindex="' + (disabled ? "-1" : "0") + '">' + escapeHtml(label) + '</div>';
+    const pressed = typeof selected === "boolean" ? ' aria-pressed="' + String(selected) + '"' : "";
+    return '<div class="' + classes + '" id="' + id + '" role="button"' + pressed + ' aria-disabled="' + String(Boolean(disabled)) + '" data-disabled="' + String(Boolean(disabled)) + '" tabindex="' + (disabled ? "-1" : "0") + '">' + escapeHtml(label) + '</div>';
   }
 
   // Compare numeric release tags while treating a missing version segment as zero.
@@ -793,7 +794,7 @@
       state.source ? '    <div class="pmt-label">' + escapeHtml(t("video")) + ': ' + escapeHtml(mediaLabel(state.media)) + '</div>' : '',
       getFrameRateWarning() ? '    <div class="pmt-rate-warning">' + escapeHtml(getFrameRateWarning()) + '</div>' : '',
       state.source && !state.media && nativeStatus.available ? '    <div class="pmt-label">' + escapeHtml(t("sourcePathUnavailable")) + '</div>' + buttonMarkup("pmt-choose-source-media", t("chooseSourceFile"), ["pmt-button-full"], state.busy) : '',
-      state.source ? '    <div class="pmt-settings"><div class="pmt-label">' + escapeHtml(t("trackingMode")) + '</div><div class="pmt-actions">' + buttonMarkup("pmt-mode-point", t("pointMode"), [], !canPrepare || state.trackingMode === "point") + buttonMarkup("pmt-mode-two-point", t("twoPointMode"), [], !canPrepare || twoPointMode) + buttonMarkup("pmt-mode-surface", t("surfaceMode"), [], !canPrepare || surfaceMode) + '</div></div>' : '',
+      state.source ? '    <div class="pmt-settings"><div class="pmt-label">' + escapeHtml(t("trackingMode")) + '</div><div class="pmt-actions">' + buttonMarkup("pmt-mode-point", t("pointMode"), state.trackingMode === "point" ? ["pmt-button-selected"] : [], !canPrepare, state.trackingMode === "point") + buttonMarkup("pmt-mode-two-point", t("twoPointMode"), twoPointMode ? ["pmt-button-selected"] : [], !canPrepare, twoPointMode) + buttonMarkup("pmt-mode-surface", t("surfaceMode"), surfaceMode ? ["pmt-button-selected"] : [], !canPrepare, surfaceMode) + '</div></div>' : '',
       state.source ? '    <div class="pmt-settings"><div class="pmt-label" id="pmt-search-radius-label">' + escapeHtml(t("searchArea", { value: state.searchRadius })) + '</div><sp-slider class="pmt-setting-slider" id="pmt-search-radius" min="5" max="40" step="1" value="' + String(state.searchRadius) + '"' + (canPrepare ? '' : ' disabled') + ' aria-label="' + escapeHtml(t("searchArea", { value: state.searchRadius })) + '"></sp-slider></div>' : '',
       state.source && surfaceMode ? '    <div class="pmt-settings"><div class="pmt-label" id="pmt-surface-feature-count-label">' + escapeHtml(t("surfaceDetail", { value: state.surfaceFeatureCount })) + '</div><div class="pmt-label">' + escapeHtml(t("surfaceDetailHelp")) + '</div><sp-slider class="pmt-setting-slider" id="pmt-surface-feature-count" min="80" max="400" step="20" value="' + String(state.surfaceFeatureCount) + '"' + (canPrepare ? '' : ' disabled') + ' aria-label="' + escapeHtml(t("surfaceDetail", { value: state.surfaceFeatureCount })) + '"></sp-slider></div>' : '',
       state.source ? '    <div class="pmt-settings"><div class="pmt-label" id="pmt-confidence-threshold-label">' + escapeHtml(t("confidenceThreshold", { value: Math.round(state.confidenceThreshold * 100) })) + '</div><sp-slider class="pmt-setting-slider" id="pmt-confidence-threshold" min="0.1" max="1" step="0.05" value="' + String(state.confidenceThreshold) + '"' + (canPrepare ? '' : ' disabled') + ' aria-label="' + escapeHtml(t("confidenceThreshold", { value: Math.round(state.confidenceThreshold * 100) })) + '"></sp-slider></div>' : '',
@@ -821,7 +822,7 @@
       '  <div class="pmt-card">',
       '    <h2 class="pmt-card-title">' + escapeHtml(t("applyTitle")) + '</h2>',
       '    <div class="pmt-label">' + escapeHtml(twoPointMode ? t("twoPointApplyHelp") : surfaceMode ? t("applySurfaceHelp") : t("applyHelp")) + '</div>',
-      twoPointMode ? '    <div class="pmt-actions">' + buttonMarkup("pmt-two-rotation", (state.twoPointRotation ? "☑ " : "☐ ") + t("twoPointRotation"), [], state.busy) + buttonMarkup("pmt-two-scale", (state.twoPointScale ? "☑ " : "☐ ") + t("twoPointScale"), [], state.busy) + '</div>' : '',
+      twoPointMode ? '    <div class="pmt-actions">' + buttonMarkup("pmt-two-rotation", (state.twoPointRotation ? "✓  " : "○  ") + t("twoPointRotation"), state.twoPointRotation ? ["pmt-button-selected"] : [], state.busy, state.twoPointRotation) + buttonMarkup("pmt-two-scale", (state.twoPointScale ? "✓  " : "○  ") + t("twoPointScale"), state.twoPointScale ? ["pmt-button-selected"] : [], state.busy, state.twoPointScale) + '</div>' : '',
       canApplyTracking ? '    <div class="pmt-label">' + escapeHtml(t("selectDestination")) + '</div>' : '',
       '    ' + buttonMarkup("pmt-apply-tracking", surfaceMode ? t("applySurfacePerspective") : t("applyTrajectory"), canApplyTracking ? ["pmt-button-full", "pmt-button-primary"] : ["pmt-button-full"], !canApplyTracking),
       '  </div>',
@@ -1988,6 +1989,7 @@
     bindButton(rootNode, "pmt-capture-source", () => state.operation === "preparation" ? cancelPreparation(rootNode) : captureAndPrepare(rootNode));
     bindButton(rootNode, "pmt-choose-source-media", () => chooseSourceMedia(rootNode));
     bindButton(rootNode, "pmt-mode-point", () => {
+      if (state.trackingMode === "point") return;
       const hadTracking = Boolean(state.tracking);
       state.trackingMode = "point";
       state.tracking = null;
@@ -1996,6 +1998,7 @@
       render(rootNode);
     });
     bindButton(rootNode, "pmt-mode-two-point", () => {
+      if (state.trackingMode === "two-point") return;
       const hadTracking = Boolean(state.tracking);
       state.trackingMode = "two-point";
       state.referenceCorners = [];
@@ -2007,6 +2010,7 @@
     bindButton(rootNode, "pmt-two-rotation", () => { state.twoPointRotation = !state.twoPointRotation; render(rootNode); });
     bindButton(rootNode, "pmt-two-scale", () => { state.twoPointScale = !state.twoPointScale; render(rootNode); });
     bindButton(rootNode, "pmt-mode-surface", () => {
+      if (state.trackingMode === "surface") return;
       const hadTracking = Boolean(state.tracking);
       state.trackingMode = "surface";
       state.referenceCorners = [];

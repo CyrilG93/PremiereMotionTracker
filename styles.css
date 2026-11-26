@@ -258,6 +258,13 @@ input {
   background: var(--pmt-accent);
 }
 
+/* Keep selected modes and options clearly visible in the panel. */
+.pmt-button-selected {
+  border-color: var(--pmt-accent);
+  background: var(--pmt-accent);
+  color: #ffffff;
+}
+
 .pmt-button[data-disabled="true"] {
   color: #777777;
   background: var(--pmt-panel-strong);

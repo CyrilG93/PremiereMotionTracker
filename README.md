@@ -71,6 +71,8 @@ Surface mode works best with flat, textured, clearly visible surfaces. It can be
 
 Reverse tracking uses an analysed Point track to move the original source clip in the opposite direction. The tracked point stays at the centre of the frame.
 
+If you set sequence In and Out points within the source clip, the keyframes are applied over that selected range.
+
 1. Complete a Point analysis and review it as usual.
 2. Click **Reverse tracking**.
 3. Motion Tracker adds a Transform effect and Position keyframes to the captured source clip.

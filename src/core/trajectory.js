@@ -320,7 +320,7 @@
   }
 
   // Keep the tracked cadence when fitting a trajectory to a destination clip, discarding only keys past its Out point.
-  function fitKeyframesToClipDuration(keyframes, clipDurationSeconds) {
+  function fitKeyframesToClipDuration(keyframes, clipDurationSeconds, originSeconds) {
     const duration = Number(clipDurationSeconds);
     if (!Number.isFinite(duration) || duration < 0) {
       throw new Error("La durée du clip cible est invalide.");
@@ -329,7 +329,11 @@
     if (!source.length || !Number.isFinite(Number(source[0].seconds))) {
       throw new Error("La trajectoire ne contient aucune image clé exploitable.");
     }
-    const firstSeconds = Number(source[0].seconds);
+    // Reverse tracking uses the source clip's media In; destination clips start at the first sample.
+    const firstSeconds = originSeconds === undefined ? Number(source[0].seconds) : Number(originSeconds);
+    if (!Number.isFinite(firstSeconds)) {
+      throw new Error("Le point de départ de la trajectoire est invalide.");
+    }
     // Preserve source timing exactly; progress is intentionally not used because it stretches short targets.
     return source.reduce((fitted, keyframe) => {
       const seconds = Number(keyframe && keyframe.seconds);

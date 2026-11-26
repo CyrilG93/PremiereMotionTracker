@@ -112,6 +112,13 @@ test("fitKeyframesToClipDuration rejects an invalid target duration", () => {
   assert.throws(() => trajectoryApi.fitKeyframesToClipDuration([{ seconds: 1 }], -1), /durée du clip cible/);
 });
 
+// Source timing keeps a partial range in place and excludes samples outside the trimmed clip.
+test("source origin preserves reverse tracking offsets within the clip", () => {
+  const keys = [9, 10, 13, 14.5, 16].map((seconds) => ({seconds}));
+  const fitted = trajectoryApi.fitKeyframesToClipDuration(keys, 5, 10);
+  assert.deepEqual(fitted.map((key) => key.clipOffsetSeconds), [0, 3, 4.5]);
+});
+
 test("buildSurfaceKeyframes retains four ordered corners and skips invalid surface frames", () => {
   const keyframes = trajectoryApi.buildSurfaceKeyframes([
     { frame: 10, seconds: 1, confidence: 1, valid: true, corners: [{ x: 0.1, y: 0.2 }, { x: 0.4, y: 0.2 }, { x: 0.4, y: 0.5 }, { x: 0.1, y: 0.5 }] },

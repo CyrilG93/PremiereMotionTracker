@@ -144,12 +144,14 @@
   }
 
   // Retain keys that fit in the selected target without changing the cadence of the tracked motion.
-  function getKeyframesForTarget(itemInPoint, itemOutPoint, keyframes) {
+  function getKeyframesForTarget(itemInPoint, itemOutPoint, keyframes, preserveSourceTime) {
     if (!root.PMT_TRAJECTORY || typeof root.PMT_TRAJECTORY.fitKeyframesToClipDuration !== "function") {
       throw new Error("Le convertisseur de timing de trajectoire est indisponible.");
     }
     const duration = Number(describeTime(itemOutPoint).seconds) - Number(describeTime(itemInPoint).seconds);
-    const fitted = root.PMT_TRAJECTORY.fitKeyframesToClipDuration(keyframes, duration);
+    // Source samples are media timestamps; keep their offset from the source clip's In point.
+    const origin = preserveSourceTime ? Number(describeTime(itemInPoint).seconds) : undefined;
+    const fitted = root.PMT_TRAJECTORY.fitKeyframesToClipDuration(keyframes, duration, origin);
     if (fitted.length < 2) {
       throw new Error("Le clip cible est trop court pour recevoir au moins deux images clés de tracking sans modifier sa vitesse.");
     }
@@ -928,7 +930,7 @@
   }
 
   // Add a Transform effect and write every valid native sample to one destination clip.
-  async function applyTrackingToItem(context, item, keyframes) {
+  async function applyTrackingToItem(context, item, keyframes, preserveSourceTime) {
     const chain = await item.getComponentChain();
     const previousCount = chain && typeof chain.getComponentCount === "function" ? chain.getComponentCount() : 0;
     const transform = await createTransformComponent(context.app);
@@ -951,7 +953,7 @@
     const positionParam = positionResult.param;
     const inPoint = await item.getInPoint();
     const outPoint = await item.getOutPoint();
-    const targetKeyframes = getKeyframesForTarget(inPoint, outPoint, keyframes);
+    const targetKeyframes = getKeyframesForTarget(inPoint, outPoint, keyframes, preserveSourceTime);
     const startValue = await positionParam.getStartValue();
     let initialPoint = readPointValue(startValue);
     if (!initialPoint && typeof positionParam.getValueAtTime === "function") {
@@ -1207,7 +1209,7 @@
     if (String(context.sequence.guid || context.sequence.name || "") !== handles.source.descriptor.sequenceId) {
       throw new Error("Le clip source doit appartenir à la séquence active.");
     }
-    return applyTrackingToItem(context, handles.source.item, keyframes);
+    return applyTrackingToItem(context, handles.source.item, keyframes, true);
   }
 
   // Count valid destination clips before applying so the panel can explain an empty selection without a failed transaction.

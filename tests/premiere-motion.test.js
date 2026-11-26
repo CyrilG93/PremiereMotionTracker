@@ -131,3 +131,34 @@ test("invalid ordinary media dimensions still produce an error", async () => {
   const item = {isAdjustmentLayer: async () => false, getProjectItem: async () => ({getMediaFilePath: async () => "/video.mov"})};
   await assert.rejects(window.testFrame({frameSize: {width: 4096, height: 2160}}, item), /dimensions exploitables/);
 });
+
+// Verify the timestamps passed to Premiere for reverse tracking and ordinary destination tracking.
+test("reverse tracking preserves the analysed range on a trimmed source clip", async () => {
+  const source = fs.readFileSync(path.join(__dirname, "../src/premiereBridge.js"), "utf8");
+  const injection = `
+    createTransformComponent = async () => ({component: {}, matchName: "Transform"});
+    resolveInsertedTransform = async (chain) => chain.component;
+    waitForHostPaint = async () => {};
+    getPositionScale = () => ({x: 1, y: 1});
+    createPoint = (app, x, y) => ({x, y});
+    root.testApply = applyTrackingToItem;
+  `;
+  const window = {PMT_TRAJECTORY: require("../src/core/trajectory.js")};
+  vm.runInNewContext(source.replace("  root.PMT_PREMIERE = {", injection + "\n  root.PMT_PREMIERE = {"), {window, setTimeout});
+  const positions = [];
+  const param = {displayName: "Position", getStartValue: async () => ({x: 100, y: 100}),
+    createSetTimeVaryingAction: () => ({}), createKeyframe: (value) => ({value}),
+    createAddKeyframeAction: (key) => { positions.push(key.position.seconds); return {}; }};
+  const component = {getParamCount: () => 1, getParam: () => param};
+  const chain = {component, getComponentCount: () => 0, createInsertComponentAction: () => ({})};
+  const item = {getComponentChain: async () => chain, getInPoint: async () => ({seconds: 12.16}),
+    getOutPoint: async () => ({seconds: 30.72}), getName: async () => "Source"};
+  const context = {project: {executeTransaction: (callback) => callback({addAction: () => {}})},
+    app: {TickTime: {createWithSeconds: (seconds) => ({seconds})}}};
+  const keys = [{seconds: 18.88, dx: 0, dy: 0}, {seconds: 18.92, dx: 1, dy: 1}];
+  await window.testApply(context, item, keys, true);
+  assert.deepEqual(positions.map((time) => Number(time.toFixed(2))), [18.88, 18.92]);
+  positions.length = 0;
+  await window.testApply(context, item, keys);
+  assert.deepEqual(positions.map((time) => Number(time.toFixed(2))), [12.16, 12.2]);
+});

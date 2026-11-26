@@ -115,6 +115,12 @@ When Motion Tracker opens, it checks the latest GitHub release. If a newer `.ccx
 
 ## Changelog
 
+### 1.1.6 — 26 November 2026
+
+- Added two-point tracking with optional rotation and scale.
+- Improved tracking on adjustment layers and clips with existing motion settings.
+- Fixed reverse tracking placement when using sequence In and Out points.
+
 ### 1.1.0 — 15 October 2026
 
 - Added clear progress feedback while preparing and analysing source media.

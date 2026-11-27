@@ -6,6 +6,9 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
+#include <iomanip>
+#include <sstream>
 #include <atomic>
 #include <memory>
 #include <mutex>
@@ -217,13 +220,30 @@ struct TrackingTask {
     std::mutex mutex;
     std::vector<pmt::MediaTrackingSample> samples;
     std::vector<pmt::SurfaceTrackingSample> surfaceSamples;
+    std::vector<pmt::MaskTrackingSample> maskSamples;
     bool isSurface = false;
+    bool isMask = false;
     std::string error;
     std::atomic<bool> cancelRequested { false };
     std::atomic<bool> cancelled { false };
     std::atomic<bool> done { false };
     std::thread worker;
 };
+
+// Publish the measured sequence-space transform without leaking OpenCV buffers into UXP.
+addon_value createMaskTrackingSample(addon_env env, const pmt::MaskTrackingSample& sample) {
+    addon_value item = nullptr;
+    Check(UxpAddonApis.uxp_addon_create_object(env, &item));
+    setNumberProperty(env, item, "frame", static_cast<double>(sample.frame));
+    setNumberProperty(env, item, "seconds", sample.seconds);
+    setNumberProperty(env, item, "x", sample.x);
+    setNumberProperty(env, item, "y", sample.y);
+    setNumberProperty(env, item, "rotation", sample.rotation);
+    setNumberProperty(env, item, "scale", sample.scale);
+    setNumberProperty(env, item, "confidence", sample.confidence);
+    setBooleanProperty(env, item, "valid", true);
+    return item;
+}
 
 std::mutex trackingTasksMutex;
 std::unordered_map<std::string, std::shared_ptr<TrackingTask>> trackingTasks;
@@ -662,6 +682,65 @@ addon_value startSurfaceTrackingReverse(addon_env env, addon_callback_info info)
     }
 }
 
+// Start a cancellable worker over a numbered directory of Premiere-rendered masked PNGs.
+addon_value startMaskTracking(addon_env env, addon_callback_info info) {
+    try {
+#if defined(PMT_WITH_OPENCV)
+        addon_value arguments[4] = { nullptr, nullptr, nullptr, nullptr };
+        std::size_t count = 4;
+        Check(UxpAddonApis.uxp_addon_get_cb_info(env, info, &count, arguments, nullptr, nullptr));
+        if (count != 4) throw std::invalid_argument("Le suivi du masque requiert un dossier, un nombre d'images et leur cadence.");
+        std::size_t bytes = 0, copied = 0;
+        Check(UxpAddonApis.uxp_addon_get_value_string_utf8(env, arguments[0], nullptr, 0, &bytes));
+        std::vector<char> buffer(bytes + 1, '\0');
+        Check(UxpAddonApis.uxp_addon_get_value_string_utf8(env, arguments[0], buffer.data(), buffer.size(), &copied));
+        const std::filesystem::path folder(std::string(buffer.data(), copied));
+        double rawCount = 0, start = 0, interval = 0;
+        Check(UxpAddonApis.uxp_addon_get_value_double(env, arguments[1], &rawCount));
+        Check(UxpAddonApis.uxp_addon_get_value_double(env, arguments[2], &start));
+        Check(UxpAddonApis.uxp_addon_get_value_double(env, arguments[3], &interval));
+        if (!std::isfinite(rawCount) || rawCount < 2 || rawCount > 3600 || std::floor(rawCount) != rawCount) throw std::invalid_argument("Le nombre d'images du masque est invalide.");
+        std::vector<std::string> paths;
+        for (int i = 0; i < static_cast<int>(rawCount); ++i) {
+            std::ostringstream filename;
+            filename << "frame-" << std::setw(4) << std::setfill('0') << i << ".png";
+            auto path = folder / filename.str();
+            // Some Premiere versions append the PNG extension a second time.
+            if (!std::filesystem::exists(path) && std::filesystem::exists(path.string() + ".png")) path += ".png";
+            paths.push_back(path.string());
+        }
+        const std::string taskId = "mask-tracking-" + std::to_string(nextTrackingTaskId.fetch_add(1));
+        const auto task = std::make_shared<TrackingTask>();
+        task->isMask = true;
+        {
+            std::lock_guard<std::mutex> lock(trackingTasksMutex);
+            trackingTasks.emplace(taskId, task);
+        }
+        task->worker = std::thread([task, paths, start, interval]() {
+            try {
+                pmt::trackMaskedFrames(paths, start, interval, [task](const pmt::MaskTrackingSample& sample) {
+                    if (task->cancelRequested.load()) return false;
+                    std::lock_guard<std::mutex> lock(task->mutex);
+                    task->maskSamples.push_back(sample);
+                    return true;
+                });
+            } catch (const std::exception& error) {
+                std::lock_guard<std::mutex> lock(task->mutex);
+                if (task->cancelRequested.load()) task->cancelled.store(true);
+                else task->error = error.what();
+            }
+            task->done.store(true);
+        });
+        return createString(env, taskId);
+#else
+        (void)info;
+        throw std::runtime_error("The addon was built without OpenCV.");
+#endif
+    } catch (...) {
+        return CreateErrorFromException(env);
+    }
+}
+
 // Return only new samples so frequent UXP progress polls remain compact on long source ranges.
 addon_value pollTracking(addon_env env, addon_callback_info info) {
     try {
@@ -680,13 +759,16 @@ addon_value pollTracking(addon_env env, addon_callback_info info) {
         }
         std::vector<pmt::MediaTrackingSample> newSamples;
         std::vector<pmt::SurfaceTrackingSample> newSurfaceSamples;
+        std::vector<pmt::MaskTrackingSample> newMaskSamples;
         std::string error;
         std::size_t nextIndex = 0;
         {
             std::lock_guard<std::mutex> lock(task->mutex);
-            const std::size_t sampleCount = task->isSurface ? task->surfaceSamples.size() : task->samples.size();
+            const std::size_t sampleCount = task->isMask ? task->maskSamples.size() : task->isSurface ? task->surfaceSamples.size() : task->samples.size();
             const std::size_t safeAfterIndex = std::min(afterIndex, sampleCount);
-            if (task->isSurface) {
+            if (task->isMask) {
+                newMaskSamples.assign(task->maskSamples.begin() + static_cast<std::ptrdiff_t>(safeAfterIndex), task->maskSamples.end());
+            } else if (task->isSurface) {
                 newSurfaceSamples.assign(task->surfaceSamples.begin() + static_cast<std::ptrdiff_t>(safeAfterIndex), task->surfaceSamples.end());
             } else {
                 newSamples.assign(task->samples.begin() + static_cast<std::ptrdiff_t>(safeAfterIndex), task->samples.end());
@@ -702,10 +784,10 @@ addon_value pollTracking(addon_env env, addon_callback_info info) {
         addon_value result = nullptr;
         Check(UxpAddonApis.uxp_addon_create_object(env, &result));
         addon_value samples = nullptr;
-        const std::size_t returnedSampleCount = task->isSurface ? newSurfaceSamples.size() : newSamples.size();
+        const std::size_t returnedSampleCount = task->isMask ? newMaskSamples.size() : task->isSurface ? newSurfaceSamples.size() : newSamples.size();
         Check(UxpAddonApis.uxp_addon_create_array_with_length(env, returnedSampleCount, &samples));
         for (std::size_t index = 0; index < returnedSampleCount; index += 1) {
-            const addon_value sample = task->isSurface
+            const addon_value sample = task->isMask ? createMaskTrackingSample(env, newMaskSamples[index]) : task->isSurface
                 ? createSurfaceTrackingSample(env, newSurfaceSamples[index])
                 : createTrackingSample(env, newSamples[index]);
             Check(UxpAddonApis.uxp_addon_set_element(env, samples, static_cast<std::uint32_t>(index), sample));
@@ -783,6 +865,7 @@ addon_value init(addon_env env, addon_value exports, const addon_apis& addonAPIs
     registerFunction(env, exports, "startTrackingReverse", startTrackingReverse, addonAPIs);
     registerFunction(env, exports, "startSurfaceTracking", startSurfaceTracking, addonAPIs);
     registerFunction(env, exports, "startSurfaceTrackingReverse", startSurfaceTrackingReverse, addonAPIs);
+    registerFunction(env, exports, "startMaskTracking", startMaskTracking, addonAPIs);
     registerFunction(env, exports, "pollTracking", pollTracking, addonAPIs);
     registerFunction(env, exports, "cancelTracking", cancelTracking, addonAPIs);
     return exports;

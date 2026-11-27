@@ -76,6 +76,9 @@
       pointMode: "1 point",
       surfaceMode: "Surface",
       twoPointMode: "2 points",
+      maskMode: "Mask tracking",
+      maskQuickStart: "Track selected mask",
+      maskHelp: "Track an Opacity mask in Premiere, then hide all other video tracks before analysis.",
       twoPointHelp: "Select two distinct points, then drag the handles to adjust them.",
       twoPointReview: "Review both points. Reset the selection to choose new points.",
       twoPointApplyHelp: "Apply Position and the selected rotation and scale to Transform.",
@@ -164,6 +167,9 @@
       pointMode: "1 point",
       surfaceMode: "Surface",
       twoPointMode: "2 points",
+      maskMode: "Masque",
+      maskQuickStart: "Suivre le masque sélectionné",
+      maskHelp: "Suivez un masque d’opacité dans Premiere, puis masquez les autres pistes vidéo avant l’analyse.",
       twoPointHelp: "Sélectionnez deux points distincts, puis ajustez-les en déplaçant les poignées.",
       twoPointReview: "Vérifiez les deux points. Réinitialisez la sélection pour choisir de nouveaux points.",
       twoPointApplyHelp: "Applique Position et les options Rotation et Échelle à Transform.",
@@ -341,6 +347,8 @@
 
   // Two-point mode reuses the numbered handles used by the surface preview.
   function isTwoPointMode() { return state.trackingMode === "two-point"; }
+  // Mask tracking uses rendered sequence frames and needs no manually selected tracking point.
+  function isMaskMode() { return state.trackingMode === "mask"; }
 
   function hasMultiplePoints() { return isSurfaceMode() || isTwoPointMode(); }
 
@@ -715,6 +723,13 @@
     if (!state.source) {
       return { tone: "warning", text: t("selectCapture") };
     }
+    if (isMaskMode()) {
+      if (state.tracking) {
+        const uncertain = root.PMT_TRAJECTORY.findUncertainSamples(state.tracking, state.confidenceThreshold).length;
+        return { tone: "success", text: t("analysisReady", { count: state.tracking.length, uncertain }) };
+      }
+      return { tone: "success", text: t("maskHelp") };
+    }
     if (hasInitialPreview()) {
       if (state.tracking) {
         const uncertain = root.PMT_TRAJECTORY.findUncertainSamples(state.tracking, state.confidenceThreshold).length;
@@ -754,7 +769,7 @@
     const surfaceMode = isSurfaceMode();
     const twoPointMode = isTwoPointMode();
     const multiPointMode = hasMultiplePoints();
-    const canAnalyze = Boolean(canPrepare && state.media && state.range && hasInitialPreview() && hasTrackingReference());
+    const canAnalyze = Boolean(canPrepare && state.media && state.range && hasInitialPreview() && (isMaskMode() || hasTrackingReference()));
     const canApplyTracking = Boolean(canPrepare && state.tracking && state.tracking.length >= 2 && state.range && state.range.sequenceId === state.source.sequenceId);
     const canPlayPreview = Boolean(!state.busy && ((state.previewVideo && !state.videoUnavailable) || (state.trackingPreview && state.trackingPreview.frames.length > 1)));
     const analyzeLabel = state.operation === "analysis" ? t("analyzing") : t("analyze");
@@ -791,15 +806,17 @@
       '      <div class="pmt-slot-copy"><div class="pmt-label">' + escapeHtml(t("sourceClip")) + '</div><div class="pmt-value">' + escapeHtml(clipLabel(state.source, t("noClip"))) + '</div></div>',
       '      ' + buttonMarkup("pmt-capture-source", state.operation === "preparation" ? (state.cancelRequested ? t("stoppingPreparation") : t("stopPreparation")) : t("capturePrepare"), [], state.busy && state.operation !== "preparation" || state.cancelRequested),
       '    </div>',
-      state.source ? '    <div class="pmt-label">' + escapeHtml(t("video")) + ': ' + escapeHtml(mediaLabel(state.media)) + '</div>' : '',
-      getFrameRateWarning() ? '    <div class="pmt-rate-warning">' + escapeHtml(getFrameRateWarning()) + '</div>' : '',
-      state.source && !state.media && nativeStatus.available ? '    <div class="pmt-label">' + escapeHtml(t("sourcePathUnavailable")) + '</div>' + buttonMarkup("pmt-choose-source-media", t("chooseSourceFile"), ["pmt-button-full"], state.busy) : '',
-      state.source ? '    <div class="pmt-settings"><div class="pmt-label">' + escapeHtml(t("trackingMode")) + '</div><div class="pmt-actions">' + buttonMarkup("pmt-mode-point", t("pointMode"), state.trackingMode === "point" ? ["pmt-button-selected"] : [], !canPrepare, state.trackingMode === "point") + buttonMarkup("pmt-mode-two-point", t("twoPointMode"), twoPointMode ? ["pmt-button-selected"] : [], !canPrepare, twoPointMode) + buttonMarkup("pmt-mode-surface", t("surfaceMode"), surfaceMode ? ["pmt-button-selected"] : [], !canPrepare, surfaceMode) + '</div></div>' : '',
-      state.source ? '    <div class="pmt-settings"><div class="pmt-label" id="pmt-search-radius-label">' + escapeHtml(t("searchArea", { value: state.searchRadius })) + '</div><sp-slider class="pmt-setting-slider" id="pmt-search-radius" min="5" max="40" step="1" value="' + String(state.searchRadius) + '"' + (canPrepare ? '' : ' disabled') + ' aria-label="' + escapeHtml(t("searchArea", { value: state.searchRadius })) + '"></sp-slider></div>' : '',
+      '    <div class="pmt-actions">' + buttonMarkup("pmt-mask-quick-start", t("maskQuickStart"), ["pmt-button-primary"], state.busy) + (isMaskMode() && state.operation === "analysis" ? buttonMarkup("pmt-mask-cancel", t("cancelAnalysis"), [], state.cancelRequested) : '') + '</div>',
+      state.source && !isMaskMode() ? '    <div class="pmt-label">' + escapeHtml(t("video")) + ': ' + escapeHtml(mediaLabel(state.media)) + '</div>' : '',
+      !isMaskMode() && getFrameRateWarning() ? '    <div class="pmt-rate-warning">' + escapeHtml(getFrameRateWarning()) + '</div>' : '',
+      state.source && !isMaskMode() && !state.media && nativeStatus.available ? '    <div class="pmt-label">' + escapeHtml(t("sourcePathUnavailable")) + '</div>' + buttonMarkup("pmt-choose-source-media", t("chooseSourceFile"), ["pmt-button-full"], state.busy) : '',
+      state.source ? '    <div class="pmt-settings"><div class="pmt-label">' + escapeHtml(t("trackingMode")) + '</div><div class="pmt-actions">' + buttonMarkup("pmt-mode-point", t("pointMode"), state.trackingMode === "point" ? ["pmt-button-selected"] : [], !canPrepare, state.trackingMode === "point") + buttonMarkup("pmt-mode-two-point", t("twoPointMode"), twoPointMode ? ["pmt-button-selected"] : [], !canPrepare, twoPointMode) + buttonMarkup("pmt-mode-surface", t("surfaceMode"), surfaceMode ? ["pmt-button-selected"] : [], !canPrepare, surfaceMode) + buttonMarkup("pmt-mode-mask", t("maskMode"), isMaskMode() ? ["pmt-button-selected"] : [], !canPrepare, isMaskMode()) + '</div></div>' : '',
+      state.source && !isMaskMode() ? '    <div class="pmt-settings"><div class="pmt-label" id="pmt-search-radius-label">' + escapeHtml(t("searchArea", { value: state.searchRadius })) + '</div><sp-slider class="pmt-setting-slider" id="pmt-search-radius" min="5" max="40" step="1" value="' + String(state.searchRadius) + '"' + (canPrepare ? '' : ' disabled') + ' aria-label="' + escapeHtml(t("searchArea", { value: state.searchRadius })) + '"></sp-slider></div>' : '',
+      state.source && isMaskMode() ? '    <div class="pmt-label">' + escapeHtml(t("maskHelp")) + '</div>' : '',
       state.source && surfaceMode ? '    <div class="pmt-settings"><div class="pmt-label" id="pmt-surface-feature-count-label">' + escapeHtml(t("surfaceDetail", { value: state.surfaceFeatureCount })) + '</div><div class="pmt-label">' + escapeHtml(t("surfaceDetailHelp")) + '</div><sp-slider class="pmt-setting-slider" id="pmt-surface-feature-count" min="80" max="400" step="20" value="' + String(state.surfaceFeatureCount) + '"' + (canPrepare ? '' : ' disabled') + ' aria-label="' + escapeHtml(t("surfaceDetail", { value: state.surfaceFeatureCount })) + '"></sp-slider></div>' : '',
       state.source ? '    <div class="pmt-settings"><div class="pmt-label" id="pmt-confidence-threshold-label">' + escapeHtml(t("confidenceThreshold", { value: Math.round(state.confidenceThreshold * 100) })) + '</div><sp-slider class="pmt-setting-slider" id="pmt-confidence-threshold" min="0.1" max="1" step="0.05" value="' + String(state.confidenceThreshold) + '"' + (canPrepare ? '' : ' disabled') + ' aria-label="' + escapeHtml(t("confidenceThreshold", { value: Math.round(state.confidenceThreshold * 100) })) + '"></sp-slider></div>' : '',
       '  </div>',
-      '  <div class="pmt-card">',
+      '  <div class="pmt-card"' + (isMaskMode() ? ' style="display:none"' : '') + '>',
       '    <h2 class="pmt-card-title">' + escapeHtml(t("previewTitle")) + '</h2>',
        '    <div class="pmt-preview" id="pmt-preview" data-ready="' + String(Boolean(hasInitialPreview() || playbackFrame)) + '">' + previewContent + '</div>',
       playbackFrame ? '    <div class="pmt-preview-navigation"><div class="pmt-label">' + escapeHtml(t("previewNavigation")) + '</div><sp-slider class="pmt-preview-slider" id="pmt-preview-slider" min="0" max="' + String(Math.max(0, state.trackingPreview.frames.length - 1)) + '" step="1" value="' + String(state.previewFrameIndex) + '"' + (canPlayPreview ? '' : ' disabled') + ' aria-label="' + escapeHtml(t("previewNavigation")) + '"></sp-slider></div>' : '',
@@ -810,7 +827,7 @@
       '      ' + buttonMarkup("pmt-analyze", analyzeLabel, ["pmt-button-primary"], !canAnalyze),
       state.operation === "analysis" ? '      ' + buttonMarkup("pmt-cancel-analysis", t("cancelAnalysis"), [], state.cancelRequested) : '',
       '      ' + buttonMarkup("pmt-play-preview", state.previewPlaying ? t("pause") : t("play"), [], !canPlayPreview),
-      !multiPointMode ? '      ' + buttonMarkup("pmt-reverse-tracking", t("reverseTracking"), ["pmt-button-primary"], !canApplyTracking) : '',
+      !multiPointMode && !isMaskMode() ? '      ' + buttonMarkup("pmt-reverse-tracking", t("reverseTracking"), ["pmt-button-primary"], !canApplyTracking) : '',
       multiPointMode ? '      ' + buttonMarkup("pmt-reset-surface", t("resetSurface"), [], !state.referenceCorners.length || state.busy) : '',
       state.operation === "preview" ? '      ' + buttonMarkup("pmt-skip-preview", t("skipPreview"), [], state.previewSkipRequested) : '',
       !playbackFrame && state.preview && (state.operation === "" || state.operation === "analysis") ? '      ' + buttonMarkup("pmt-toggle-preview-generation", state.previewGenerationSkipped ? t("previewSkippedBefore") : t("skipPreviewBefore"), state.previewGenerationSkipped ? ["pmt-button-primary"] : [], false) : '',
@@ -822,7 +839,7 @@
       '  <div class="pmt-card">',
       '    <h2 class="pmt-card-title">' + escapeHtml(t("applyTitle")) + '</h2>',
       '    <div class="pmt-label">' + escapeHtml(twoPointMode ? t("twoPointApplyHelp") : surfaceMode ? t("applySurfaceHelp") : t("applyHelp")) + '</div>',
-      twoPointMode ? '    <div class="pmt-actions">' + buttonMarkup("pmt-two-rotation", (state.twoPointRotation ? "✓  " : "○  ") + t("twoPointRotation"), state.twoPointRotation ? ["pmt-button-selected"] : [], state.busy, state.twoPointRotation) + buttonMarkup("pmt-two-scale", (state.twoPointScale ? "✓  " : "○  ") + t("twoPointScale"), state.twoPointScale ? ["pmt-button-selected"] : [], state.busy, state.twoPointScale) + '</div>' : '',
+      (twoPointMode || isMaskMode()) ? '    <div class="pmt-actions">' + buttonMarkup("pmt-two-rotation", (state.twoPointRotation ? "✓  " : "○  ") + t("twoPointRotation"), state.twoPointRotation ? ["pmt-button-selected"] : [], state.busy, state.twoPointRotation) + buttonMarkup("pmt-two-scale", (state.twoPointScale ? "✓  " : "○  ") + t("twoPointScale"), state.twoPointScale ? ["pmt-button-selected"] : [], state.busy, state.twoPointScale) + '</div>' : '',
       canApplyTracking ? '    <div class="pmt-label">' + escapeHtml(t("selectDestination")) + '</div>' : '',
       '    ' + buttonMarkup("pmt-apply-tracking", surfaceMode ? t("applySurfacePerspective") : t("applyTrajectory"), canApplyTracking ? ["pmt-button-full", "pmt-button-primary"] : ["pmt-button-full"], !canApplyTracking),
       '  </div>',
@@ -1256,6 +1273,51 @@
     }
   }
 
+  // Capture only the selected clip and sequence range; masked-frame tracking does not decode a source preview.
+  async function trackSelectedMask(rootNode) {
+    if (state.busy) return;
+    state.trackingMode = "mask";
+    state.busy = true;
+    state.operation = "preparation";
+    state.cancelRequested = false;
+    state.source = null;
+    state.range = null;
+    state.media = null;
+    state.preview = null;
+    state.nativePreview = null;
+    state.previewVideo = null;
+    state.tracking = null;
+    state.referencePoint = null;
+    state.referenceCorners = [];
+    state.liveSamples = [];
+    state.analysisTaskId = "";
+    clearTrackingPreview();
+    render(rootNode);
+    let ready = false;
+    try {
+      await waitForPanelPaint();
+      const clip = await root.PMT_PREMIERE.captureSelectedClip();
+      if (state.cancelRequested) throw new Error("Preparation cancelled.");
+      const range = await root.PMT_PREMIERE.getActiveRange();
+      if (clip.sequenceId !== range.sequenceId) throw new Error("La séquence active a changé pendant la capture.");
+      const nativeStatus = await root.PMT_NATIVE.initialize();
+      if (!nativeStatus.available) throw new Error(nativeStatus.error || "Le moteur natif est indisponible.");
+      if (state.cancelRequested) throw new Error("Preparation cancelled.");
+      state.source = clip;
+      state.range = range;
+      addLog("Mask source captured: " + clip.name + ". No source preview preparation needed.");
+      ready = true;
+    } catch (error) {
+      addLog(isTrackingCancellation(error) ? "Preparation cancelled by user." : "Mask tracking error: " + (error && error.message ? error.message : String(error)));
+    } finally {
+      state.busy = false;
+      state.operation = "";
+      state.cancelRequested = false;
+      render(rootNode);
+    }
+    if (ready) await analyzeMaskTracking(rootNode);
+  }
+
   // Inspect a manually selected source file and keep the captured sequence range ready for analysis.
   async function chooseSourceMedia(rootNode) {
     if (!state.source || state.busy) {
@@ -1665,6 +1727,7 @@
 
   // Run Lucas-Kanade in a background native worker while the source video and its overlay stay interactive.
   async function analyzeTracking(rootNode) {
+    if (isMaskMode()) return analyzeMaskTracking(rootNode);
     state.busy = true;
     state.operation = "analysis";
     state.tracking = null;
@@ -1784,6 +1847,46 @@
     }
   }
 
+  // Export the masked sequence at its own frame rate and analyse it without changing timeline tracks.
+  async function analyzeMaskTracking(rootNode) {
+    state.busy = true;
+    state.operation = "analysis";
+    state.tracking = null;
+    state.liveSamples = [];
+    state.analysisSampleIndex = 0;
+    state.cancelRequested = false;
+    clearTrackingPreview();
+    render(rootNode);
+    try {
+      await waitForPanelPaint();
+      const range = getSourceTimelineRange();
+      const frameSeconds = Number(state.range.timebase) / 254016000000;
+      if (!range || !(frameSeconds > 0)) throw new Error("La plage ou la cadence de la séquence est invalide.");
+      state.analysisTotalFrames = Math.ceil((range.sequenceEnd - range.sequenceStart) / frameSeconds - 1e-7);
+      addLog("Exporting masked sequence frames. Keep the source mask visible and other video tracks hidden.");
+      const exported = await root.PMT_PREMIERE.exportMaskFrames(range.sequenceStart, range.sequenceEnd, frameSeconds, (current) => {
+        state.liveSamples.length = current;
+        updateOperationProgress(rootNode);
+      }, () => state.cancelRequested);
+      state.liveSamples = [];
+      state.analysisSampleIndex = 0;
+      if (state.cancelRequested) throw new Error("Tracking cancelled.");
+      state.analysisTaskId = await root.PMT_NATIVE.startMaskTracking(exported.folder, exported.count, exported.startSeconds, exported.frameSeconds);
+      state.tracking = await collectLiveTracking(rootNode, state.analysisTaskId);
+      state.analysisTaskId = "";
+      addLog("Mask tracking complete: " + state.tracking.length + " sequence frames. Select a destination and apply.");
+    } catch (error) {
+      state.tracking = null;
+      addLog(isTrackingCancellation(error) ? "Tracking cancelled by user." : "Mask tracking error: " + (error && error.message ? error.message : String(error)));
+    } finally {
+      state.analysisTaskId = "";
+      state.busy = false;
+      state.operation = "";
+      state.cancelRequested = false;
+      refreshAfterHostWork(rootNode, false);
+    }
+  }
+
   // Re-run only the unapproved surface or point samples on one side of a manually corrected review frame.
   async function retrackFromCorrection(rootNode, direction) {
     const correction = state.correction;
@@ -1859,14 +1962,16 @@
       // Apply the exact reviewed point trajectory; users can now rely on their visible corrections directly.
       const trajectoryForApply = state.tracking;
       const twoPointMode = isTwoPointMode();
-      const options = { rotation: state.twoPointRotation, scale: state.twoPointScale, sourceFrame: state.media };
-      const keyframes = twoPointMode ? root.PMT_TRAJECTORY.buildTwoPointKeyframes(trajectoryForApply, state.media, options)
+      const options = { rotation: state.twoPointRotation, scale: state.twoPointScale, sourceFrame: state.media, sequenceCoordinates: isMaskMode() };
+      const firstMask = isMaskMode() ? trajectoryForApply[0] : null;
+      const keyframes = firstMask ? trajectoryForApply.map((sample) => ({ frame: sample.frame, seconds: sample.seconds, confidence: sample.confidence, referencePoint: { x: firstMask.x, y: firstMask.y }, dx: sample.x - firstMask.x, dy: sample.y - firstMask.y, rotation: options.rotation ? sample.rotation : 0, scale: options.scale ? sample.scale : 1 }))
+        : twoPointMode ? root.PMT_TRAJECTORY.buildTwoPointKeyframes(trajectoryForApply, state.media, options)
         : surfaceMode ? root.PMT_TRAJECTORY.buildSurfaceKeyframes(trajectoryForApply) : root.PMT_TRAJECTORY.buildPositionKeyframes(trajectoryForApply);
-      const results = twoPointMode ? await root.PMT_PREMIERE.applySurfaceMotionTracking(keyframes, options)
+      const results = twoPointMode || isMaskMode() ? await root.PMT_PREMIERE.applySurfaceMotionTracking(keyframes, options)
         : surfaceMode ? await root.PMT_PREMIERE.applySurfaceTracking(keyframes) : await root.PMT_PREMIERE.applyTracking(keyframes);
       addLog((surfaceMode ? "Surface perspective" : "Trajectory") + " applied to " + results.length + " selected clip(s). " + keyframes.length + " keyframes per clip.");
       results.forEach((result) => {
-        if (twoPointMode) {
+        if (twoPointMode || isMaskMode()) {
           addLog(result.clipName + ": " + result.keyframeCount + " Transform keys.");
           return;
         }
@@ -1987,6 +2092,8 @@
       render(rootNode);
     });
     bindButton(rootNode, "pmt-capture-source", () => state.operation === "preparation" ? cancelPreparation(rootNode) : captureAndPrepare(rootNode));
+    bindButton(rootNode, "pmt-mask-quick-start", () => trackSelectedMask(rootNode));
+    bindButton(rootNode, "pmt-mask-cancel", () => cancelAnalysis(rootNode));
     bindButton(rootNode, "pmt-choose-source-media", () => chooseSourceMedia(rootNode));
     bindButton(rootNode, "pmt-mode-point", () => {
       if (state.trackingMode === "point") return;
@@ -2005,6 +2112,14 @@
       state.tracking = null;
       if (hadTracking) clearTrackingPreview();
       addLog("Tracking mode: two points. Select two points before Analyze.");
+      render(rootNode);
+    });
+    bindButton(rootNode, "pmt-mode-mask", () => {
+      if (isMaskMode()) return;
+      state.trackingMode = "mask";
+      state.tracking = null;
+      clearTrackingPreview();
+      addLog(t("maskHelp"));
       render(rootNode);
     });
     bindButton(rootNode, "pmt-two-rotation", () => { state.twoPointRotation = !state.twoPointRotation; render(rootNode); });

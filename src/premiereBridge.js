@@ -792,6 +792,32 @@
     return { url: imageEntry.url, fileName: imageEntry.name, width: dimensions.width, height: dimensions.height };
   }
 
+  // Export each visible masked sequence frame to an isolated cache without changing track visibility.
+  async function exportMaskFrames(startSeconds, endSeconds, frameSeconds, onProgress, shouldCancel) {
+    if (!handles.source || !handles.source.sequence) throw new Error("Capturez d’abord le clip source.");
+    const { app, sequence } = handles.source;
+    const start = Number(startSeconds), end = Number(endSeconds), interval = Number(frameSeconds);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || !Number.isFinite(interval) || interval <= 0 || end <= start) throw new Error("La plage du masque est invalide.");
+    const count = Math.ceil((end - start) / interval - 1e-7);
+    if (count < 2 || count > 3600) throw new Error("Le suivi de masque nécessite entre 2 et 3600 images.");
+    const storage = require("uxp").storage.localFileSystem;
+    const parent = await storage.getTemporaryFolder();
+    const folder = await parent.createFolder("pmt-mask-" + Date.now() + "-" + Math.floor(Math.random() * 1000000));
+    const sourceSize = await sequence.getFrameSize();
+    const ratio = Math.min(1, 1280 / Number(sourceSize.width));
+    const width = Math.max(1, Math.round(Number(sourceSize.width) * ratio));
+    const height = Math.max(1, Math.round(Number(sourceSize.height) * ratio));
+    for (let index = 0; index < count; index += 1) {
+      if (shouldCancel && shouldCancel()) throw new Error("Tracking cancelled.");
+      const stem = "frame-" + String(index).padStart(4, "0");
+      const ok = await app.Exporter.exportSequenceFrame(sequence, app.TickTime.createWithSeconds(start + index * interval), stem + ".png", folder.nativePath, width, height);
+      if (!ok) throw new Error("Premiere a refusé l’export du masque à l’image " + index + ".");
+      await resolveExportedPreview(folder, stem, shouldCancel);
+      if (onProgress) onProgress(index + 1, count);
+    }
+    return { folder: folder.nativePath, count, startSeconds: start, frameSeconds: interval, width, height };
+  }
+
   // Render the active sequence range directly in Premiere, avoiding an Adobe Media Encoder queue.
   async function exportPreviewVideo() {
     if (!handles.source || !handles.source.sequence) {
@@ -1098,7 +1124,21 @@
     let sourceMotionScale = null;
     let sourceMotionRotation = 0;
     let targetMotionRotation = 0;
-    if (options && options.sourceFrame && targetKeyframes[0].referencePoint) {
+    if (options && options.sequenceCoordinates && targetKeyframes[0].referencePoint) {
+      // Mask images are rendered in sequence space, so their pivot already includes the source clip's Motion.
+      const targetSize = targetFrame || await getTargetMediaFrame(context, item);
+      const targetGeometry = await getTargetMotionGeometry(context, item, inPoint, targetSize);
+      const reference = targetKeyframes[0].referencePoint;
+      sourceMotionScale = { x: 1, y: 1 };
+      targetMotionRotation = Number(targetGeometry.rotation || 0);
+      trackedPivot = { x: Number(reference.x) * Number(context.frameSize.width), y: Number(reference.y) * Number(context.frameSize.height) };
+      const localPosition = getHostPointPixels(initialPoint, targetSize);
+      const targetOffset = rotateMotionVector({
+        x: (localPosition.x - targetGeometry.anchor.x) * targetGeometry.scale.x / 100,
+        y: (localPosition.y - targetGeometry.anchor.y) * targetGeometry.scale.y / 100
+      }, targetMotionRotation);
+      destinationPivot = { x: targetGeometry.position.x + targetOffset.x, y: targetGeometry.position.y + targetOffset.y };
+    } else if (options && options.sourceFrame && targetKeyframes[0].referencePoint) {
       // Convert the source reference and the target Transform position into the same sequence pixel space.
       const sourceTime = await handles.source.item.getInPoint();
       const sourceGeometry = await getTargetMotionGeometry(context, handles.source.item, sourceTime, options.sourceFrame);
@@ -1293,6 +1333,7 @@
     getActiveRange,
     exportPreviewFrame,
     exportTrackingPreviewFrame,
+    exportMaskFrames,
     exportPreviewVideo,
     getHandleStatus,
     getDestinationSelectionStatus,

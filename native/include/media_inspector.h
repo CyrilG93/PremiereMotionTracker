@@ -54,6 +54,23 @@ using TrackingProgressCallback = std::function<bool(const MediaTrackingSample&)>
 // Publish only serializable four-corner samples while OpenCV owns the source frames.
 using SurfaceTrackingProgressCallback = std::function<bool(const SurfaceTrackingSample&)>;
 
+// Describe a similarity transform measured from masked sequence frames in sequence coordinates.
+struct MaskTrackingSample {
+    std::int64_t frame = 0;
+    double seconds = 0.0;
+    double x = 0.0;
+    double y = 0.0;
+    double rotation = 0.0;
+    double scale = 1.0;
+    double confidence = 0.0;
+};
+
+// Follow masked image features and fail rather than silently inventing motion on an unreliable frame.
+std::vector<MaskTrackingSample> trackMaskedFrames(
+    const std::vector<std::string>& paths, double startSeconds, double frameSeconds,
+    const std::function<bool(const MaskTrackingSample&)>& progressCallback = {}
+);
+
 // Open a local video through OpenCV and return durable metadata for the tracking session.
 MediaInspection inspectMedia(const std::string& mediaPath);
 

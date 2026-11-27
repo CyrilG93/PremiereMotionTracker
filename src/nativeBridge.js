@@ -13,7 +13,7 @@
     if (!candidate) {
       return names;
     }
-    ["getVersion", "runSelfTest", "inspectMedia", "renderPreviewFrame", "trackMedia", "trackSurface", "startPreviewCache", "startTracking", "startTrackingReverse", "startSurfaceTracking", "startSurfaceTrackingReverse", "pollTracking", "cancelTracking"].forEach((name) => {
+    ["getVersion", "runSelfTest", "inspectMedia", "renderPreviewFrame", "trackMedia", "trackSurface", "startPreviewCache", "startTracking", "startTrackingReverse", "startSurfaceTracking", "startSurfaceTrackingReverse", "startMaskTracking", "pollTracking", "cancelTracking"].forEach((name) => {
       if (typeof candidate[name] === "function") {
         names.push(name);
       }
@@ -41,7 +41,7 @@
     if (!loadPromise) {
       loadPromise = (async () => {
         try {
-          const loadedAddon = await require("premiere-motion-tracker-1.1.0.uxpaddon");
+          const loadedAddon = await require("premiere-motion-tracker-1.1.1.uxpaddon");
           exportNames = collectExportNames(loadedAddon);
           if (!loadedAddon || typeof loadedAddon.getVersion !== "function") {
             throw new Error("The addon does not provide getVersion() (" + describeExports(loadedAddon) + ").");
@@ -187,6 +187,14 @@
     return String(addon.startSurfaceTrackingReverse(String(mediaPath || ""), corners, Number(startSeconds), Number(endSeconds), Number(searchRadius) || 10, Number(featureCount) || 240, String(previewFolder || "")));
   }
 
+  // Start masked-frame analysis on the same cancellable worker used by other tracking modes.
+  async function startMaskTracking(folder, count, startSeconds, frameSeconds) {
+    if (!addon || typeof addon.startMaskTracking !== "function") {
+      throw new Error(loadError || "The native addon does not provide startMaskTracking().");
+    }
+    return String(addon.startMaskTracking(String(folder || ""), Number(count), Number(startSeconds), Number(frameSeconds)));
+  }
+
   // Fetch only new primitive samples from the worker to avoid copying a whole long trajectory on every refresh.
   async function pollTracking(taskId, afterIndex) {
     if (!addon || typeof addon.pollTracking !== "function") {
@@ -215,6 +223,7 @@
     startTrackingReverse,
     startSurfaceTracking,
     startSurfaceTrackingReverse,
+    startMaskTracking,
     pollTracking,
     cancelTracking
   };

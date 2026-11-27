@@ -55,6 +55,15 @@ The plugin adds a Transform effect and Position keyframes to every selected dest
 
 Position follows the first point, and the destination turns and scales around it. Rotation and uniform scale are measured from the line between the two points. Choose well-separated features on the same object and keep both visible throughout the shot. Set the clips’ Motion placement before applying tracking; animated Motion settings are not accounted for throughout the shot. To change the reference, use **Reset corners**, prepare the source again, and repeat the analysis.
 
+## Mask Tracking (Experimental)
+
+1. In Premiere, apply an Object Mask or a shape mask to the source clip's Opacity and track it across the desired range.
+2. Hide every other video track so that only the masked source is visible, and set the sequence In and Out points to the tracked range.
+3. Select the source clip and click **Track selected mask**. Keep the sequence unchanged until analysis finishes; no preview preparation or point selection is required.
+4. Restore the other tracks, select a destination clip starting at the beginning of the tracked range, then click **Apply trajectory**. Rotation and scale can be enabled separately.
+
+This experimental mode uses the rendered mask and follows visible texture inside it. Results depend on the mask and image detail; review the applied keyframes in Premiere. An analysis is limited to 3,600 sequence frames, and rendering each image can take time.
+
 ## Track a Surface
 
 1. Set In/Out, then capture and prepare a source clip.

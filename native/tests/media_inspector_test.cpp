@@ -2,9 +2,12 @@
 
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
+#include <opencv2/imgproc.hpp>
 #include <opencv2/videoio.hpp>
 
 #include <cmath>
+#include <cstdlib>
+#include <cstdio>
 #include <array>
 #include <filesystem>
 #include <iostream>
@@ -56,6 +59,51 @@ int main() {
     std::filesystem::create_directories(cachePath, directoryError);
     std::filesystem::create_directories(offsetCachePath, directoryError);
     passed &= expect(!directoryError, "native preview cache directory should be created");
+    // Generate an opaque, textured object with a known translation inside transparent PNG frames.
+    {
+        cv::Mat reference(128, 160, CV_8UC4, cv::Scalar(0, 0, 0, 0));
+        cv::RNG random(12345);
+        for (int y = 30; y < 100; ++y) for (int x = 30; x < 100; ++x) {
+            const unsigned char value = static_cast<unsigned char>(random.uniform(20, 255));
+            reference.at<cv::Vec4b>(y, x) = cv::Vec4b(value, value, value, 255);
+        }
+        std::vector<std::string> paths;
+        for (int i = 0; i < 3; ++i) {
+            cv::Mat shifted;
+            const cv::Matx23d affine(1, 0, i * 3, 0, 1, i * 2);
+            cv::warpAffine(reference, shifted, affine, reference.size(), cv::INTER_NEAREST, cv::BORDER_CONSTANT, cv::Scalar(0, 0, 0, 0));
+            const std::filesystem::path path = cachePath / ("masked-" + std::to_string(i) + ".png");
+            cv::imwrite(path.string(), shifted);
+            paths.push_back(path.string());
+        }
+        try {
+            const auto samples = pmt::trackMaskedFrames(paths, 1.0, 1.0 / 30.0);
+            passed &= expect(samples.size() == 3, "mask tracking should return every image");
+            passed &= expect(std::abs((samples.back().x - samples.front().x) * 160.0 - 6.0) < 1.0, "mask tracking should recover horizontal translation");
+            passed &= expect(std::abs((samples.back().y - samples.front().y) * 128.0 - 4.0) < 1.0, "mask tracking should recover vertical translation");
+            passed &= expect(std::abs(samples.back().rotation) < 2.0, "translation should not introduce rotation");
+        } catch (const std::exception& error) {
+            std::cerr << "Mask tracking error: " << error.what() << '\n';
+            passed = false;
+        }
+    }
+    // Allow an explicitly supplied real Premiere export to supplement the portable synthetic test.
+    if (const char* realMaskFolder = std::getenv("PMT_MASK_TEST_FOLDER")) {
+        std::vector<std::string> paths;
+        for (int i = 0; i < 60; ++i) {
+            char filename[32];
+            std::snprintf(filename, sizeof(filename), "frame-%04d.png", i);
+            paths.push_back((std::filesystem::path(realMaskFolder) / filename).string());
+        }
+        try {
+            const auto samples = pmt::trackMaskedFrames(paths, 0, 1.0 / 30.0);
+            passed &= expect(samples.size() == 60, "real mask sample should retain all frames");
+            passed &= expect(std::abs(samples.back().rotation + 13.7) < 2.0, "real mask rotation should match the reference experiment");
+        } catch (const std::exception& error) {
+            std::cerr << "Real mask tracking error: " << error.what() << '\n';
+            passed = false;
+        }
+    }
     cv::VideoWriter writer(samplePath.string(), cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), 12.0, cv::Size(96, 64));
     passed &= expect(writer.isOpened(), "OpenCV should create the temporary motion-tracking sample");
     if (writer.isOpened()) {

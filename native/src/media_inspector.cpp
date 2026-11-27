@@ -728,4 +728,64 @@ std::vector<SurfaceTrackingSample> trackSurfaceReverseFromPreview(
     return samples;
 }
 
+// Estimate object motion from masked rendered frames while preserving the reference pivot.
+std::vector<MaskTrackingSample> trackMaskedFrames(const std::vector<std::string>& paths, double startSeconds, double frameSeconds, const std::function<bool(const MaskTrackingSample&)>& progressCallback) {
+    if (paths.size() < 2 || !std::isfinite(startSeconds) || !std::isfinite(frameSeconds) || frameSeconds <= 0) throw std::invalid_argument("Une séquence de masques et une cadence valides sont requises.");
+    cv::Mat previousGray, previousMask;
+    cv::Matx33d transform = cv::Matx33d::eye();
+    cv::Point2d initialCenter;
+    double rotation = 0.0;
+    std::vector<MaskTrackingSample> samples;
+    for (std::size_t index = 0; index < paths.size(); ++index) {
+        const cv::Mat image = cv::imread(paths[index], cv::IMREAD_UNCHANGED);
+        if (image.empty() || image.type() != CV_8UC4) throw std::runtime_error("Une image du masque est absente ou ne contient pas d'alpha 8 bits.");
+        if (!previousGray.empty() && image.size() != previousGray.size()) throw std::runtime_error("Les images du masque ont des dimensions différentes.");
+        std::vector<cv::Mat> channels;
+        cv::split(image, channels);
+        cv::Mat mask, gray;
+        cv::threshold(channels[3], mask, 127, 255, cv::THRESH_BINARY);
+        cv::cvtColor(image, gray, cv::COLOR_BGRA2GRAY);
+        const cv::Moments moments = cv::moments(mask, true);
+        if (moments.m00 < 100) throw std::runtime_error("Masque vide ou trop petit à l'image " + std::to_string(index) + ".");
+        if (moments.m00 > static_cast<double>(mask.total()) * 0.995) throw std::runtime_error("Aucune transparence exploitable à l'image " + std::to_string(index) + ". Masquez les autres pistes et appliquez le masque à Opacité.");
+        double confidence = 1.0;
+        if (index == 0) {
+            initialCenter = {moments.m10 / moments.m00, moments.m01 / moments.m00};
+        } else {
+            cv::Mat featureMask;
+            cv::erode(previousMask, featureMask, cv::getStructuringElement(cv::MORPH_RECT, {5, 5}));
+            std::vector<cv::Point2f> points, next;
+            cv::goodFeaturesToTrack(previousGray, points, 300, 0.01, 4.0, featureMask);
+            if (points.size() < 8) throw std::runtime_error("Pas assez de détails dans le masque à l'image " + std::to_string(index) + ".");
+            std::vector<unsigned char> status;
+            std::vector<float> errors;
+            cv::calcOpticalFlowPyrLK(previousGray, gray, points, next, status, errors, {21, 21}, 3);
+            std::vector<cv::Point2f> source, target;
+            for (std::size_t i = 0; i < points.size(); ++i) {
+                const int x = cvRound(next[i].x), y = cvRound(next[i].y);
+                if (status[i] && x >= 0 && y >= 0 && x < mask.cols && y < mask.rows && mask.at<unsigned char>(y, x)) {
+                    source.push_back(points[i]); target.push_back(next[i]);
+                }
+            }
+            if (source.size() < 8) throw std::runtime_error("Suivi du masque perdu à l'image " + std::to_string(index) + ".");
+            cv::Mat inliers;
+            const cv::Mat affine = cv::estimateAffinePartial2D(source, target, inliers, cv::RANSAC, 2.0);
+            const int count = cv::countNonZero(inliers);
+            if (affine.empty() || count < 6) throw std::runtime_error("Mouvement du masque incertain à l'image " + std::to_string(index) + ".");
+            confidence = static_cast<double>(count) / source.size();
+            const double a = affine.at<double>(0, 0), b = affine.at<double>(1, 0);
+            const cv::Matx33d step(a, affine.at<double>(0, 1), affine.at<double>(0, 2), b, affine.at<double>(1, 1), affine.at<double>(1, 2), 0, 0, 1);
+            transform = step * transform;
+            rotation += std::atan2(b, a) * 180.0 / CV_PI;
+        }
+        const cv::Vec3d pivot = transform * cv::Vec3d(initialCenter.x, initialCenter.y, 1);
+        MaskTrackingSample sample {static_cast<std::int64_t>(index), startSeconds + index * frameSeconds, pivot[0] / image.cols, pivot[1] / image.rows, rotation, std::hypot(transform(0, 0), transform(1, 0)), confidence};
+        samples.push_back(sample);
+        if (progressCallback && !progressCallback(sample)) throw std::runtime_error("Tracking cancelled.");
+        previousGray = gray;
+        previousMask = mask;
+    }
+    return samples;
+}
+
 } // namespace pmt

@@ -57,7 +57,7 @@
       noClip: "No source clip",
       noMedia: "Video metadata not read",
       sourceClip: "Clip to analyze",
-      capturePrepare: "Capture and prepare",
+      capturePrepare: "Prepare tracking",
       stopPreparation: "Stop preparing",
       stoppingPreparation: "Stopping preparation…",
       chooseSourceFile: "Choose source file…",
@@ -148,7 +148,7 @@
       noClip: "Aucun clip source",
       noMedia: "Métadonnées vidéo non lues",
       sourceClip: "Clip à analyser",
-      capturePrepare: "Capturer et préparer",
+      capturePrepare: "Préparer le suivi",
       stopPreparation: "Arrêter la préparation",
       stoppingPreparation: "Arrêt de la préparation…",
       chooseSourceFile: "Choisir le fichier source…",
@@ -804,17 +804,17 @@
       '    <h2 class="pmt-card-title">' + escapeHtml(t("sourceTitle")) + '</h2>',
       '    <div class="pmt-slot">',
       '      <div class="pmt-slot-copy"><div class="pmt-label">' + escapeHtml(t("sourceClip")) + '</div><div class="pmt-value">' + escapeHtml(clipLabel(state.source, t("noClip"))) + '</div></div>',
-      '      ' + buttonMarkup("pmt-capture-source", state.operation === "preparation" ? (state.cancelRequested ? t("stoppingPreparation") : t("stopPreparation")) : t("capturePrepare"), [], state.busy && state.operation !== "preparation" || state.cancelRequested),
       '    </div>',
-      '    <div class="pmt-actions">' + buttonMarkup("pmt-mask-quick-start", t("maskQuickStart"), ["pmt-button-primary"], state.busy) + (isMaskMode() && state.operation === "analysis" ? buttonMarkup("pmt-mask-cancel", t("cancelAnalysis"), [], state.cancelRequested) : '') + '</div>',
+      '    <div class="pmt-actions pmt-source-actions">' + buttonMarkup("pmt-capture-source", state.operation === "preparation" ? (state.cancelRequested ? t("stoppingPreparation") : t("stopPreparation")) : t("capturePrepare"), [], state.busy && state.operation !== "preparation" || state.cancelRequested) + buttonMarkup("pmt-mask-quick-start", t("maskQuickStart"), ["pmt-button-primary"], state.busy) + '</div>',
+      isMaskMode() && state.operation === "analysis" ? '    <div class="pmt-actions">' + buttonMarkup("pmt-mask-cancel", t("cancelAnalysis"), [], state.cancelRequested) + '</div>' : '',
       state.source && !isMaskMode() ? '    <div class="pmt-label">' + escapeHtml(t("video")) + ': ' + escapeHtml(mediaLabel(state.media)) + '</div>' : '',
       !isMaskMode() && getFrameRateWarning() ? '    <div class="pmt-rate-warning">' + escapeHtml(getFrameRateWarning()) + '</div>' : '',
       state.source && !isMaskMode() && !state.media && nativeStatus.available ? '    <div class="pmt-label">' + escapeHtml(t("sourcePathUnavailable")) + '</div>' + buttonMarkup("pmt-choose-source-media", t("chooseSourceFile"), ["pmt-button-full"], state.busy) : '',
-      state.source ? '    <div class="pmt-settings"><div class="pmt-label">' + escapeHtml(t("trackingMode")) + '</div><div class="pmt-actions">' + buttonMarkup("pmt-mode-point", t("pointMode"), state.trackingMode === "point" ? ["pmt-button-selected"] : [], !canPrepare, state.trackingMode === "point") + buttonMarkup("pmt-mode-two-point", t("twoPointMode"), twoPointMode ? ["pmt-button-selected"] : [], !canPrepare, twoPointMode) + buttonMarkup("pmt-mode-surface", t("surfaceMode"), surfaceMode ? ["pmt-button-selected"] : [], !canPrepare, surfaceMode) + buttonMarkup("pmt-mode-mask", t("maskMode"), isMaskMode() ? ["pmt-button-selected"] : [], !canPrepare, isMaskMode()) + '</div></div>' : '',
+      state.source && !isMaskMode() ? '    <div class="pmt-settings"><div class="pmt-label">' + escapeHtml(t("trackingMode")) + '</div><div class="pmt-actions">' + buttonMarkup("pmt-mode-point", t("pointMode"), state.trackingMode === "point" ? ["pmt-button-selected"] : [], !canPrepare, state.trackingMode === "point") + buttonMarkup("pmt-mode-two-point", t("twoPointMode"), twoPointMode ? ["pmt-button-selected"] : [], !canPrepare, twoPointMode) + buttonMarkup("pmt-mode-surface", t("surfaceMode"), surfaceMode ? ["pmt-button-selected"] : [], !canPrepare, surfaceMode) + '</div></div>' : '',
       state.source && !isMaskMode() ? '    <div class="pmt-settings"><div class="pmt-label" id="pmt-search-radius-label">' + escapeHtml(t("searchArea", { value: state.searchRadius })) + '</div><sp-slider class="pmt-setting-slider" id="pmt-search-radius" min="5" max="40" step="1" value="' + String(state.searchRadius) + '"' + (canPrepare ? '' : ' disabled') + ' aria-label="' + escapeHtml(t("searchArea", { value: state.searchRadius })) + '"></sp-slider></div>' : '',
       state.source && isMaskMode() ? '    <div class="pmt-label">' + escapeHtml(t("maskHelp")) + '</div>' : '',
       state.source && surfaceMode ? '    <div class="pmt-settings"><div class="pmt-label" id="pmt-surface-feature-count-label">' + escapeHtml(t("surfaceDetail", { value: state.surfaceFeatureCount })) + '</div><div class="pmt-label">' + escapeHtml(t("surfaceDetailHelp")) + '</div><sp-slider class="pmt-setting-slider" id="pmt-surface-feature-count" min="80" max="400" step="20" value="' + String(state.surfaceFeatureCount) + '"' + (canPrepare ? '' : ' disabled') + ' aria-label="' + escapeHtml(t("surfaceDetail", { value: state.surfaceFeatureCount })) + '"></sp-slider></div>' : '',
-      state.source ? '    <div class="pmt-settings"><div class="pmt-label" id="pmt-confidence-threshold-label">' + escapeHtml(t("confidenceThreshold", { value: Math.round(state.confidenceThreshold * 100) })) + '</div><sp-slider class="pmt-setting-slider" id="pmt-confidence-threshold" min="0.1" max="1" step="0.05" value="' + String(state.confidenceThreshold) + '"' + (canPrepare ? '' : ' disabled') + ' aria-label="' + escapeHtml(t("confidenceThreshold", { value: Math.round(state.confidenceThreshold * 100) })) + '"></sp-slider></div>' : '',
+      state.source && !isMaskMode() ? '    <div class="pmt-settings"><div class="pmt-label" id="pmt-confidence-threshold-label">' + escapeHtml(t("confidenceThreshold", { value: Math.round(state.confidenceThreshold * 100) })) + '</div><sp-slider class="pmt-setting-slider" id="pmt-confidence-threshold" min="0.1" max="1" step="0.05" value="' + String(state.confidenceThreshold) + '"' + (canPrepare ? '' : ' disabled') + ' aria-label="' + escapeHtml(t("confidenceThreshold", { value: Math.round(state.confidenceThreshold * 100) })) + '"></sp-slider></div>' : '',
       '  </div>',
       '  <div class="pmt-card"' + (isMaskMode() ? ' style="display:none"' : '') + '>',
       '    <h2 class="pmt-card-title">' + escapeHtml(t("previewTitle")) + '</h2>',
@@ -1218,6 +1218,15 @@
 
   // Capture the selected source, inspect it, and immediately prepare its sequence range in one action.
   async function captureAndPrepare(rootNode) {
+    // The general preparation returns from mask mode to the normal point/surface workflow.
+    if (isMaskMode()) {
+      state.trackingMode = "point";
+      state.tracking = null;
+      state.source = null;
+      state.range = null;
+      state.preview = null;
+      clearTrackingPreview();
+    }
     state.busy = true;
     state.operation = "preparation";
     state.preparationTotalFrames = 0;
@@ -2112,14 +2121,6 @@
       state.tracking = null;
       if (hadTracking) clearTrackingPreview();
       addLog("Tracking mode: two points. Select two points before Analyze.");
-      render(rootNode);
-    });
-    bindButton(rootNode, "pmt-mode-mask", () => {
-      if (isMaskMode()) return;
-      state.trackingMode = "mask";
-      state.tracking = null;
-      clearTrackingPreview();
-      addLog(t("maskHelp"));
       render(rootNode);
     });
     bindButton(rootNode, "pmt-two-rotation", () => { state.twoPointRotation = !state.twoPointRotation; render(rootNode); });

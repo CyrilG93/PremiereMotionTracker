@@ -34,7 +34,7 @@ For Point and Surface tracking, the source and destination clips must be in the 
 
 ## Track a Point
 
-1. Select the source clip, add in/out and click **Capture and prepare**.
+1. Select the source clip, add in/out and click **Prepare tracking**.
 2. Use Play or the frame slider to choose the source frame that best shows the point, then click it to place the tracking point.
 3. Adjust **Search area** if the point moves quickly.
 4. Click **Analyze**.
@@ -48,7 +48,7 @@ The plugin adds a Transform effect and Position keyframes to every selected dest
 
 ## Track Two Points
 
-1. Capture and prepare the source clip, then choose **2 points**.
+1. Prepare the source clip with **Prepare tracking**, then choose **2 points**.
 2. Choose a reference frame and click two distinct, visible features. Drag the numbered handles to adjust them.
 3. Click **Analyze**, then review both points and the confidence markers.
 4. Select one or more destination clips. Choose whether to apply **Rotation** and **Scale**, then click **Apply trajectory**.
@@ -66,7 +66,7 @@ This experimental mode uses the rendered mask and follows visible texture inside
 
 ## Track a Surface
 
-1. Set In/Out, then capture and prepare a source clip.
+1. Set In/Out, then select a source clip and click **Prepare tracking**.
 2. Choose **Surface**.
 3. Use Play or the frame slider to choose the best reference frame, then click the four corners of the surface in this order: top-left, top-right, bottom-right, bottom-left.
 4. Drag the numbered handles to refine the selection.

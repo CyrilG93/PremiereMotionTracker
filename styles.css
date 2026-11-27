@@ -455,6 +455,12 @@ input {
   flex: 1 1 0;
 }
 
+/* Keep both source actions equally wide, including when their translated labels wrap. */
+.pmt-source-actions .pmt-button {
+  min-width: 0;
+  text-align: center;
+}
+
 /* Use Spectrum's host-provided slider for direct review scrubbing instead of a fragile HTML range control. */
 .pmt-preview-navigation {
   display: flex;

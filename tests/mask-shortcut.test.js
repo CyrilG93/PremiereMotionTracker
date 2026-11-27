@@ -31,7 +31,7 @@ test("mask shortcut captures and analyses without preparing source media", async
   };
   const node = { innerHTML: "", querySelector: () => null, querySelectorAll: () => [] };
   const file = path.join(__dirname, "..", "src", "ui.js");
-  const script = fs.readFileSync(file, "utf8").replace("root.PMT_UI = { mount };", "root.PMT_UI = { mount, trackSelectedMask, state }; ");
+  const script = fs.readFileSync(file, "utf8").replace("root.PMT_UI = { mount };", "root.PMT_UI = { mount, trackSelectedMask, captureAndPrepare, state }; ");
   vm.runInNewContext(script, { window, setTimeout, clearTimeout, console });
   await window.PMT_UI.trackSelectedMask(node);
   assert.deepEqual(calls.map(call => call[0]), ["capture", "export", "start"]);
@@ -40,5 +40,13 @@ test("mask shortcut captures and analyses without preparing source media", async
   assert.equal(window.PMT_UI.state.media, null);
   assert.equal(window.PMT_UI.state.busy, false);
   assert.match(node.innerHTML, /pmt-mask-quick-start/);
+  assert.match(node.innerHTML, /pmt-source-actions/);
+  assert.doesNotMatch(node.innerHTML, /pmt-mode-point|pmt-mode-two-point|pmt-mode-surface|pmt-search-radius|pmt-confidence-threshold/);
   assert.match(node.innerHTML, /style="display:none"/);
+  // If switching workflows fails to capture a source, do not leave mask data active as point tracking.
+  window.PMT_PREMIERE.captureSelectedClip = async () => { throw new Error("No source selected"); };
+  await window.PMT_UI.captureAndPrepare(node);
+  assert.equal(window.PMT_UI.state.trackingMode, "point");
+  assert.equal(window.PMT_UI.state.tracking, null);
+  assert.equal(window.PMT_UI.state.source, null);
 });

@@ -52,7 +52,7 @@ test("custom buttons avoid Premiere's mismatched native inner border", () => {
 
 test("the In point frame is exported and accepts a normalized tracking point", () => {
   assert.match(uiSource, /exportPreviewFrame\(\)/);
-  assert.match(uiSource, /Capturer et préparer/);
+  assert.match(uiSource, /Préparer le suivi/);
   assert.doesNotMatch(uiSource, /pmt-read-range/);
   assert.match(uiSource, /pmt-preview-image/);
   assert.match(uiSource, /PMT_SESSION\.normalizePoint/);
